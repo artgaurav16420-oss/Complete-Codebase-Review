@@ -13,43 +13,15 @@ A holistic, read-only codebase audit skill for Claude Code / AI coding agents. P
 - **Cross-platform** — works on Windows and Unix
 
 
-## 🚀 One-line Install
+🚀 One-line Install
 
-```
-curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py -o install.py && python install.py
-```
+curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py -o install.py && python3 install.py
 
-## 🧪 Tested On
+Installation
 
-| OS | Supported |
-|----|-----------|
-| macOS | ✅ |
-| Linux | ✅ |
-| Windows | ✅ |
+You can also clone the repo directly to your local skills directory:
 
-## Installation
-
-Clone the repo into your Claude Code skills directory:
-
-```bash
-# macOS / Linux
 git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git ~/.claude/skills/complete-codebase-review
-```
-
-```powershell
-# Windows (PowerShell)
-git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git "$env:USERPROFILE\.claude\skills\complete-codebase-review"
-```
-
-Or clone anywhere and run the install script:
-
-```bash
-# Unix
-./install.sh
-
-# Windows / Unix (PowerShell)
-./install.ps1
-```
 
 
 ## 🔧 Environment Variables
