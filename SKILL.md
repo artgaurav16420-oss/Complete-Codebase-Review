@@ -4,11 +4,23 @@ description: Use when asked to review, audit, assess, or evaluate an entire code
 user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, question, Task"
-effort: max
-model: opus
+effort: ${CODE_REVIEW_EFFORT:-max}
 ---
 
 # Complete Codebase Review
+
+## 🔧 Environment Variables
+
+Customize the execution with these environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CODE_REVIEW_EFFORT` | `max` | Execution effort. Set to `min` for Quick Mode. |
+| `CODE_REVIEW_TIMEOUT_SEC` | `900` | Agent timeout in seconds. |
+| `CODE_REVIEW_MAX_FILES` | (unlimited) | Max files to scan. |
+| `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
+| `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
+
 
 ## Overview
 
@@ -21,8 +33,6 @@ Four-phase pattern for holistic codebase health assessment. Invoke with `/comple
 **Phase 3: Synthesis + Roadmap** → Unified health report with quantified tech debt and prioritized fix roadmap
 **Phase 4: Fix Plan** → Generate per-agent code fix tasks, present for user review, wait for permission
 
-**Estimated duration:** Small (<10k LOC): ~15 min. Medium (10k–100k LOC): ~45 min. Large (100k+ LOC): 60–90 min. Includes parallel agent runtime and synthesis.
-**Cost estimate:** Small ~$5-10, Medium ~$10-25, Large ~$25-60+ in API costs (13 Opus agents + synthesis). Rate limits may extend runtime.
 
 ### Argument Handling
 
@@ -33,6 +43,18 @@ If `$ARGUMENTS` is provided, treat it as the target codebase path (relative or a
 **NOT for:** reviewing PR diffs, single-file changes, or hotfixes. Use [`multi-agent-code-review`](skill:multi-agent-code-review) for those.
 
 **Related skills:** [`multi-agent-code-review`](skill:multi-agent-code-review) (PR/diff reviews), [`requesting-code-review`](skill:requesting-code-review), [`receiving-code-review`](skill:receiving-code-review).
+
+
+## 💾 Checkpointing
+
+Outputs from specialist agents and synthesis are cached in `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}`. For instance, each agent's output is saved to `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/phase_<agent_name>.json`. This allows the orchestrator to resume analysis from cache in case of interruption, reducing redundant work.
+
+## ⚡ Quick Mode
+
+To run a fast, surface-level assessment, set `CODE_REVIEW_EFFORT=min`. In this mode:
+- Timeouts drop to 120 seconds (`CODE_REVIEW_TIMEOUT_SEC=120`).
+- Only a core subset of 3 agents will run (e.g., Security, Code Quality, Architecture).
+- The codebase is sampled (approximately 10% sampling limit).
 
 ## Phase 1: Discovery
 
@@ -85,7 +107,7 @@ Glob tool and Read/Grep tools work identically on both platforms.
 
 ### Step 3: Write Discovery Manifest
 
-Write `$TEMP_DIR/ccr-manifest.md`. Resolve `$TEMP_DIR` using OS detection: `$env:TEMP` (Windows), `$TMPDIR` (macOS), or `/tmp` (Linux), with fallback to `$TARGET_DIR/.ccr-temp`.
+Write `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/ccr-manifest.md`. Resolve `$TEMP_DIR` using OS detection: `$env:TEMP` (Windows), `$TMPDIR` (macOS), or `/tmp` (Linux), with fallback to `$TARGET_DIR/.ccr-temp`.
 
 Include:
 - Language/stack summary
@@ -121,8 +143,7 @@ name: agent-name
 description: |
   Use when auditing [domain] in a codebase. Focus ONLY on [domain].
   Do NOT flag [adjacent domains].
-model: opus
-effort: max
+effort: ${CODE_REVIEW_EFFORT:-max}
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 ```
 
@@ -162,7 +183,7 @@ This ensures the synthesis agent can reliably parse, deduplicate, and score find
 
 1. Create agent team → 2. Spawn N Task agents in parallel → 3. Collect results as each returns → 4. Once all N have reported, proceed to synthesis
 
-**CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: track it. Proceed only when all N are in. If any agent exceeds 15 minutes, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
+**CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: track it. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
 
 ## Phase 3: Synthesis + Roadmap
 
@@ -211,8 +232,8 @@ Actions:
 2. On file path → write report to that path
 3. On stdout → print the report
 4. Cleanup:
-   - Delete `$TEMP_DIR/ccr-manifest.md` (resolved at write-time — see Phase 1 Step 3)
-   - Delete any agent temp files
+   - Delete `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/ccr-manifest.md` (resolved at write-time — see Phase 1 Step 3)
+   - Clean up any agent temp files if not checkpointing
 
 ## Phase 4: Multi-Agent Fix Plan
 
@@ -253,7 +274,7 @@ Only after user approval:
 
 ### 4e. Baseline Snapshot
 
-After the fix plan is generated, save a baseline snapshot to `$TEMP_DIR/ccr-baseline.json`:
+After the fix plan is generated, save a baseline snapshot to `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`:
 
 ```json
 {
@@ -280,8 +301,8 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
-1. Load the previous baseline from `$TEMP_DIR/ccr-baseline.json`
-2. Re-run Phase 2 (parallel analysis) with all 13 agents. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` in the trend table, but still receive fresh scores from re-analysis.
+1. Load the previous baseline from `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
+2. Re-run Phase 2 (parallel analysis) with all spawned agents. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` in the trend table, but still receive fresh scores from re-analysis.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
@@ -312,7 +333,7 @@ Instructions:
 
 | # | Rule |
 |---|------|
-| 1 | Wait up to 15 minutes per agent. If fewer than 8 agents complete, halt and report failure. Otherwise proceed with partial results and prominently note which agents timed out. |
+| 1 | Wait up to ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds per agent. If fewer than a majority of agents complete, halt and report failure. Otherwise proceed with partial results and prominently note which agents timed out. |
 | 2 | Do NOT monitor/poll/check progress |
 | 3 | Synthesis phase MANDATORY |
 | 4 | Roadmap phase MANDATORY |
@@ -360,7 +381,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 - Giving a qualitative "looks good" without metrics
 - Skipping any phase (discovery, analysis, synthesis, roadmap, DA)
 - Claiming findings without evidence or source
-- ≤6 specialist agents (insufficient coverage)
+- <50% of specialist agents (insufficient coverage)
 - Skipping web verification for security findings
 - Writing output before devil's advocate completes
 - Modifying any codebase file during review or report generation
@@ -427,7 +448,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 | Rate limit hit on web verification | Fall back to code-only analysis for that agent, mark findings UNVERIFIED |
 | Agent fails | See Sub-Agent Failure Recovery table. |
 | Large codebase | Prioritize core modules; note "X modules not analyzed". Assign module subsets to specific agents to avoid overlap. |
-| `$TEMP_DIR` not writable | Use `$TARGET_DIR/.ccr-temp/` instead |
+| `$TEMP_DIR` not writable | Use `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}` instead |
 | $ARGUMENTS path invalid | Ask user for a valid path; fall back to `.` |
 | User declines fix plan | Clean up and exit — no changes written |
 
@@ -437,8 +458,8 @@ When quantifying tech debt, use the following table as a floor estimate per find
 |----------|--------|
 | **Transient tool error** (network timeout, rate limit) | Retry once after 10s backoff |
 | **Persistent tool error** (same error after retry) | Skip that agent. Note `AGENT_FAILED` prominently in synthesis report |
-| **Agent exceeds 15 minutes** | Proceed with partial results from completed agents. Document which agents were skipped and why |
-| **<8 agents complete** | Halt — insufficient coverage for meaningful synthesis. Report failure to user: "Only X/13 agents completed. Reduce codebase size or retry." |
+| **Agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds** | Proceed with partial results from completed agents. Document which agents were skipped and why |
+| **<50% of agents complete** | Halt — insufficient coverage for meaningful synthesis. Report failure to user: "Only X/Y agents completed. Reduce codebase size or retry." |
 | **Synthesis/DA agent fails** | Halt and report error. These phases are mandatory. Do not produce output without them. |
 
 ## Cross-Boundary Signals
