@@ -107,7 +107,7 @@ Glob tool and Read/Grep tools work identically on both platforms.
 
 ### Step 3: Write Discovery Manifest
 
-Write `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/ccr-manifest.md`. Resolve `$TEMP_DIR` using OS detection: `$env:TEMP` (Windows), `$TMPDIR` (macOS), or `/tmp` (Linux), with fallback to `$TARGET_DIR/.ccr-temp`.
+Write ${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/ccr-manifest.md. If the cache directory is not writable, fall back to a temporary directory (e.g., $env:TEMP, $TMPDIR, or /tmp).
 
 Include:
 - Language/stack summary
