@@ -112,11 +112,11 @@ Glob tool and Read/Grep tools work identically on both platforms.
 
 Include:
 
-· Language/stack summary
-· Directory tree (top 3 levels)
-· Key config values (dependency counts, test counts)
-· Module map (entry points, core libs, legacy areas)
-· Selected health dimensions
+- Language/stack summary
+- Directory tree (top 3 levels)
+- Key config values (dependency counts, test counts)
+- Module map (entry points, core libs, legacy areas)
+- Selected health dimensions
 
 ## Phase 2: Parallel Analysis
 
