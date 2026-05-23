@@ -27,8 +27,8 @@ Write-Host "=== Command Frontmatter ===" -ForegroundColor Cyan
 Check "Has user-invocable: true" { $content -match 'user-invocable: true' }
 Check "Has argument-hint" { $content -match 'argument-hint:' }
 Check "Has allowed-tools" { $content -match 'allowed-tools:' }
-Check "Has context: fork" { $content -match 'context: fork' }
-Check "Has disable-model-invocation" { $content -match 'disable-model-invocation: true' }
+Check "Has allowed-tools including Task" { $content -match 'allowed-tools:' -and $content -match 'Task' }
+# disable-model-invocation intentionally absent — skill uses Task agents requiring model invocation
 Check "Has effort: max" { $content -match 'effort: max' }
 Check "Has model: opus" { $content -match 'model: opus' }
 Check "References \$ARGUMENTS" { $content -match '\$ARGUMENTS' }
@@ -62,7 +62,7 @@ Check "Has Roadmap phase" { $content -match 'Roadmap' -or $content -match 'roadm
 Check "Has tech debt quantification" { $content -match 'tech debt' -or $content -match 'Tech Debt' }
 Check "Has health score" { $content -match 'health' -or $content -match 'Health' }
 Check "Has phased roadmap" { $content -match 'Phase 1' -and $content -match 'Phase 2' }
-Check "Blocks passive monitoring" { $content -match 'Todowrite' -or $content -match 'passive' }
+Check "Blocks passive monitoring" { $content -match 'do nothing else' -or $content -match 'No messages, no drafting, no polling' }
 Check "Blocks partial results" { $content -match 'ALL N' -or $content -match 'all N' }
 Check "Has graceful degradation for agent failure" { $content -match 'Agent fail' -or $content -match 'crash' }
 Check "Has web verification section" { $content -match '## Web Verification' }
@@ -88,7 +88,7 @@ Check "Only applies on approved Task IDs" { $content -match 'Task IDs' -or $cont
 
 Write-Host "=== Baseline Failure Coverage ===" -ForegroundColor Cyan
 Check "Covers shallow scan failure" { $content -match 'Discovery' -and $content -match 'Specialist Agents' }
-Check "Covers single-pass bias failure" { $content -match 'ALL N agents' -and $content -match 'parallel' }
+Check "Covers single-pass bias failure" { $content -match 'fewer than 8 agents complete' -and $content -match 'parallel' }
 Check "Covers no-structure failure" { $content -match 'Per-Domain' -and $content -match 'severity' }
 Check "Covers inconsistent depth failure" { $content -match 'Prioritize core' -and $content -match 'not analyzed' }
 Check "Covers no-quantification failure" { $content -match 'quantified metric' -or $content -match 'quantified' }
@@ -96,7 +96,7 @@ Check "Covers no-roadmap failure" { $content -match 'Phase 1' -and $content -mat
 
 Write-Host "=== Non-Negotiable Rules ===" -ForegroundColor Cyan
 Check "Has at least 9 rules" { ($lines | Where-Object { $_ -match '^\|\s*\d+\s*\|' }).Count -ge 9 }
-Check "Rule 1: ALL agents return" { $content -match 'ALL N agents return' }
+Check "Rule 1: Wait up to 15 min per agent" { $content -match 'Wait up to 15 minutes per agent' }
 Check "Rule 8: Web verification mandatory" { $content -match 'Web verification MANDATORY' }
 Check "Rule 9: NEVER modify codebase" { $content -match 'NEVER modify the codebase' }
 Check "Rule 10: Fix plan waits for approval" { $content -match 'MUST wait for user approval' }

@@ -4,7 +4,6 @@ description: Use when asked to review, audit, assess, or evaluate an entire code
 user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, question, Task"
-disable-model-invocation: true
 effort: max
 model: opus
 ---
@@ -22,28 +21,14 @@ Four-phase pattern for holistic codebase health assessment. Invoke with `/comple
 **Phase 3: Synthesis + Roadmap** → Unified health report with quantified tech debt and prioritized fix roadmap
 **Phase 4: Fix Plan** → Generate per-agent code fix tasks, present for user review, wait for permission
 
-**Estimated duration:** 5-15 minutes depending on codebase size. 13 parallel agents each need time to scan, analyze, and web-verify findings.
+**Estimated duration:** Small (<10k LOC): ~15 min. Medium (10k–100k LOC): ~45 min. Large (100k+ LOC): 60–90 min. Includes parallel agent runtime and synthesis.
+**Cost estimate:** Small ~$5-10, Medium ~$10-25, Large ~$25-60+ in API costs (13 Opus agents + synthesis). Rate limits may extend runtime.
 
 ### Argument Handling
 
 If `$ARGUMENTS` is provided, treat it as the target codebase path (relative or absolute). Default to `.` (current working directory). Store as `$TARGET_DIR`.
 
 ## When to Use
-
-```dot
-digraph when_to_use {
-    "Assess entire\ncodebase?" [shape=diamond];
-    "New to this\nproject?" [shape=diamond];
-    "Before major\nrefactor?" [shape=diamond];
-    "Pre-audit or\ndue diligence?" [shape=diamond];
-    "Sprint zero or\nonboarding?" [shape=diamond];
-    "Complete codebase\nreview" [shape=box style="rounded" fillcolor="#4CAF50" fontcolor="white"];
-    "Use multi-agent\nPR review instead" [shape=box style="rounded"];
-
-    "Assess entire\ncodebase?" -> "Complete codebase\nreview" [label="yes"];
-    "Assess entire\ncodebase?" -> "Use multi-agent\nPR review instead" [label="no (it's a diff)"];
-}
-```
 
 **NOT for:** reviewing PR diffs, single-file changes, or hotfixes. Use [`multi-agent-code-review`](skill:multi-agent-code-review) for those.
 
@@ -100,7 +85,7 @@ Glob tool and Read/Grep tools work identically on both platforms.
 
 ### Step 3: Write Discovery Manifest
 
-Write `$TEMP_DIR/ccr-manifest.md`. Resolve `$TEMP_DIR` using OS detection: `$env:TEMP` (Windows) or `$TMPDIR` (Unix), with fallback to `$TARGET_DIR/.ccr-temp`.
+Write `$TEMP_DIR/ccr-manifest.md`. Resolve `$TEMP_DIR` using OS detection: `$env:TEMP` (Windows), `$TMPDIR` (macOS), or `/tmp` (Linux), with fallback to `$TARGET_DIR/.ccr-temp`.
 
 Include:
 - Language/stack summary
@@ -157,9 +142,9 @@ Each specialist agent MUST return findings in this exact structure:
 **Score:** X/10
 
 ### CRITICAL
-| Finding | File(s) | Evidence | DA Verdict |
-|---------|---------|----------|------------|
-| ... | path/file | [metric/observation] | PENDING |
+| Finding | File(s) | Evidence |
+|---------|---------|----------|
+| ... | path/file | [metric/observation] |
 
 ### HIGH
 ...
@@ -185,12 +170,17 @@ This ensures the synthesis agent can reliably parse, deduplicate, and score find
 
 Input: all N specialist reports
 Actions:
-- Deduplicate overlapping findings
-- Resolve cross-agent conflicts (e.g. Architecture sees clean layers, Performance sees abstraction overhead — flag both with context)
+- Deduplicate redundant observations: if two agents describe the same root cause in the same file/component → deduplicate
+- Retain cross-domain impact: if two agents describe different observable consequences of the same underlying issue → retain both with a `Cross-domain impact` tag
+- Flag conflicts explicitly: if two agents contradict each other about the same component → flag conflict rather than silent deduplication
 - Normalize severity (CRITICAL/HIGH/MEDIUM/LOW/INFO)
 - Quantify tech debt (estimated hours per finding)
 - Group by domain, then severity
 - Produce unified health report with conflict log
+
+### Context Management
+
+Each agent report MUST include a compact findings summary (severity + count + top 3 per severity) at the top of its output, in addition to the full report. The synthesis agent uses summaries for deduplication and cross-referencing, and reads full reports only for CRITICAL/HIGH findings. This prevents context window overflow on large codebase reviews where combined agent reports may exceed 100K tokens.
 
 ### 3b. Roadmap Agent
 
@@ -212,7 +202,8 @@ Actions:
 - Web-verify each claim
 - Independently read code to confirm
 - Assign: CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED
-- NEVER add new findings
+- DA may not introduce new finding *categories*. DA may escalate severity, add confirming evidence, or flag a finding as `DA-ESCALATION` if it independently discovers something material the specialists missed
+- All DA additions are tagged `DA-ESCALATION` and reviewed separately in the synthesis report
 
 ### 3d. Output + Cleanup
 
@@ -242,7 +233,11 @@ For each CONFIRMED/PLAUSIBLE finding in the DA-verified report, create a structu
 | Est. effort | Hours |
 | Dependencies | Tasks that should be done first |
 
-### 4b. Present to User
+### 4b. Estimate Reconciliation
+
+The fix plan generator MUST reconcile its effort estimates against the health report's per-finding hours. For each task where the estimate differs from the health report by >20%, document the variance and the reason. Fix plan estimates are the canonical source for `tech_debt_hours` in the baseline snapshot.
+
+### 4c. Present to User
 
 Print the fix plan table. Then ask:
 
@@ -250,13 +245,13 @@ Print the fix plan table. Then ask:
 
 **Do NOT apply any fix until the user explicitly lists Task IDs or says "all".**
 
-### 4c. Apply Approved Fixes
+### 4d. Apply Approved Fixes
 
 Only after user approval:
 - For each approved task, create a Task agent that loads the relevant skill, reads the target files, applies the fix, and verifies it.
 - CRITICAL items first, then HIGH, then MEDIUM.
 
-### 4d. Baseline Snapshot
+### 4e. Baseline Snapshot
 
 After the fix plan is generated, save a baseline snapshot to `$TEMP_DIR/ccr-baseline.json`:
 
@@ -281,12 +276,12 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 - **Critical Issues**: 5 → 2 (↓60%)
 ```
 
-### 4e. Re-review After Partial Fixes
+### 4f. Re-review After Partial Fixes
 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
 1. Load the previous baseline from `$TEMP_DIR/ccr-baseline.json`
-2. Re-run Phase 2 (parallel analysis) but skip completed tasks' domains
+2. Re-run Phase 2 (parallel analysis) running all 13 agents. Per-domain scores for agents whose domains had no open HIGH/CRITICAL findings are marked `[NOT RESCANNED]` in the report and carry forward from the previous baseline.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
@@ -317,7 +312,7 @@ Instructions:
 
 | # | Rule |
 |---|------|
-| 1 | ALL N agents return before synthesis — wait indefinitely. If any agent exceeds 15 minutes or fails persistently, proceed with partial results per Sub-Agent Failure Recovery. |
+| 1 | Wait up to 15 minutes per agent. If fewer than 8 agents complete, halt and report failure. Otherwise proceed with partial results and prominently note which agents timed out. |
 | 2 | Do NOT monitor/poll/check progress |
 | 3 | Synthesis phase MANDATORY |
 | 4 | Roadmap phase MANDATORY |
@@ -340,6 +335,24 @@ Instructions:
 | "Skip [dimension], it's not relevant" | All dimensions apply unless explicitly confirmed absent |
 | "Web verification takes too long" | A false CVE report is worse than the 30s to verify it |
 | "I'll fix this obvious bug while I'm here" | Read-only review — fix plan captures it. Applying mid-review corrupts findings |
+
+## Tech Debt Calibration
+
+When quantifying tech debt, use the following table as a floor estimate per finding. Agents document any multipliers applied (e.g. `2×` for particularly tangled code, `0.5×` for well-structured code with simple fixes).
+
+| Finding Type | Base Estimate |
+|-------------|---------------|
+| Missing test coverage (per module) | 4h |
+| Cyclomatic complexity > 15 (per function) | 2h |
+| Circular dependency (per cycle) | 8h |
+| Missing API documentation (per endpoint) | 0.5h |
+| Outdated major dependency | 3h |
+| Deprecated API usage (per call site) | 1h |
+| Hardcoded secret/credential | 2h |
+| Unused dead code (per module) | 1h |
+| Missing error handling (per path) | 1h |
+| N+1 query pattern (per instance) | 3h |
+| Accessibility violation WCAG A/AA (per component) | 2h |
 
 ## Red Flags — STOP
 
@@ -410,6 +423,8 @@ Instructions:
 |---------|----------|
 | LSP | Grep/Glob for structure analysis |
 | WebSearch | Code-only; mark UNVERIFIED |
+| Skill not found | Log `SKILL_MISSING: [name]`, proceed with general domain knowledge, note the gap in the agent's report header. Do not halt. |
+| Rate limit hit on web verification | Fall back to code-only analysis for that agent, mark findings UNVERIFIED |
 | Agent fails | Wait indefinitely. Only proceed on genuine crash (tool error). Note gap. |
 | Large codebase | Prioritize core modules; note "X modules not analyzed". Assign module subsets to specific agents to avoid overlap. |
 | `$TEMP_DIR` not writable | Use `$TARGET_DIR/.ccr-temp/` instead |
@@ -423,14 +438,12 @@ Instructions:
 | **Transient tool error** (network timeout, rate limit) | Retry once after 10s backoff |
 | **Persistent tool error** (same error after retry) | Skip that agent. Note `AGENT_FAILED` prominently in synthesis report |
 | **Agent exceeds 15 minutes** | Proceed with partial results from completed agents. Document which agents were skipped and why |
-| **≤7 agents complete** | Halt — insufficient coverage for meaningful synthesis. Report failure to user: "Only X/13 agents completed. Reduce codebase size or retry." |
+| **<8 agents complete** | Halt — insufficient coverage for meaningful synthesis. Report failure to user: "Only X/13 agents completed. Reduce codebase size or retry." |
 | **Synthesis/DA agent fails** | Halt and report error. These phases are mandatory. Do not produce output without them. |
 
-## Cross-Boundary Comms
+## Cross-Boundary Signals
 
-```
-Message("target-agent", "Found [issue] in your domain at [location]")
-```
+Cross-domain signals are captured in a structured notes block by the orchestrator and included as context when spawning dependent agents. The orchestrator collects cross-references from agent reports and passes relevant signals to downstream agents.
 
 | From | To | Signal |
 |------|----|--------|

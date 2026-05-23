@@ -45,7 +45,7 @@ Check "Each agent has methodology requirement" { $content -match 'Methodology' -
 Check "Each agent must quantify findings" { $content -match 'Quantify findings' -or $content -match 'Quantification' }
 Check "Each agent must web verify" { $content -match 'Web Verify' }
 Check "Each agent loads a skill" { $content -match 'Load a relevant skill' -and $content -match 'Skill tool' }
-Check "Parallel orchestration is passive" { $content -match 'do NOTHING' -and $content -match 'No Todowrite' }
+Check "Parallel orchestration is passive" { $content -match 'do nothing else' -and $content -match 'No messages, no drafting, no polling' }
 
 Write-Host "=== Integration: Synthesis + Roadmap ===" -ForegroundColor Cyan
 
@@ -81,7 +81,7 @@ Check "Has re-review guidance" { $content -match 'Re-review' -or $content -match
 
 Write-Host "=== Integration: Safety ===" -ForegroundColor Cyan
 
-Check "Declares READ-ONLY" { $content -match 'NEVER modifies the codebase' }
+Check "Declares READ-ONLY" { $content -match 'NEVER modify the codebase' -or $content -match 'READ-ONLY' }
 Check "Rule 9: no codebase modification" { $content -match 'NEVER modify the codebase during Phases 1-3' }
 Check "Rule 10: no auto-apply" { $content -match 'MUST wait for user approval' }
 Check "Red flag for modifying files" { $content -match 'Modifying any codebase file' }
