@@ -33,7 +33,10 @@ def copy_skill(src_dir, dest_dir):
 
     if skill_dest.exists():
         print_info(f"Updating existing installation in {skill_dest}")
-        shutil.rmtree(skill_dest)
+        if skill_dest.is_dir():
+            shutil.rmtree(skill_dest)
+        else:
+            skill_dest.unlink()
 
     def ignore_patterns(path, names):
         return [n for n in names if n in ('.git', '__pycache__', 'install.py', 'install.sh', 'install.ps1', '.skills') or n.endswith('.pyc')]
