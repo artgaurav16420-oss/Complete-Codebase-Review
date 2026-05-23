@@ -281,7 +281,7 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
 1. Load the previous baseline from `$TEMP_DIR/ccr-baseline.json`
-2. Re-run Phase 2 (parallel analysis) running all 13 agents. Per-domain scores for agents whose domains had no open HIGH/CRITICAL findings are marked `[NOT RESCANNED]` in the report and carry forward from the previous baseline.
+2. Re-run Phase 2 (parallel analysis) with all 13 agents. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` in the trend table, but still receive fresh scores from re-analysis.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
