@@ -333,7 +333,7 @@ Instructions:
 
 | # | Rule |
 |---|------|
-| 1 | Wait up to ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds per agent. If fewer than a majority of agents complete, halt and report failure. Otherwise proceed with partial results and prominently note which agents timed out. |
+| 1 | Wait up to ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds per agent. If fewer than 50% of agents complete, halt and report failure. Otherwise proceed with partial results and prominently note which agents timed out. |
 | 2 | Do NOT monitor/poll/check progress |
 | 3 | Synthesis phase MANDATORY |
 | 4 | Roadmap phase MANDATORY |
