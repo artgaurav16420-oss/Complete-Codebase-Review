@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
 echo "[INFO] Starting Mock Validation Test Suite"
 
 TEST_DIR="tests/dummy_repo"

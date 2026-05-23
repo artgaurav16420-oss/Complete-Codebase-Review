@@ -107,9 +107,11 @@ Glob tool and Read/Grep tools work identically on both platforms.
 
 ### Step 3: Write Discovery Manifest
 
-Write ${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/ccr-manifest.md. If the cache directory is not writable, fall back to a temporary directory (e.g., $env:TEMP, $TMPDIR, or /tmp).
+1. Verify Cache Access: Attempt to write a temporary test file to ${CODE_REVIEW_CACHE_DIR:-.code-review-cache}. If the directory is not writable (e.g., in a sandboxed CI environment), automatically fall back to a system temporary directory ($env:TEMP, $TMPDIR, or /tmp) for all subsequent caching.
+2. Write Manifest: Write ccr-manifest.md to the verified cache directory.
 
 Include:
+
 - Language/stack summary
 - Directory tree (top 3 levels)
 - Key config values (dependency counts, test counts)
