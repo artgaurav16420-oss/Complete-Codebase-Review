@@ -12,6 +12,30 @@ A holistic, read-only codebase audit skill for Claude Code / AI coding agents. P
 - **Read-only by design** — never modifies codebase during Phases 1-3
 - **Cross-platform** — works on Windows and Unix
 
+## Installation
+
+Clone the repo into your Claude Code skills directory:
+
+```bash
+# macOS / Linux
+git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git ~/.claude/skills/complete-codebase-review
+```
+
+```powershell
+# Windows (PowerShell)
+git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git "$env:USERPROFILE\.claude\skills\complete-codebase-review"
+```
+
+Or clone anywhere and run the install script:
+
+```bash
+# Unix
+./install.sh
+
+# Windows / Unix (PowerShell)
+./install.ps1
+```
+
 ## Usage
 
 ```
