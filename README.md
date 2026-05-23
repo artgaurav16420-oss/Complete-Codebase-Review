@@ -24,7 +24,7 @@
   - [Manual Installation](#manual-installation)
 - [Usage](#-usage)
 - [Requirements](#-requirements)
-- [Configuration](#-configuration)
+- [Configuration](#-configuration-environment-variables)
 - [Output](#-output)
 - [Contributing](#-contributing)
 - [License](#-license)
