@@ -448,7 +448,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 | Rate limit hit on web verification | Fall back to code-only analysis for that agent, mark findings UNVERIFIED |
 | Agent fails | See Sub-Agent Failure Recovery table. |
 | Large codebase | Prioritize core modules; note "X modules not analyzed". Assign module subsets to specific agents to avoid overlap. |
-| `$TEMP_DIR` not writable | Use `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}` instead |
+| Cache directory not writable | Fall back to OS temporary directory |
 | $ARGUMENTS path invalid | Ask user for a valid path; fall back to `.` |
 | User declines fix plan | Clean up and exit — no changes written |
 
