@@ -13,7 +13,7 @@ A holistic, read-only codebase audit skill for Claude Code / AI coding agents. P
 - **Cross-platform** — works on Windows and Unix
 
 
-🚀 One-line Install
+## 🚀 One-line Install
 
 curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py -o install.py && python3 install.py
 
