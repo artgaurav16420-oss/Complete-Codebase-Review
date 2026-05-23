@@ -14,6 +14,11 @@ def print_error(msg):
     print(f"[\033[91mERROR\033[0m] {msg}")
 
 def get_target_dirs():
+    """Determine the target installation directories for supported AI agents.
+
+    Returns:
+        dict: A dictionary mapping agent names to their respective skill installation directories.
+    """
     home = Path.home()
 
     dirs = {
@@ -26,6 +31,15 @@ def get_target_dirs():
     return dirs
 
 def copy_skill(src_dir, dest_dir):
+    """Copy the skill files from the source directory to the destination directory.
+
+    Args:
+        src_dir (Path): The source directory containing the skill files.
+        dest_dir (Path): The destination directory where the skill should be installed.
+
+    Returns:
+        Path: The path to the newly installed skill directory.
+    """
     if not dest_dir.exists():
         dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -45,6 +59,12 @@ def copy_skill(src_dir, dest_dir):
     return skill_dest
 
 def main():
+    """Execute the main installation process.
+
+    This function detects existing configurations for supported AI agents and
+    copies the skill files to their respective skill directories. If no global
+    configurations are found, it installs the skill to a local directory.
+    """
     print_info(f"Starting Universal Installer on {platform.system()}")
 
     src_dir = Path(__file__).parent.resolve()
