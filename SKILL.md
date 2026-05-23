@@ -425,7 +425,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 | WebSearch | Code-only; mark UNVERIFIED |
 | Skill not found | Log `SKILL_MISSING: [name]`, proceed with general domain knowledge, note the gap in the agent's report header. Do not halt. |
 | Rate limit hit on web verification | Fall back to code-only analysis for that agent, mark findings UNVERIFIED |
-| Agent fails | Wait indefinitely. Only proceed on genuine crash (tool error). Note gap. |
+| Agent fails | See Sub-Agent Failure Recovery table. |
 | Large codebase | Prioritize core modules; note "X modules not analyzed". Assign module subsets to specific agents to avoid overlap. |
 | `$TEMP_DIR` not writable | Use `$TARGET_DIR/.ccr-temp/` instead |
 | $ARGUMENTS path invalid | Ask user for a valid path; fall back to `.` |
