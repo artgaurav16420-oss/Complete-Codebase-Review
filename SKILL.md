@@ -260,10 +260,10 @@ prompt: "You are auditing the Security Posture of {TARGET_DIR}.
   Return findings in the standard severity-grouped format."
 ```
 
-4. Collect results as each returns. After every `CODE_REVIEW_STATUS_INTERVAL` seconds, log a checkpoint: "X/Y agents completed so far."
+4. Collect results as each returns. Maintain a shared `completedCount` variable that is incremented each time an agent reports back (in the event/callback that collects results). Start a timer driven by `CODE_REVIEW_STATUS_INTERVAL` that logs "X/Y agents completed so far" by reading the current `completedCount` value—do NOT poll agents inside the timer. When `completedCount` reaches N, stop the timer and proceed to synthesis.
 5. Once all N have reported, proceed to synthesis.
 
-**CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: track it. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
+**CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: increment `completedCount` and track the result. The progress timer reads this counter passively. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
 
 ## Phase 3: Synthesis + Roadmap
 
@@ -435,7 +435,7 @@ Instructions:
 
 | # | Rule |
 |---|------|
-| 1 | Wait up to ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds per agent. In full mode (default), halt if fewer than 75% of agents complete. In Quick Mode, halt if fewer than 66% complete. Otherwise proceed with partial results and prominently note which agents timed out. |
+| 1 | Wait up to ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds per agent. In full mode (default), halt if fewer than 75% of active agents complete. In Quick Mode, halt if fewer than 66% of active agents complete. Denominator = active domains only (excludes domains marked `[LOW-ACTIVITY]`). Otherwise proceed with partial results and prominently note which agents timed out. |
 | 2 | Do NOT monitor/poll/check progress |
 | 3 | Synthesis phase MANDATORY |
 | 4 | Roadmap phase MANDATORY |
