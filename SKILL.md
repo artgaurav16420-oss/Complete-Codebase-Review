@@ -3,9 +3,9 @@ name: complete-codebase-review
 description: Use when asked to review, audit, assess, or evaluate an entire codebase holistically — not a PR diff. Covers architecture, security, tech debt, test health, deps, docs, CI, standards compliance, and process quality (Karpathy compliance). Read-only — produces a health score, quantified tech debt, and a fix plan for user approval before any changes.
 user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
-allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, question, Task"
+allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, Task"
 effort: ${CODE_REVIEW_EFFORT:-max}
-version: 2.0.0
+version: 2.0.1
 ---
 
 # Complete Codebase Review
@@ -34,7 +34,7 @@ Four-phase pattern for holistic codebase health assessment. Invoke with `/comple
 
 **Phase 1: Discovery** → Map structure, stack, modules, entry points
 **Phase 2: Parallel Analysis** → Spawn N specialist agents across health dimensions
-**Phase 3: Synthesis + Roadmap** → Unified health report with quantified tech debt and prioritized fix roadmap
+**Phase 3: Synthesis + Roadmap** → Synthesis, then DA verification, then prioritized roadmap
 **Phase 4: Fix Plan** → Generate per-agent code fix tasks, present for user review, wait for permission
 
 ### Argument Handling
@@ -128,7 +128,7 @@ If all critical tools pass but optional tools are unavailable, log: `"[ENV_CHECK
 ### Step 3: Write Discovery Manifest
 
 1. Verify Cache Access: Attempt to write a temporary test file to ${CODE_REVIEW_CACHE_DIR:-.code-review-cache}. If the directory is not writable (e.g., in a sandboxed CI environment), automatically fall back to a system temporary directory ($env:TEMP, $TMPDIR, or /tmp) for all subsequent caching.
-2. Write Manifest: Write ccr-manifest.md to the verified cache directory.
+2. Write Manifest: Store the verified cache path as `$RESOLVED_CACHE_DIR`. Use `$RESOLVED_CACHE_DIR` for all subsequent cache reads/writes and cleanup. Write ccr-manifest.md to the verified cache directory.
 
 Include:
 - Language/stack summary
@@ -202,7 +202,7 @@ Each specialist agent MUST return findings in this exact structure:
 This ensures the synthesis agent can reliably parse, deduplicate, and score findings across all domains.
 
 ### Process Quality Agent Instructions
-Read the file karpathy-guidelines.md in full before starting.
+Read the file at the absolute path stored in $SKILL_DIR/karpathy-guidelines.md, where $SKILL_DIR is the directory containing this SKILL.md file (injected by the orchestrator into the agent prompt at spawn time as SKILL_DIR=<absolute-path>).
 
 Data sources (if available):
 - .git/logs/HEAD or output of git log --oneline (if git is accessible)
@@ -235,7 +235,7 @@ Before spawning agents, estimate and log expected resource consumption:
 | Agents | N (from Orchestration step 1) |
 | Min wall time | N × ~30s per agent (prompt + tool calls) |
 | Max wall time | N × `CODE_REVIEW_TIMEOUT_SEC` (900s default) |
-| Est. token cost per agent | ~5K input + ~3K output (avg), scales with codebase size |
+| Est. token cost per agent | ~15K–80K input (scales with codebase size) + ~5K output; large codebases may exceed 100K input tokens per agent |
 
 Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. Set CODE_REVIEW_EFFORT=min for Quick Mode (3 agents, 120s timeout)."`
 
@@ -248,10 +248,13 @@ Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. S
 2. Log pre-flight estimate (see above).
 3. Spawn N Task agents in parallel. Use the Task tool for each:
 
+**Orchestrator pre-step**: resolve `SKILL_DIR=$(dirname $(realpath SKILL.md))` and inject into every agent prompt that references skill-local files.
+
 ```
 task name: security-posture-audit
 subagent_type: general
 prompt: "You are auditing the Security Posture of {TARGET_DIR}.
+  SKILL_DIR=${SKILL_DIR}
   Load the 'security-review' skill. Run OWASP checks, scan for
   hardcoded secrets, and check dependency CVEs.
   Return findings in the standard severity-grouped format."
@@ -280,9 +283,20 @@ Actions:
 
 Each agent report MUST include a compact findings summary (severity + count + top 3 per severity) at the top of its output, in addition to the full report. The synthesis agent uses summaries for deduplication and cross-referencing, and reads full reports only for CRITICAL/HIGH findings. This prevents context window overflow on large codebase reviews where combined agent reports may exceed 100K tokens.
 
-### 3b. Roadmap Agent
+### 3b. Devil's Advocate Agent
 
-Input: synthesized report
+Input: roadmapped report + discovery manifest
+Actions:
+- Challenge EVERY finding
+- Web-verify each claim
+- Independently read code to confirm
+- Assign: CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED
+- DA may not introduce new finding *categories*. DA may escalate severity, add confirming evidence, or flag a finding as `DA-ESCALATION` if it independently discovers something material the specialists missed. DA runs before roadmap generation; DA-ESCALATION findings are included in roadmap prioritization.
+- All DA additions are tagged `DA-ESCALATION` and reviewed separately in the synthesis report
+
+### 3c. Roadmap Agent
+
+Input: synthesized report + DA-verified findings (including DA-ESCALATION items)
 Actions:
 - Prioritize findings by impact vs effort
 - Produce phased roadmap:
@@ -292,24 +306,13 @@ Actions:
 - Estimate total tech debt in engineering hours
 - Assign ownership suggestions by team/domain
 
-### 3c. Devil's Advocate Agent
-
-Input: roadmapped report + discovery manifest
-Actions:
-- Challenge EVERY finding
-- Web-verify each claim
-- Independently read code to confirm
-- Assign: CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED
-- DA may not introduce new finding *categories*. DA may escalate severity, add confirming evidence, or flag a finding as `DA-ESCALATION` if it independently discovers something material the specialists missed
-- All DA additions are tagged `DA-ESCALATION` and reviewed separately in the synthesis report
-
 ### 3d. Output + Cleanup
 
 1. Ask user: "Where should I write the health report? [file path | stdout]"
 2. On file path → write report to that path
 3. On stdout → print the report
 4. Cleanup:
-   - Delete `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/ccr-manifest.md` (resolved at write-time — see Phase 1 Step 3)
+   - Delete `$RESOLVED_CACHE_DIR/ccr-manifest.md`, where `$RESOLVED_CACHE_DIR` is the cache directory confirmed writable in Phase 1 Step 3 (may be OS temp dir, not the default `.code-review-cache`).
    - Clean up any agent temp files if not checkpointing
 
 ## Phase 4: Multi-Agent Fix Plan
@@ -333,7 +336,7 @@ For each CONFIRMED/PLAUSIBLE finding in the DA-verified report, create a structu
 
 ### 4b. Estimate Reconciliation
 
-The fix plan generator MUST reconcile its effort estimates against the health report's per-finding hours. For each task where the estimate differs from the health report by >20%, document the variance and the reason. Fix plan estimates are the canonical source for `tech_debt_hours` in the baseline snapshot.
+The fix plan generator MUST reconcile its effort estimates against the health report's per-finding hours. For each task where the estimate differs from the health report by >20%, document the variance and the reason. Fix plan estimates are canonical. Where variance >20%, log: `[EST-CONFLICT] Task T-XXX: health report=Xh, fix-plan=Yh — reason: <reason>`. Notify user in the fix plan table footer. Fix plan estimates are the canonical source for `tech_debt_hours` in the baseline snapshot.
 
 ### 4c. Present to User
 
@@ -379,7 +382,7 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
 1. Load the previous baseline from `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
-2. Re-run Phase 2 (parallel analysis) with all spawned agents. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` in the trend table, but still receive fresh scores from re-analysis.
+2. Re-run Phase 2 (parallel analysis). Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` and skipped (no agent spawned); their previous scores carry forward in the trend table. All other domains receive full re-analysis.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
