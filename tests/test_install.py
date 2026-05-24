@@ -435,7 +435,10 @@ class TestMainEdgeCases(unittest.TestCase):
         mock_get_dirs.return_value = {}
         mock_copy.return_value = Path("/x")
 
-        with patch.object(Path, "exists", return_value=True):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "read_text", return_value=""),
+        ):
             install.main()
 
         mock_copy.assert_called_once()
