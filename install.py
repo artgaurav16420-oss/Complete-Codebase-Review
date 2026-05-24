@@ -129,7 +129,7 @@ def main():
         )
         local_target = Path.cwd() / ".skills"
         gitignore = Path.cwd() / ".gitignore"
-        if gitignore.exists() and ".skills" in gitignore.read_text():
+        if gitignore.exists() and any(line.strip() in [".skills", ".skills/"] for line in gitignore.read_text().splitlines()):
             print_info(
                 "WARNING: .skills/ is listed in .gitignore — "
                 "your local install will not be tracked by git."
