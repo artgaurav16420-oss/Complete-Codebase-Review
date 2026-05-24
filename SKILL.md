@@ -43,7 +43,7 @@ If `$ARGUMENTS` is provided, treat it as the target codebase path (relative or a
 
 ## 💾 Checkpointing
 
-Outputs from specialist agents and synthesis are cached in `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}`. For instance, each agent's output is saved to `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/phase_<agent_name>.json`. This allows the orchestrator to resume analysis from cache in case of interruption, reducing redundant work.
+Outputs from specialist agents and synthesis are cached in `$RESOLVED_CACHE_DIR` (resolved in Phase 1 Step 3). For instance, each agent's output is saved to `$RESOLVED_CACHE_DIR/phase_<agent_name>.json`. This allows the orchestrator to resume analysis from cache in case of interruption, reducing redundant work.
 
 ## ⚡ Quick Mode
 
@@ -354,7 +354,7 @@ Only after user approval:
 
 ### 4e. Baseline Snapshot
 
-After the fix plan is generated, save a baseline snapshot to `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`:
+After the fix plan is generated, save a baseline snapshot to `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`:
 
 ```json
 {
@@ -381,8 +381,8 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
-1. Load the previous baseline from `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
-2. Re-run Phase 2 (parallel analysis). Domains with no previously open HIGH/CRITICAL findings are marked [LOW-ACTIVITY] in the trend table, but still receive fresh scores from re-analysis. All other domains receive full re-analysis.
+1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
+2. Re-run Phase 2 (parallel analysis) for active domains only. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend table. All other domains receive full re-analysis.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
@@ -440,7 +440,7 @@ Instructions:
 | 3 | Synthesis phase MANDATORY |
 | 4 | Roadmap phase MANDATORY |
 | 5 | Devil's advocate MANDATORY |
-| 6 | Synthesis + Roadmap + DA MUST be separate agents |
+| 6 | Synthesis + DA + Roadmap MUST be separate agents, run in that order |
 | 7 | Every finding must include a quantified metric or evidence |
 | 8 | Web verification MANDATORY for Security + Dependencies domains |
 | 9 | NEVER modify the codebase during Phases 1-3 — read-only diagnostics only |
@@ -675,9 +675,18 @@ Cross-domain signals are captured in a structured notes block by the orchestrato
 ## Changelog
 
 ### v2.0.1 (2026-05-24)
-- **Environment Check**: Added Step 1a to Phase 1 Discovery for explicit tool availability verification
-- **Output filter**: Added `CODE_REVIEW_FILTER` env var (`all` / `critical-high`) for high-impact-only reports
-- **Cross-platform**: All new checks added to test_compliance.py; PS1 test files deprecated
+- **Environment Check**: Added Step 1a to Phase 1 Discovery
+- **Output filter**: Added CODE_REVIEW_FILTER env var
+- **DA ordering fixed**: Phase 3 order is now Synthesis → DA → Roadmap; DA-ESCALATION findings feed into roadmap
+- **SKILL_DIR injection**: karpathy-guidelines.md now resolved via absolute SKILL_DIR injected by orchestrator at spawn time
+- **RESOLVED_CACHE_DIR**: cache path resolved once in Phase 1 Step 3, used throughout Phases 3-4 (fixes temp-dir fallback propagation)
+- **EST-CONFLICT logging**: Phase 4b reconciliation now logs conflicts and notifies user in fix plan footer
+- **Token estimates corrected**: Pre-flight now shows 15K–80K input per agent (was ~5K)
+- **Phase 4f**: LOW-ACTIVITY domains now skip agent spawn; previous scores carry forward
+- **install.py**: gitignore warning on local fallback install
+- **pyproject.toml**: corrected build-backend to setuptools.build_meta
+- **CI**: removed invalid update-pip parameter from setup-python action
+- **Tests**: dead regex fixed, temp-dir fallback assertion corrected, gitignore warning tests added
 
 ### v2.0.0 (2026-05-24)
 - **Env vars**: Added `CODE_REVIEW_EFFORT`, `CODE_REVIEW_TIMEOUT_SEC`, `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_AGENTS`, `CODE_REVIEW_STATUS_INTERVAL`

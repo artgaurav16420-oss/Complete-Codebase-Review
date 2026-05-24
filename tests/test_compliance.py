@@ -267,6 +267,7 @@ def test_integration_parallel_analysis(content):
     run_check("Each agent loads a skill", 'Load a relevant skill' in content and 'Skill tool' in content)
     run_check("Parallel orchestration is passive", 'do nothing else' in content and 'No messages, no drafting, no polling' in content)
     run_check("Task invocation example provided", 'task name:' in content or 'subagent_type:' in content)
+    run_check("SKILL_DIR injected into agent prompts", 'SKILL_DIR' in content)
     return pass_count, fail_count
 
 def test_integration_synthesis_roadmap(content):
@@ -328,6 +329,7 @@ def test_integration_fix_plan(content):
     run_check("Applies CRITICAL before HIGH", 'CRITICAL items first' in content)
     run_check("Has baseline snapshot for trend", 'baseline' in content and 'trend' in content)
     run_check("Has re-review guidance", 'Re-review' in content or 'follow-up' in content)
+    run_check("EST-CONFLICT logged on estimate variance", 'EST-CONFLICT' in content)
     return pass_count, fail_count
 
 def test_integration_safety(content):
