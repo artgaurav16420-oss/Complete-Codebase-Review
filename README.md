@@ -327,6 +327,6 @@ MIT. See [LICENSE](LICENSE) for details.
 [![GitHub stars](https://img.shields.io/github/stars/artgaurav16420-oss/Complete-Codebase-Review?style=social)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/stargazers)
 [![Follow](https://img.shields.io/github/followers/artgaurav16420-oss?style=social)](https://github.com/artgaurav16420-oss)
 
-Built with Claude Code. Powered by AI agents.
+Built by **Gaurav**. Powered by AI agents.
 
 </div>
