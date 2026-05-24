@@ -51,7 +51,7 @@ def test_command_frontmatter(content):
     run_check("Has allowed-tools", 'allowed-tools:' in content)
     run_check("Has allowed-tools including Task", 'allowed-tools:' in content and 'Task' in content)
     run_check("Has effort: max", 'effort: ${CODE_REVIEW_EFFORT:-max}' in content)
-    run_check("Model: opus is absent", 'model: opus' not in content)
+    run_check("Model: opus is absent", re.search(r'(?m)^model: opus', content) is None)
     run_check("References $ARGUMENTS", '$ARGUMENTS' in content)
     run_check("Sets $TARGET_DIR from args", '$TARGET_DIR' in content)
     return pass_count, fail_count
