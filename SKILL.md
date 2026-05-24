@@ -285,7 +285,7 @@ Each agent report MUST include a compact findings summary (severity + count + to
 
 ### 3b. Devil's Advocate Agent
 
-Input: roadmapped report + discovery manifest
+Input: synthesized report + discovery manifest
 Actions:
 - Challenge EVERY finding
 - Web-verify each claim
