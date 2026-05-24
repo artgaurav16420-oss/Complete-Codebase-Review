@@ -1,3 +1,4 @@
+# DEPRECATED: All checks migrated to tests/test_compliance.py. Keep as reference only.
 # Integration tests for complete-codebase-review skill
 # These test the expected behavior patterns (not a live agent run)
 $skillPath = Join-Path $PSScriptRoot "..\SKILL.md"

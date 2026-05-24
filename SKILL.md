@@ -21,7 +21,7 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_MAX_FILES` | (unlimited) | Max files to scan. |
 | `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
-| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 13 based on dimension criteria. |
+| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 13: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards. Filtered by project dimensions (see Step 2). |
 | `CODE_REVIEW_STATUS_INTERVAL` | `300` | Seconds between status checkpoints reporting completed agent count. |
 
 
@@ -181,13 +181,28 @@ Each specialist agent MUST return findings in this exact structure:
 
 This ensures the synthesis agent can reliably parse, deduplicate, and score findings across all domains.
 
+### Pre-flight Estimate
+
+Before spawning agents, estimate and log expected resource consumption:
+
+| Metric | Estimate Formula |
+|--------|----------------|
+| Files scanned | `CODE_REVIEW_MAX_FILES` or detected file count |
+| Agents | N (from Orchestration step 1) |
+| Min wall time | N × ~30s per agent (prompt + tool calls) |
+| Max wall time | N × `CODE_REVIEW_TIMEOUT_SEC` (900s default) |
+| Est. token cost per agent | ~5K input + ~3K output (avg), scales with codebase size |
+
+Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. Set CODE_REVIEW_EFFORT=min for Quick Mode (3 agents, 120s timeout)."`
+
 ### Orchestration
 
 1. Determine which agents to run:
    - If `CODE_REVIEW_AGENTS` is set, use that comma-separated list (e.g. `CODE_REVIEW_AGENTS=security,architecture,code-quality`)
    - Otherwise, run all 13 agents that match the project's health dimensions (see Step 2)
    - In Quick Mode (`CODE_REVIEW_EFFORT=min`), run only Security, Code Quality, and Architecture
-2. Spawn N Task agents in parallel. Use the Task tool for each:
+2. Log pre-flight estimate (see above).
+3. Spawn N Task agents in parallel. Use the Task tool for each:
 
 ```
 task name: security-posture-audit

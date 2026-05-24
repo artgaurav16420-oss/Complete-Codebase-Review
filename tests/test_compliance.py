@@ -24,6 +24,7 @@ def test_structural(content, skill_path):
     run_check("Has YAML frontmatter", re.search(r'(?s)^---\r?\n.+\r?\n---', content) is not None)
     run_check("Has name", re.search(r'(?m)^name: ', content) is not None)
     run_check("Description starts with Use when", 'description: Use when' in content)
+    run_check("Has version field", re.search(r'(?m)^version: ', content) is not None)
 
     desc_match = re.search(r'description: (.*?)(?:\n|$)', content)
     has_summary = bool(
@@ -112,6 +113,8 @@ def test_content_quality(content):
     run_check("Has cleanup phase", 'Cleanup' in content)
     run_check("Has output destination ask", 'Ask user' in content or 'AskUserQuestion' in content or 'Where should I write' in content)
     run_check("Mentions UNVERIFIED", 'UNVERIFIED' in content)
+    run_check("Has sample output section", 'Sample Output' in content or 'Example Report' in content)
+    run_check("Has changelog section", 'Changelog' in content or 'Change Log' in content)
     return pass_count, fail_count
 
 def test_cross_platform(content):
@@ -148,6 +151,10 @@ def test_fix_plan(content):
     run_check("Has fix plan table", 'Task ID' in content and 'T-001' in content)
     run_check("Asks user for approval", 'Do NOT apply' in content and 'user explicitly' in content)
     run_check("Only applies on approved Task IDs", 'Task IDs' in content or '"all"' in content)
+    run_check("Has post-fix verification phase", 'Phase 4g' in content or 'Verify Fixes' in content)
+    run_check("Applies CRITICAL before HIGH", 'CRITICAL items first' in content)
+    run_check("Has baseline snapshot for trend", 'baseline' in content and 'trend' in content)
+    run_check("Has re-review guidance", 'Re-review' in content or 'follow-up' in content)
     return pass_count, fail_count
 
 def test_baseline_failure_coverage(content):
@@ -179,8 +186,8 @@ def test_non_negotiable_rules(content):
             fail_count += 1
     print("\033[96m=== Non-Negotiable Rules ===\033[0m")
     rule_lines = [line for line in content.split('\n') if re.match(r'^\|\s*\d+\s*\|', line)]
-    run_check("Has at least 9 rules", len(rule_lines) >= 9)
-    run_check("Rule 1: Wait up to 15 min per agent", re.search(r'Wait up to \$\{CODE_REVIEW_TIMEOUT_SEC:-900\} seconds per agent', content) is not None)
+    run_check("Has at least 10 rules", len(rule_lines) >= 10)
+    run_check("Rule 1: Dynamic timeout per agent + 75% threshold", re.search(r'\$\{CODE_REVIEW_TIMEOUT_SEC:-900\}', content) is not None and '75%' in content)
     run_check("Rule 8: Web verification mandatory", 'Web verification MANDATORY' in content)
     run_check("Rule 9: NEVER modify codebase", 'NEVER modify the codebase' in content)
     run_check("Rule 10: Fix plan waits for approval", 'MUST wait for user approval' in content)
@@ -213,7 +220,7 @@ def test_red_flags(content):
     print("\033[96m=== Red Flags ===\033[0m")
     red_flag_lines = [line for line in content.split('\n') if re.match(r'^- ', line) and not any(x in line for x in ['User', 'source', 'title', 'rubric'])]
     run_check("Has at least 5 red flags", len(red_flag_lines) >= 5)
-    run_check("Stops on <50% agents", '<50% of specialist agents' in content)
+    run_check("Stops on insufficient agent coverage", '75%' in content or 'insufficient coverage' in content)
     run_check("Stops on skipped web verification", 'Skipping web verification' in content)
     run_check("Stops on modifying files", 'Modifying any codebase file' in content)
     return pass_count, fail_count
@@ -258,6 +265,7 @@ def test_integration_parallel_analysis(content):
     run_check("Each agent must web verify", 'Web Verify' in content)
     run_check("Each agent loads a skill", 'Load a relevant skill' in content and 'Skill tool' in content)
     run_check("Parallel orchestration is passive", 'do nothing else' in content and 'No messages, no drafting, no polling' in content)
+    run_check("Task invocation example provided", 'task name:' in content or 'subagent_type:' in content)
     return pass_count, fail_count
 
 def test_integration_synthesis_roadmap(content):

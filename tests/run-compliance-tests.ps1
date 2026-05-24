@@ -1,3 +1,4 @@
+# DEPRECATED: All checks migrated to tests/test_compliance.py. Keep as reference only.
 # Compliance test runner for complete-codebase-review skill
 $skillPath = "$PSScriptRoot\..\SKILL.md"
 $Pass = 0; $Fail = 0
