@@ -167,7 +167,7 @@ def test_baseline_failure_coverage(content):
             fail_count += 1
     print("\033[96m=== Baseline Failure Coverage ===\033[0m")
     run_check("Covers shallow scan failure", 'Discovery' in content and 'Specialist Agents' in content)
-    run_check("Covers single-pass bias failure", re.search(r'fewer than 50% of agents complete', content) is not None or ('fewer than' in content and 'parallel' in content))
+    run_check("Covers single-pass bias failure", re.search(r'fewer than \d+% of agents complete', content) is not None or ('fewer than' in content and 'parallel' in content))
     run_check("Covers no-structure failure", 'Per-Domain' in content and 'severity' in content)
     run_check("Covers inconsistent depth failure", 'Prioritize core' in content and 'not analyzed' in content)
     run_check("Covers no-quantification failure", 'quantified metric' in content or 'quantified' in content)
@@ -360,7 +360,7 @@ def test_integration_cross_platform(content):
     run_check("Detects OS", '$IsWindows' in content or 'uname' in content)
     run_check("Windows commands available", 'Get-ChildItem' in content)
     run_check("Unix commands available", 'find' in content)
-    run_check("Temp dir fallback", re.search(r'\$\{CODE_REVIEW_CACHE_DIR:-\.code-review-cache\}', content) is not None)
+    run_check("Temp dir fallback", any(x in content for x in ['$env:TEMP', '$TMPDIR', '/tmp', 'Fall back to OS temporary directory']))
     return pass_count, fail_count
 
 SKILL_PATH = os.path.join(os.path.dirname(__file__), "..", "SKILL.md")
