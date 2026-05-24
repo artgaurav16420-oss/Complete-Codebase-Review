@@ -5,6 +5,7 @@ user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, question, Task"
 effort: ${CODE_REVIEW_EFFORT:-max}
+version: 2.0.0
 ---
 
 # Complete Codebase Review
@@ -20,6 +21,8 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_MAX_FILES` | (unlimited) | Max files to scan. |
 | `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
+| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 13 based on dimension criteria. |
+| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Seconds between status checkpoints reporting completed agent count. |
 
 
 ## Overview
@@ -33,17 +36,9 @@ Four-phase pattern for holistic codebase health assessment. Invoke with `/comple
 **Phase 3: Synthesis + Roadmap** → Unified health report with quantified tech debt and prioritized fix roadmap
 **Phase 4: Fix Plan** → Generate per-agent code fix tasks, present for user review, wait for permission
 
-
 ### Argument Handling
 
 If `$ARGUMENTS` is provided, treat it as the target codebase path (relative or absolute). Default to `.` (current working directory). Store as `$TARGET_DIR`.
-
-## When to Use
-
-**NOT for:** reviewing PR diffs, single-file changes, or hotfixes. Use [`multi-agent-code-review`](skill:multi-agent-code-review) for those.
-
-**Related skills:** [`multi-agent-code-review`](skill:multi-agent-code-review) (PR/diff reviews), [`requesting-code-review`](skill:requesting-code-review), [`receiving-code-review`](skill:receiving-code-review).
-
 
 ## 💾 Checkpointing
 
@@ -55,6 +50,12 @@ To run a fast, surface-level assessment, set `CODE_REVIEW_EFFORT=min`. In this m
 - Timeouts drop to 120 seconds (`CODE_REVIEW_TIMEOUT_SEC=120`).
 - Only a core subset of 3 agents will run (e.g., Security, Code Quality, Architecture).
 - The codebase is sampled (approximately 10% sampling limit).
+
+## When to Use
+
+**NOT for:** reviewing PR diffs, single-file changes, or hotfixes. Use [`multi-agent-code-review`](skill:multi-agent-code-review) for those.
+
+**Related skills:** [`multi-agent-code-review`](skill:multi-agent-code-review) (PR/diff reviews), [`requesting-code-review`](skill:requesting-code-review), [`receiving-code-review`](skill:receiving-code-review).
 
 ## Phase 1: Discovery
 
@@ -111,7 +112,6 @@ Glob tool and Read/Grep tools work identically on both platforms.
 2. Write Manifest: Write ccr-manifest.md to the verified cache directory.
 
 Include:
-
 - Language/stack summary
 - Directory tree (top 3 levels)
 - Key config values (dependency counts, test counts)
@@ -183,7 +183,23 @@ This ensures the synthesis agent can reliably parse, deduplicate, and score find
 
 ### Orchestration
 
-1. Create agent team → 2. Spawn N Task agents in parallel → 3. Collect results as each returns → 4. Once all N have reported, proceed to synthesis
+1. Determine which agents to run:
+   - If `CODE_REVIEW_AGENTS` is set, use that comma-separated list (e.g. `CODE_REVIEW_AGENTS=security,architecture,code-quality`)
+   - Otherwise, run all 13 agents that match the project's health dimensions (see Step 2)
+   - In Quick Mode (`CODE_REVIEW_EFFORT=min`), run only Security, Code Quality, and Architecture
+2. Spawn N Task agents in parallel. Use the Task tool for each:
+
+```
+task name: security-posture-audit
+subagent_type: general
+prompt: "You are auditing the Security Posture of {TARGET_DIR}.
+  Load the 'security-review' skill. Run OWASP checks, scan for
+  hardcoded secrets, and check dependency CVEs.
+  Return findings in the standard severity-grouped format."
+```
+
+3. Collect results as each returns. After every `CODE_REVIEW_STATUS_INTERVAL` seconds, log a checkpoint: "X/Y agents completed so far."
+4. Once all N have reported, proceed to synthesis.
 
 **CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: track it. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
 
@@ -311,6 +327,28 @@ When the user applies only a subset of tasks and wants a follow-up scan:
 
 This enables iterative improvement tracking across multiple sessions.
 
+### 4g. Post-Fix Verification
+
+After fixes are applied, verify they didn't introduce regressions:
+
+1. **Re-read changed files**: For each applied task, read the modified files to confirm the change matches the task description.
+2. **Lint check**: Run the project's linter (e.g. `npm run lint`, `ruff`, `cargo check`) on changed files if a lint command is detectable.
+3. **Type check**: Run the project's type checker (e.g. `tsc --noEmit`, `mypy`, `cargo check`) if detectable.
+4. **Test the affected area**: Run the subset of tests covering the changed modules. If no targeted test command is available, note it.
+5. **Report fix confidence per task**:
+
+```
+### Fix Verification
+
+| Task | File(s) Changed | Lint | Type Check | Tests | Confidence |
+|------|----------------|------|------------|-------|------------|
+| T-001 | config/database.php | PASS | N/A | PASS | HIGH |
+| T-002 | src/auth/*, src/user/* | PASS | PASS | 3/3 PASS | HIGH |
+| T-003 | tests/* | N/A | N/A | PASS | HIGH |
+```
+
+6. If any check fails, report the failure to the user and suggest remediation. Do not auto-retry.
+
 ## Web Verification
 
 Every agent MUST independently verify claims using the web:
@@ -335,7 +373,7 @@ Instructions:
 
 | # | Rule |
 |---|------|
-| 1 | Wait up to ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds per agent. If fewer than 50% of agents complete, halt and report failure. Otherwise proceed with partial results and prominently note which agents timed out. |
+| 1 | Wait up to ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds per agent. In full mode (default), halt if fewer than 75% of agents complete. In Quick Mode, halt if fewer than 66% complete. Otherwise proceed with partial results and prominently note which agents timed out. |
 | 2 | Do NOT monitor/poll/check progress |
 | 3 | Synthesis phase MANDATORY |
 | 4 | Roadmap phase MANDATORY |
@@ -383,7 +421,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 - Giving a qualitative "looks good" without metrics
 - Skipping any phase (discovery, analysis, synthesis, roadmap, DA)
 - Claiming findings without evidence or source
-- <50% of specialist agents (insufficient coverage)
+- <75% of specialist agents in full mode (insufficient coverage)
 - Skipping web verification for security findings
 - Writing output before devil's advocate completes
 - Modifying any codebase file during review or report generation
@@ -440,6 +478,82 @@ When quantifying tech debt, use the following table as a floor estimate per find
 - Report verified by devil's advocate
 ```
 
+## Sample Output
+
+Below is a realistic example of what a completed health report looks like for a medium-sized web application:
+
+```markdown
+# Codebase Health Report — my-web-app (src/)
+
+## Executive Summary
+- **Overall Health**: YELLOW
+- **Codebase Size**: 47,320 LOC, 312 files, 8 modules
+- **Critical Issues**: 3
+- **Tech Debt**: 214 engineering hours
+- **Priority Areas**: Security (hardcoded secrets), Architecture (circular deps), Test Health (low coverage)
+
+## Per-Domain Scores
+| Domain | Score (/10) | Critical | High | Medium | Low |
+|--------|------------|----------|------|--------|-----|
+| Architecture | 6 | 1 | 2 | 3 | 1 |
+| Security | 4 | 2 | 3 | 1 | 0 |
+| Code Quality | 7 | 0 | 1 | 4 | 2 |
+| Test Health | 5 | 0 | 2 | 2 | 1 |
+| Dependencies | 8 | 0 | 0 | 2 | 3 |
+| Documentation | 6 | 0 | 1 | 1 | 4 |
+| Build & CI | 9 | 0 | 0 | 1 | 1 |
+| Database | 7 | 0 | 1 | 1 | 1 |
+| **Overall** | **6.5** | **3** | **10** | **15** | **13** |
+
+## Detailed Findings
+
+| Finding | Severity | Domain | Est. Hours | DA Verdict |
+|---------|----------|--------|------------|------------|
+| Hardcoded DB password in config/database.php | CRITICAL | Security | 2h | CONFIRMED |
+| Circular dep: auth → user → notification → auth | CRITICAL | Architecture | 8h | CONFIRMED |
+| Hardcoded API key in tests/fixtures/auth.json | CRITICAL | Security | 2h | CONFIRMED |
+| Module user/service.go: cyclomatic complexity 34 | HIGH | Code Quality | 4h | CONFIRMED |
+| Test coverage <20% in 3 of 8 modules | HIGH | Test Health | 12h | PLAUSIBLE |
+| Deprecated `lodash.set` used in 17 call sites | HIGH | Dependencies | 3h | CONFIRMED |
+| Missing API docs for /admin/* endpoints (9 endpoints) | HIGH | Documentation | 4.5h | CONFIRMED |
+| N+1 query in /orders endpoint | HIGH | Database | 3h | CONFIRMED |
+| Mixed snake_case and camelCase in src/models | MEDIUM | Standards | 2h | QUESTIONABLE |
+| ... | | | | |
+
+## Improvement Roadmap
+
+### Phase 1 — Now (estimated: 31 hours)
+- T-001: Rotate hardcoded secrets → env vars → 4h
+- T-002: Break auth→user→notification cycle via event bus → 8h
+- T-003: Add unit tests for 3 uncovered modules → 12h
+- T-004: Replace lodash.set with native optional chaining → 3h
+- T-005: Add rate limiting to auth endpoints → 4h
+
+### Phase 2 — Next Quarter (estimated: 47 hours)
+- T-006: Refactor high-complexity functions (17 functions >15 cyclomatic) → 14h
+- T-007: Document all undocumented API endpoints → 10h
+- T-008: Fix N+1 queries (3 instances) → 9h
+- T-009: Migrate from Moment.js to date-fns → 8h
+- T-010: Add E2E tests for critical paths → 6h
+
+### Phase 3 — Backlog (estimated: 136 hours)
+- T-011: Implement design system component library → 40h
+- T-012: Add performance benchmarking pipeline → 16h
+- T-013: Full OWASP Top 10 hardening audit → 24h
+- ... (remaining 8 tasks)
+
+## Tech Debt Summary
+- **Total estimated**: 214 hours
+- **By domain**: Security 18h, Architecture 24h, Code Quality 32h, Test Health 48h, Dependencies 12h, Documentation 20h, Standards 16h, Database 18h, UI/UX 26h
+- **Trend**: First baseline — no trend data
+
+## Agent Status
+- Completed: 11/13 agents
+- Failed (timeout): Performance Baseline, UI/UX Auditor (noted in findings)
+- Report verified by devil's advocate
+- **DA Verdict**: 23 CONFIRMED, 8 PLAUSIBLE, 3 QUESTIONABLE, 1 REJECTED
+```
+
 ## Graceful Degradation
 
 | Missing | Fallback |
@@ -461,7 +575,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 | **Transient tool error** (network timeout, rate limit) | Retry once after 10s backoff |
 | **Persistent tool error** (same error after retry) | Skip that agent. Note `AGENT_FAILED` prominently in synthesis report |
 | **Agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds** | Proceed with partial results from completed agents. Document which agents were skipped and why |
-| **<50% of agents complete** | Halt — insufficient coverage for meaningful synthesis. Report failure to user: "Only X/Y agents completed. Reduce codebase size or retry." |
+| **<75% of agents complete (full mode) or <66% (Quick Mode)** | Halt — insufficient coverage. Report: "Only X/Y agents completed in {mode} mode. Reduce codebase size, increase CODE_REVIEW_TIMEOUT_SEC, or retry." |
 | **Synthesis/DA agent fails** | Halt and report error. These phases are mandatory. Do not produce output without them. |
 
 ## Cross-Boundary Signals
@@ -489,3 +603,17 @@ Cross-domain signals are captured in a structured notes block by the orchestrato
 - Windows-only commands that fail on devs' MacBooks
 - Fixing issues during the review instead of capturing them in the fix plan
 - Applying the fix plan without user approval
+
+## Changelog
+
+### v2.0.0 (2026-05-24)
+- **Env vars**: Added `CODE_REVIEW_EFFORT`, `CODE_REVIEW_TIMEOUT_SEC`, `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_AGENTS`, `CODE_REVIEW_STATUS_INTERVAL`
+- **New sections**: Checkpointing, Quick Mode, Sample Output, Changelog
+- **Dynamic effort**: Removed hardcoded `model: opus`, effort reads from `CODE_REVIEW_EFFORT` env var
+- **Stricter thresholds**: Agent failure threshold changed from `<8 agents` / `≤6` to `75%` (full mode) / `66%` (quick mode)
+- **Post-fix verification**: Added Phase 4g to verify fixes didn't introduce issues
+- **Cache dir**: All hardcoded `$TEMP_DIR` replaced with `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}`
+- **Task invocation example**: Added concrete Task tool usage example in Orchestration
+- **Status checkpoint**: Periodic progress logging via `CODE_REVIEW_STATUS_INTERVAL`
+- **Cross-platform**: Cache verification fallback to OS temp directories
+- **Tests**: Synced compliance and integration tests to match v2.0.0
