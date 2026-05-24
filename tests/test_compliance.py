@@ -121,7 +121,7 @@ def main():
     print("\033[96m=== Red Flags ===\033[0m")
     red_flag_lines = [line for line in content.split('\n') if re.match(r'^- ', line) and not any(x in line for x in ['User', 'source', 'title', 'rubric'])]
     run_check("Has at least 5 red flags", len(red_flag_lines) >= 5)
-    run_check("Stops on <=6 agents", '<50% of specialist agents' in content)
+    run_check("Stops on <50% agents", '<50% of specialist agents' in content)
     run_check("Stops on skipped web verification", 'Skipping web verification' in content)
     run_check("Stops on modifying files", 'Modifying any codebase file' in content)
 
