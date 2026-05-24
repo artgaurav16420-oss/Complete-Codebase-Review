@@ -15,7 +15,8 @@ We take the security of this project and its users seriously. If you discover a 
 
 **Do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.**
 
-Instead, please report via email to the maintainers at the address listed in the repository's `pyproject.toml` author field.
+Instead, please report by opening a GitHub Security Advisory at:
+https://github.com/artgaurav16420-oss/Complete-Codebase-Review/security/advisories/new
 
 ### What to include
 

@@ -349,6 +349,70 @@ class TestMainFunction(unittest.TestCase):
         mock_exit.assert_called_once_with(1)
 
 
+class TestGitignoreWarning(unittest.TestCase):
+    """Tests for gitignore warning in main() local fallback."""
+
+    def setUp(self):
+        self.file_patch = patch("install.__file__", "/fake/path/install.py")
+        self.file_patch.start()
+        self.argv_patch = patch("sys.argv", _ARGV_PATCH)
+        self.argv_patch.start()
+
+    def tearDown(self):
+        self.file_patch.stop()
+        self.argv_patch.stop()
+
+    @patch("install.get_target_dirs")
+    @patch("install.copy_skill")
+    @patch("install.sys.stdout", new_callable=io.StringIO)
+    def test_gitignore_warning_shown_when_skills_present(
+        self, mock_stdout, mock_copy, mock_get_dirs
+    ):
+        mock_get_dirs.return_value = {}
+        mock_copy.return_value = Path("/x")
+        gitignore_content = ".skills\n__pycache__\n"
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "read_text",
+                         return_value=gitignore_content),
+        ):
+            install.main()
+        output = mock_stdout.getvalue()
+        self.assertIn("gitignore", output.lower())
+        self.assertIn(".skills", output)
+
+    @patch("install.get_target_dirs")
+    @patch("install.copy_skill")
+    @patch("install.sys.stdout", new_callable=io.StringIO)
+    def test_no_gitignore_warning_when_skills_absent(
+        self, mock_stdout, mock_copy, mock_get_dirs
+    ):
+        mock_get_dirs.return_value = {}
+        mock_copy.return_value = Path("/x")
+        gitignore_content = "__pycache__\n*.pyc\n"
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "read_text",
+                         return_value=gitignore_content),
+        ):
+            install.main()
+        output = mock_stdout.getvalue()
+        self.assertNotIn("gitignore", output.lower())
+
+    @patch("install.get_target_dirs")
+    @patch("install.copy_skill")
+    @patch("install.sys.stdout", new_callable=io.StringIO)
+    def test_no_gitignore_warning_when_file_absent(
+        self, mock_stdout, mock_copy, mock_get_dirs
+    ):
+        mock_get_dirs.return_value = {}
+        mock_copy.return_value = Path("/x")
+        with patch.object(Path, "exists", return_value=False):
+            install.main()
+        output = mock_stdout.getvalue()
+        self.assertNotIn("gitignore", output.lower())
+
+
 class TestMainEdgeCases(unittest.TestCase):
     """Edge-case tests for main()."""
 
