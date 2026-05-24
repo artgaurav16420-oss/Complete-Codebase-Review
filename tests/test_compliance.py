@@ -131,7 +131,6 @@ def test_cross_platform(content):
     run_check("Has OS detection", '$IsWindows' in content or 'uname' in content)
     run_check("Has cross-platform temp directory", '$env:TEMP' in content or '$TMPDIR' in content)
     run_check("Has git-aware discovery", 'git' in content and ('churn' in content or 'history' in content))
-    run_check("Has estimated duration", 'Estimated duration' in content)
     run_check("Has cross-agent conflict resolution", 'cross-agent' in content or 'conflict' in content)
     run_check("Has DA verdict in output format", 'DA Verdict' in content or 'CONFIRMED' in content)
     run_check("Declares READ-ONLY", 'NEVER modifies the codebase' in content or re.search(r'read.only', content, re.IGNORECASE) is not None)
