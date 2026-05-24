@@ -260,8 +260,8 @@ prompt: "You are auditing the Security Posture of {TARGET_DIR}.
   Return findings in the standard severity-grouped format."
 ```
 
-3. Collect results as each returns. After every `CODE_REVIEW_STATUS_INTERVAL` seconds, log a checkpoint: "X/Y agents completed so far."
-4. Once all N have reported, proceed to synthesis.
+4. Collect results as each returns. After every `CODE_REVIEW_STATUS_INTERVAL` seconds, log a checkpoint: "X/Y agents completed so far."
+5. Once all N have reported, proceed to synthesis.
 
 **CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: track it. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
 
@@ -382,7 +382,7 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
 1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
-2. Re-run Phase 2 (parallel analysis) for active domains only. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend table. All other domains receive full re-analysis.
+2. Re-run Phase 2 (parallel analysis) for active domains only. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend table. All other domains receive full re-analysis. The 75%/66% completion threshold (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY domains excluded from denominator.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original

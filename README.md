@@ -230,8 +230,13 @@ Maps the codebase: languages, frameworks, build systems, directory structure, en
 **Phase 2: Parallel Analysis**
 Spawns up to 14 specialist agents simultaneously. Each agent loads a domain-specific skill, runs methodology-driven analysis, quantifies findings, and web-verifies claims. Agents time out independently — partial results are preserved.
 
-### Phase 3: Synthesis + Roadmap
-Deduplicates findings across agents, normalizes severity, resolves cross-agent conflicts, and quantifies tech debt. The Devil's Advocate agent independently challenges every finding, web-verifies claims, and assigns CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED verdicts. A 3-phase roadmap prioritizes by impact vs. effort.
+### Phase 3: Synthesis → DA → Roadmap
+Deduplicates findings, normalizes severity, and resolves cross-agent
+conflicts. The Devil's Advocate agent then independently challenges
+every finding, web-verifies claims, and assigns
+CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED verdicts. Only after DA
+verification does the Roadmap agent prioritize findings by impact
+vs. effort across 3 phases.
 
 ### Phase 4: Fix Plan
 Generates structured fix tasks (T-001, T-002, ...) with effort estimates and dependencies. Presents the plan for your approval — apply specific tasks by ID, apply all, or skip. After fixes, runs post-fix verification (lint, type check, tests).
@@ -310,7 +315,7 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 |-------|---------|----------|
 | Python compliance | `python3 tests/test_compliance.py` | 60+ assertions across 17 test functions |
 | Bash integration | `./test.sh` | CLI and cross-platform behavior |
-| Install tests | `python3 tests/test_install.py` | 25 unit tests across 5 classes |
+| Install tests | `python3 tests/test_install.py` | 28 unit tests across 6 classes |
 
 ---
 
