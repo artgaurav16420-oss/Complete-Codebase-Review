@@ -239,6 +239,7 @@ def test_integration_discovery_phase(content):
     run_check("Discovery writes manifest", re.search(r'Write.*manifest', content) is not None or 'ccr-manifest' in content)
     run_check("Discovery has health dimension table", 'Architecture & Design' in content and 'Security Posture' in content)
     run_check("Discovery selects dimensions by criteria", 'Applies When' in content)
+    run_check("Discovery has environment check step", 'Environment Check' in content and 'Critical?' in content)
     return pass_count, fail_count
 
 def test_integration_parallel_analysis(content):
@@ -304,6 +305,8 @@ def test_integration_output_cleanup(content):
     run_check("Health report has executive summary", 'Executive Summary' in content)
     run_check("Health report has per-domain scores", 'Per-Domain Scores' in content)
     run_check("Health report has DA verdict column", 'DA Verdict' in content)
+    run_check("Has CODE_REVIEW_FILTER env var", 'CODE_REVIEW_FILTER' in content)
+    run_check("Filters by critical-high", 'critical-high' in content)
     return pass_count, fail_count
 
 def test_integration_fix_plan(content):

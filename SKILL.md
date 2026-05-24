@@ -23,6 +23,7 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
 | `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 13: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards. Filtered by project dimensions (see Step 2). |
 | `CODE_REVIEW_STATUS_INTERVAL` | `300` | Seconds between status checkpoints reporting completed agent count. |
+| `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 
 
 ## Overview
@@ -87,6 +88,24 @@ Cross-platform approach — detect the OS with `$IsWindows` (PowerShell) or `una
 | Find large files | `Get-ChildItem -Recurse \| Sort Length -Descending \| Select -First 20` | `find . -type f -exec ls -la {} \; \| sort -k5 -rn \| head -20` |
 
 Glob tool and Read/Grep tools work identically on both platforms.
+
+### Step 1a: Environment Check
+
+Verify required tools are accessible before spawning specialist agents:
+
+| Tool | Critical? | Fallback if Missing |
+|------|-----------|---------------------|
+| Grep | Yes | Abort — required for pattern search |
+| Glob | Yes | Abort — required for file discovery |
+| Read | Yes | Abort — required for file inspection |
+| Bash | Yes | Abort — required for cross-platform shell commands |
+| Task | Yes | Abort — required for spawning sub-agents |
+| WebSearch | No | Mark findings UNVERIFIED |
+| WebFetch | No | Use WebSearch as fallback |
+
+If any critical tool is missing, abort with: `"[ENV_CHECK] FAIL: Missing required tool: [name]. Cannot proceed."`
+
+If all critical tools pass but optional tools are unavailable, log: `"[ENV_CHECK] All critical tools available. Optional tools missing: [list]."`, then continue.
 
 ### Step 2: Identify Health Dimensions
 
@@ -444,6 +463,8 @@ When quantifying tech debt, use the following table as a floor estimate per find
 
 ## Output Format
 
+When `CODE_REVIEW_FILTER=critical-high`, omit MEDIUM and LOW findings from all report sections (Detailed Findings, Improvement Roadmap, Tech Debt Summary). The Executive Summary and Per-Domain Scores still include full counts for context — only the itemized lists are trimmed.
+
 ### Health Report Structure
 
 ```markdown
@@ -620,6 +641,11 @@ Cross-domain signals are captured in a structured notes block by the orchestrato
 - Applying the fix plan without user approval
 
 ## Changelog
+
+### v2.0.1 (2026-05-24)
+- **Environment Check**: Added Step 1a to Phase 1 Discovery for explicit tool availability verification
+- **Output filter**: Added `CODE_REVIEW_FILTER` env var (`all` / `critical-high`) for high-impact-only reports
+- **Cross-platform**: All new checks added to test_compliance.py; PS1 test files deprecated
 
 ### v2.0.0 (2026-05-24)
 - **Env vars**: Added `CODE_REVIEW_EFFORT`, `CODE_REVIEW_TIMEOUT_SEC`, `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_AGENTS`, `CODE_REVIEW_STATUS_INTERVAL`

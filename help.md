@@ -13,6 +13,7 @@ You can configure the execution behavior by exporting these environment variable
 *   `CODE_REVIEW_BASELINE` (default: `ccr-baseline.json`): The filename for saving the baseline snapshot to track health trends across sessions.
 *   `CODE_REVIEW_AGENTS` (default: all applicable): Comma-separated list of agent names to run (e.g. `security,architecture,code-quality`). Full default set (filtered by project dimensions): Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards.
 *   `CODE_REVIEW_STATUS_INTERVAL` (default: `300`): Seconds between status checkpoints reporting completed agent count.
+*   `CODE_REVIEW_FILTER` (default: `all`): Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report (Per-Domain Scores still show full counts).
 
 ## ⚡ Quick Mode
 
