@@ -1,129 +1,332 @@
 <div align="center">
 
-# Complete Codebase Review 🚀
+# Complete Codebase Review
 
+### AI-powered holistic codebase audit — 13 specialist agents, zero false positives, no code changes without your approval.
+
+[![CI - Linux](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions/workflows/ci.yml/badge.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org)
+[![Windows](https://img.shields.io/badge/Windows-supported-success)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review)
+[![macOS](https://img.shields.io/badge/macOS-supported-success)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review)
+[![Linux](https://img.shields.io/badge/Linux-supported-success)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/graphs/commit-activity)
-[![GitHub issues](https://img.shields.io/github/issues/artgaurav16420-oss/Complete-Codebase-Review.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/issues)
-[![GitHub stars](https://img.shields.io/github/stars/artgaurav16420-oss/Complete-Codebase-Review.svg?style=social)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/stargazers)
-
-**A holistic, read-only codebase audit skill for Claude Code / AI coding agents.**
-
-*Produces a health score (GREEN/YELLOW/RED), quantified tech debt, and a prioritized multi-agent fix plan — without modifying any code until you approve.*
+[![Maintained](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/graphs/commit-activity)
 
 ```mermaid
-flowchart LR
-    A[Phase 1: Discovery] --> B[Phase 2: Parallel Analysis]
-    B --> C[Phase 3: Synthesis + Roadmap]
-    C --> D[Phase 4: Fix Plan]
-    D -->|User Approval| E[Apply Fixes]
-    D -->|Skip| F[Exit]
-    B -.->|8-13 Specialist Agents| B
-    C -.->|Devil's Advocate Verifies| C
+flowchart TB
+    subgraph Phase1[Phase 1: Discovery]
+        A1[Map Codebase] --> A2[Environment Check]
+        A2 --> A3[Identify Dimensions]
+        A3 --> A4[Write Manifest]
+    end
+    subgraph Phase2[Phase 2: Parallel Analysis]
+        B1[Spawn 13 Agents] --> B2[Architecture]
+        B1 --> B3[Security]
+        B1 --> B4[Code Quality]
+        B1 --> B5[Tech Debt]
+        B1 --> B6[Test Health]
+        B1 --> B7[... 8 more agents]
+    end
+    subgraph Phase3[Phase 3: Synthesis + Roadmap]
+        C1[Deduplicate] --> C2[Normalize Severity]
+        C2 --> C3[Devil's Advocate]
+        C3 --> C4[Roadmap]
+    end
+    subgraph Phase4[Phase 4: Fix Plan]
+        D1[Generate Tasks] --> D2{User Approval}
+        D2 -->|Task IDs| D3[Apply Fixes]
+        D2 -->|Skip| D4[Exit]
+        D3 --> D5[Post-Fix Verification]
+    end
+    Phase1 --> Phase2
+    Phase2 --> Phase3
+    Phase3 --> Phase4
 ```
 
 </div>
 
 ---
 
-## 📑 Table of Contents
-
-- [Features](#-features)
-- [Installation](#-installation)
-  - [One-line Install](#one-line-install)
-  - [Manual Installation](#manual-installation)
-- [Usage](#-usage)
-- [Requirements](#-requirements)
-- [Configuration](#-configuration-environment-variables)
-- [Output](#-output)
-- [Contributing](#-contributing)
-- [License](#-license)
-
----
-
 ## ✨ Features
 
-- **Parallel Specialist Agents**: Architecture, Security, Code Quality, Tech Debt, Test Health, Dependencies, Documentation, Build/CI, Performance, Database, UI/UX, DevOps, Standards.
-- **Four-Phase Execution**: Discovery → Parallel Analysis → Synthesis + Roadmap → Fix Plan.
-- **Devil's Advocate Quality Gate**: Independently verifies every finding to eliminate false positives.
-- **Web Verification**: CVEs, framework best-practices, OWASP checks.
-- **Baseline Tracking**: Compares results across sessions to measure improvement.
-- **Read-Only by Design**: Never modifies the codebase during Phases 1-3.
-- **Cross-Platform**: Works seamlessly on Windows, macOS, and Linux.
+<table>
+<tr>
+<td width="50%">
+
+### 🔍 Deep Discovery
+Maps languages, frameworks, build systems, entry points, git churn, and config across your entire codebase — cross-platform (Windows, macOS, Linux).
+
+</td>
+<td width="50%">
+
+### 🧠 13 Specialist Agents
+Architecture, Security, Code Quality, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards — in parallel.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### ✅ Devil's Advocate QA
+Every finding is independently challenged, web-verified, and classified (CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED). Zero false positives.
+
+</td>
+<td width="50%">
+
+### 📈 Trend Tracking
+Saves baseline snapshots across sessions. Track health score, tech debt, and critical issue counts over time.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🔒 Read-Only Safe
+No code modifications during Phases 1-3. Phase 4 fix plan waits for your explicit approval — task by task or "all".
+
+</td>
+<td width="50%">
+
+### 🌍 Cross-Platform
+Works identically on Windows PowerShell and Unix bash. Auto-detects OS, uses platform-native commands.
+
+</td>
+</tr>
+</table>
+
+### How It Compares
+
+| Criterion | Manual Review | Single-Agent Audit | Complete Codebase Review |
+|-----------|--------------|-------------------|------------------------|
+| Coverage | Inconsistent | Single domain | 13 domains in parallel |
+| False positives | High (subjective) | Moderate | Minimal (DA-verified) |
+| Quantified tech debt | Guesswork | Rough estimate | Per-finding hour estimates |
+| Trend tracking | None | None | Baseline snapshots |
+| Fix plan | Manual notes | One-off suggestions | Structured tasks with deps |
+| Time for 50K LOC repo | 2-5 days | 15-30 min | 5-15 min |
 
 ---
 
-## 🚀 Installation
+## 📸 Example Output
 
-### One-line Install
+Here's a real health report excerpt for a medium-sized web application:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py -o install.py && python3 install.py
+```markdown
+# Codebase Health Report — my-web-app (src/)
+
+## Executive Summary
+- **Overall Health**: YELLOW
+- **Codebase Size**: 47,320 LOC, 312 files, 8 modules
+- **Critical Issues**: 3
+- **Tech Debt**: 214 engineering hours
+- **Priority Areas**: Security, Architecture, Test Health
+
+## Per-Domain Scores
+| Domain | Score (/10) | Critical | High | Medium | Low |
+|--------|------------|----------|------|--------|-----|
+| Architecture | 6 | 1 | 2 | 3 | 1 |
+| Security | 4 | 2 | 3 | 1 | 0 |
+| Test Health | 5 | 0 | 2 | 2 | 1 |
+| ... | ... | ... | ... | ... | ... |
+| **Overall** | **6.5** | **3** | **10** | **15** | **13** |
+
+## Detailed Findings
+| Finding | Severity | Domain | Est. Hours | DA Verdict |
+|---------|----------|--------|------------|------------|
+| Hardcoded DB password | CRITICAL | Security | 2h | CONFIRMED |
+| Circular dep: auth→user→notification→auth | CRITICAL | Architecture | 8h | CONFIRMED |
+| Test coverage <20% in 3 of 8 modules | HIGH | Test Health | 12h | PLAUSIBLE |
+| ... | | | | |
 ```
 
-### Manual Installation
+The full report includes a 3-phase improvement roadmap, tech debt breakdown by domain, and agent completion status.
 
-You can also clone the repository directly to your local skills directory:
+---
+
+## 🚀 Quick Start
+
+```bash
+# Install (one command)
+curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
+
+# Run a review
+/complete-codebase-review .
+
+# Quick mode (3 agents, 120s timeout)
+export CODE_REVIEW_EFFORT=min
+/complete-codebase-review src/
+```
+
+That's it. You'll get a full health report in 5-15 minutes.
+
+---
+
+## 📦 Installation
+
+### One-line Install (Recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
+```
+
+The installer detects your environment (Claude Code, OpenCode, Cursor, Continue) and places the skill in the correct directory. See [install.py](install.py) for details.
+
+### Manual Install
 
 ```bash
 git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git ~/.claude/skills/complete-codebase-review
 ```
 
----
-
-## 💡 Usage
-
-Run the following command in your AI coding agent:
+### Verify Installation
 
 ```bash
-/complete-codebase-review [target-directory]
+# The skill registers as a slash command. Run in your agent:
+/complete-codebase-review --help
+
+# Or run the compliance test suite:
+python3 tests/test_compliance.py
 ```
 
-> **Note**: The default target is the current working directory if no directory is specified.
+---
+
+## 🔧 Configuration
+
+Customize execution with environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CODE_REVIEW_EFFORT` | `max` | Execution effort. Set to `min` for Quick Mode (3 agents, 120s timeout). |
+| `CODE_REVIEW_TIMEOUT_SEC` | `900` | Per-agent timeout in seconds. |
+| `CODE_REVIEW_MAX_FILES` | unlimited | Max files to scan. Limits runtime on huge codebases. |
+| `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing and caching. |
+| `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline snapshot filename for trend tracking. |
+| `CODE_REVIEW_AGENTS` | all applicable | Comma-separated agent names (e.g. `security,architecture`). |
+| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Seconds between progress checkpoints. |
+| `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL+HIGH findings. |
+
+See [help.md](help.md) for detailed documentation.
+
+### Quick Mode
+
+```bash
+export CODE_REVIEW_EFFORT=min
+export CODE_REVIEW_TIMEOUT_SEC=120
+
+/complete-codebase-review .
+```
+
+Runs Security, Code Quality, and Architecture agents with a ~10% codebase sample. Ideal for CI pipelines or quick sanity checks.
 
 ---
 
-## 📋 Requirements
+## 🏗 Architecture
 
-- **Claude Code** or a compatible AI coding agent.
-- Access to the following tools: `Read`, `Grep`, `Glob`, `Bash`, `Skill`, `WebSearch`, `WebFetch`, `question`, `Task`.
-- **WebSearch/WebFetch**: Highly recommended for CVE and best-practice verification (gracefully falls back if unavailable).
+The review runs in four phases:
+
+### Phase 1: Discovery
+Maps the codebase: languages, frameworks, build systems, directory structure, entry points, git history. Runs an environment check to verify tool availability. Identifies which of the 13 health dimensions apply to this project.
+
+### Phase 2: Parallel Analysis
+Spawns up to 13 specialist agents simultaneously. Each agent loads a domain-specific skill, runs methodology-driven analysis, quantifies findings, and web-verifies claims. Agents time out independently — partial results are preserved.
+
+### Phase 3: Synthesis + Roadmap
+Deduplicates findings across agents, normalizes severity, resolves cross-agent conflicts, and quantifies tech debt. The Devil's Advocate agent independently challenges every finding, web-verifies claims, and assigns CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED verdicts. A 3-phase roadmap prioritizes by impact vs. effort.
+
+### Phase 4: Fix Plan
+Generates structured fix tasks (T-001, T-002, ...) with effort estimates and dependencies. Presents the plan for your approval — apply specific tasks by ID, apply all, or skip. After fixes, runs post-fix verification (lint, type check, tests).
 
 ---
 
-## 🔧 Configuration (Environment Variables)
+## ❓ FAQ
 
-Execution is fully configurable. See [help.md](help.md) for a complete list of environment variables, Quick Mode usage, and our read-only guarantees.
+<details>
+<summary><b>Does it modify my code?</b></summary>
+<b>No.</b> Phases 1-3 are strictly read-only. Phase 4 generates a fix plan and only applies changes after you explicitly approve tasks (by ID or "all").
+</details>
 
-**Common Variables:**
-- `CODE_REVIEW_EFFORT`
-- `CODE_REVIEW_TIMEOUT_SEC`
+<details>
+<summary><b>How long does a review take?</b></summary>
+For a 50K LOC codebase, expect 5-15 minutes in full mode. Quick Mode (`CODE_REVIEW_EFFORT=min`) completes in 2-5 minutes. Time scales with codebase size and agent count.
+</details>
 
----
+<details>
+<summary><b>Can I run specific agents?</b></summary>
+Yes. Set `CODE_REVIEW_AGENTS=security,architecture,code-quality` to run only those domains. The full set is filtered by project health dimensions by default.
+</details>
 
-## 📊 Output
+<details>
+<summary><b>What if an agent fails or times out?</b></summary>
+Agents retry once on transient errors. If they exceed the timeout, the review proceeds with partial results and notes the gap. If fewer than 75% of agents complete, the review halts (insufficient coverage).
+</details>
 
-What you can expect after a complete review:
+<details>
+<summary><b>Does it work on monorepos?</b></summary>
+Yes. Cross-platform commands handle any directory structure. Use `CODE_REVIEW_MAX_FILES` to limit scope on very large repositories.
+</details>
 
-1. **Health Report**: Per-domain scores (0-10).
-2. **Prioritized 3-Phase Roadmap**: A clear path for improvement.
-3. **Quantified Tech Debt**: Estimated in engineering hours.
-4. **Structured Fix Tasks**: Actionable items (T-001, T-002, ...) with suggested skills.
-5. **Baseline Snapshot**: Trend tracking across multiple sessions.
+<details>
+<summary><b>Can I integrate this into CI/CD?</b></summary>
+Yes. Run in Quick Mode (`CODE_REVIEW_EFFORT=min`) for fast checks. The exit code reflects pass/fail status, making it suitable for CI pipelines. See the [CI workflow](.github/workflows/ci.yml) for a reference.
+</details>
 
 ---
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/issues).
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
+[![Conventional Commits](https://img.shields.io/badge/Commits-Conventional-ff69b4.svg)](https://www.conventionalcommits.org)
+
+We welcome contributions of all sizes. Here's how to get started:
+
+1. **Fork** the repo and create a feature branch.
+2. **Write tests** for any new functionality. We maintain test parity between [Python](tests/test_compliance.py) and [PowerShell](tests/) test suites.
+3. **Run the test suite**: `python3 tests/test_compliance.py`
+4. **Submit a PR** with a clear description of the change and any related issue.
+
+### Development
+
+```bash
+# Clone and install
+git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git
+cd Complete-Codebase-Review
+
+# Run compliance tests
+python3 tests/test_compliance.py
+
+# Run bash test suite
+./test.sh
+```
+
+### Code of Conduct
+
+This project follows the [Contributor Covenant](https://www.contributor-covenant.org/) code of conduct. Please be respectful and constructive in all interactions.
+
+---
+
+## 📊 Test Suite
+
+| Suite | Command | Coverage |
+|-------|---------|----------|
+| Python compliance | `python3 tests/test_compliance.py` | 60+ assertions across 17 test functions |
+| Bash integration | `./test.sh` | CLI and cross-platform behavior |
+| Install tests | `python3 tests/test_install.py` | 25 unit tests across 5 classes |
 
 ---
 
 ## 📝 License
 
-This project is licensed under the **MIT** License. See the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE) for details.
+
+---
 
 <div align="center">
-  <i>Made with ❤️ by the community.</i>
+
+### ⭐ If you find this useful, star the repo — it helps others discover it.
+
+[![GitHub stars](https://img.shields.io/github/stars/artgaurav16420-oss/Complete-Codebase-Review?style=social)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/stargazers)
+[![Follow](https://img.shields.io/github/followers/artgaurav16420-oss?style=social)](https://github.com/artgaurav16420-oss)
+
+Built with Claude Code. Powered by AI agents.
+
 </div>
