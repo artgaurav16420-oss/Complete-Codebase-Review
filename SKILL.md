@@ -382,7 +382,7 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
 1. Load the previous baseline from `${CODE_REVIEW_CACHE_DIR:-.code-review-cache}/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
-2. Re-run Phase 2 (parallel analysis). Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` and skipped (no agent spawned); their previous scores carry forward in the trend table. All other domains receive full re-analysis.
+2. Re-run Phase 2 (parallel analysis). Domains with no previously open HIGH/CRITICAL findings are marked [LOW-ACTIVITY] in the trend table, but still receive fresh scores from re-analysis. All other domains receive full re-analysis.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
