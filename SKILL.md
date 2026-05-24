@@ -1,6 +1,6 @@
 ---
 name: complete-codebase-review
-description: Use when asked to review, audit, assess, or evaluate an entire codebase holistically — not a PR diff. Covers architecture, security, tech debt, test health, deps, docs, CI, and standards compliance. Read-only — produces a health score, quantified tech debt, and a fix plan for user approval before any changes.
+description: Use when asked to review, audit, assess, or evaluate an entire codebase holistically — not a PR diff. Covers architecture, security, tech debt, test health, deps, docs, CI, standards compliance, and process quality (Karpathy compliance). Read-only — produces a health score, quantified tech debt, and a fix plan for user approval before any changes.
 user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, question, Task"
@@ -21,7 +21,7 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_MAX_FILES` | (unlimited) | Max files to scan. |
 | `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
-| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 13: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards. Filtered by project dimensions (see Step 2). |
+| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 14: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards, Process Quality. Filtered by project dimensions (see Step 2). |
 | `CODE_REVIEW_STATUS_INTERVAL` | `300` | Seconds between status checkpoints reporting completed agent count. |
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 
@@ -156,6 +156,7 @@ Include:
 | UI/UX Auditor | Visual consistency, accessibility (WCAG 2.2), responsive design, component reuse, UX patterns, form/input ergonomics | `ui-ux-pro-max`, `accessibility` |
 | DevOps & Infra | Dockerfile quality, infra-as-code, secret management, deployment safety | `deployment-patterns`, `docker-patterns` |
 | Standards Compliance | Style guide adherence, naming conventions, file organization | `coding-standards` |
+| Process Quality (Karpathy Compliance) | Evaluate the target codebase's development process and collaboration quality against the Karpathy guidelines. Use the rules defined in karpathy-guidelines.md. Focus on: commit atomicity (surgical changes), evidence of over‑engineering (YAGNI), surfacing of assumptions in documentation, goal‑driven verification (tests that verify behavior), and absence of "vibe coding". Output a compliance score /10 and list specific violations. | *(general)* |
 
 Each agent follows the standard template:
 
@@ -200,6 +201,30 @@ Each specialist agent MUST return findings in this exact structure:
 
 This ensures the synthesis agent can reliably parse, deduplicate, and score findings across all domains.
 
+### Process Quality Agent Instructions
+Read the file karpathy-guidelines.md in full before starting.
+
+Data sources (if available):
+- .git/logs/HEAD or output of git log --oneline (if git is accessible)
+- README.md, CONTRIBUTING.md, AI-LAYER.md, CODEBASE_MAP.md
+- .github/workflows/* (CI configs)
+- Test files and their naming patterns
+
+Evaluation criteria (map to Karpathy rules):
+| Karpathy Rule | What to check |
+|---------------|---------------|
+| 1. Surface assumptions | Are there docstrings, comments, or ADRs that document design decisions and unknowns? |
+| 2. Simplicity / YAGNI | Are there unused abstractions, unnecessary dependencies, or over‑engineered patterns? |
+| 3. Surgical changes | From git log: are commits focused on single concerns? Do any commits mix refactoring, feature, and formatting? |
+| 4. Verify before done | Do tests explicitly verify behavior (e.g., test for bug reproduction, invalid inputs)? Or are they only happy‑path? |
+
+Output format:
+- Score: X/10 (deduct 1 point per moderate violation, 2 per severe violation)
+- Findings: list each violation with specific file/commit evidence where possible
+- Recommendations: one‑line fix for each violation
+
+Important: Do not penalize the absence of git history if the repo is a fresh export. If git is not available, state that and rely on documentation and code structure only.
+
 ### Pre-flight Estimate
 
 Before spawning agents, estimate and log expected resource consumption:
@@ -218,7 +243,7 @@ Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. S
 
 1. Determine which agents to run:
    - If `CODE_REVIEW_AGENTS` is set, use that comma-separated list (e.g. `CODE_REVIEW_AGENTS=security,architecture,code-quality`)
-   - Otherwise, run all 13 agents that match the project's health dimensions (see Step 2)
+   - Otherwise, run all 14 agents that match the project's health dimensions (see Step 2)
    - In Quick Mode (`CODE_REVIEW_EFFORT=min`), run only Security, Code Quality, and Architecture
 2. Log pre-flight estimate (see above).
 3. Spawn N Task agents in parallel. Use the Task tool for each:
@@ -482,6 +507,7 @@ When `CODE_REVIEW_FILTER=critical-high`, omit MEDIUM and LOW findings from all r
 |--------|------------|----------|------|--------|-----|
 | Architecture | X | X | X | X | X |
 | Security | X | X | X | X | X |
+| Process Quality | X | X | X | X | X |
 | ... | X | X | X | X | X |
 
 ## Detailed Findings
@@ -526,20 +552,21 @@ Below is a realistic example of what a completed health report looks like for a 
 - **Codebase Size**: 47,320 LOC, 312 files, 8 modules
 - **Critical Issues**: 3
 - **Tech Debt**: 214 engineering hours
-- **Priority Areas**: Security (hardcoded secrets), Architecture (circular deps), Test Health (low coverage)
+- **Priority Areas**: Security (hardcoded secrets), Architecture (circular deps), Process Quality (Karpathy compliance)
 
 ## Per-Domain Scores
 | Domain | Score (/10) | Critical | High | Medium | Low |
 |--------|------------|----------|------|--------|-----|
 | Architecture | 6 | 1 | 2 | 3 | 1 |
 | Security | 4 | 2 | 3 | 1 | 0 |
+| Process Quality | 8 | 0 | 1 | 1 | 2 |
 | Code Quality | 7 | 0 | 1 | 4 | 2 |
 | Test Health | 5 | 0 | 2 | 2 | 1 |
 | Dependencies | 8 | 0 | 0 | 2 | 3 |
 | Documentation | 6 | 0 | 1 | 1 | 4 |
 | Build & CI | 9 | 0 | 0 | 1 | 1 |
 | Database | 7 | 0 | 1 | 1 | 1 |
-| **Overall** | **6.5** | **3** | **10** | **15** | **13** |
+| **Overall** | **6.5** | **3** | **11** | **16** | **15** |
 
 ## Detailed Findings
 
@@ -548,6 +575,7 @@ Below is a realistic example of what a completed health report looks like for a 
 | Hardcoded DB password in config/database.php | CRITICAL | Security | 2h | CONFIRMED |
 | Circular dep: auth → user → notification → auth | CRITICAL | Architecture | 8h | CONFIRMED |
 | Hardcoded API key in tests/fixtures/auth.json | CRITICAL | Security | 2h | CONFIRMED |
+| Vibe coding: no behavior-driven tests found | HIGH | Process Quality | 4h | CONFIRMED |
 | Module user/service.go: cyclomatic complexity 34 | HIGH | Code Quality | 4h | CONFIRMED |
 | Test coverage <20% in 3 of 8 modules | HIGH | Test Health | 12h | PLAUSIBLE |
 | Deprecated `lodash.set` used in 17 call sites | HIGH | Dependencies | 3h | CONFIRMED |
@@ -558,36 +586,37 @@ Below is a realistic example of what a completed health report looks like for a 
 
 ## Improvement Roadmap
 
-### Phase 1 — Now (estimated: 31 hours)
+### Phase 1 — Now (estimated: 35 hours)
 - T-001: Rotate hardcoded secrets → env vars → 4h
 - T-002: Break auth→user→notification cycle via event bus → 8h
-- T-003: Add unit tests for 3 uncovered modules → 12h
-- T-004: Replace lodash.set with native optional chaining → 3h
-- T-005: Add rate limiting to auth endpoints → 4h
+- T-003: Implement behavior-driven tests for core auth logic → 4h
+- T-004: Add unit tests for 3 uncovered modules → 12h
+- T-005: Replace lodash.set with native optional chaining → 3h
+- T-006: Add rate limiting to auth endpoints → 4h
 
 ### Phase 2 — Next Quarter (estimated: 47 hours)
-- T-006: Refactor high-complexity functions (17 functions >15 cyclomatic) → 14h
-- T-007: Document all undocumented API endpoints → 10h
-- T-008: Fix N+1 queries (3 instances) → 9h
-- T-009: Migrate from Moment.js to date-fns → 8h
-- T-010: Add E2E tests for critical paths → 6h
+- T-007: Refactor high-complexity functions (17 functions >15 cyclomatic) → 14h
+- T-008: Document all undocumented API endpoints → 10h
+- T-009: Fix N+1 queries (3 instances) → 9h
+- T-010: Migrate from Moment.js to date-fns → 8h
+- T-011: Add E2E tests for critical paths → 6h
 
 ### Phase 3 — Backlog (estimated: 136 hours)
-- T-011: Implement design system component library → 40h
-- T-012: Add performance benchmarking pipeline → 16h
-- T-013: Full OWASP Top 10 hardening audit → 24h
+- T-012: Implement design system component library → 40h
+- T-013: Add performance benchmarking pipeline → 16h
+- T-014: Full OWASP Top 10 hardening audit → 24h
 - ... (remaining 8 tasks)
 
 ## Tech Debt Summary
-- **Total estimated**: 214 hours
-- **By domain**: Security 18h, Architecture 24h, Code Quality 32h, Test Health 48h, Dependencies 12h, Documentation 20h, Standards 16h, Database 18h, UI/UX 26h
+- **Total estimated**: 226 hours
+- **By domain**: Security 18h, Architecture 24h, Code Quality 32h, Test Health 48h, Process Quality 12h, Dependencies 12h, Documentation 20h, Standards 16h, Database 18h, UI/UX 26h
 - **Trend**: First baseline — no trend data
 
 ## Agent Status
-- Completed: 11/13 agents
+- Completed: 12/14 agents
 - Failed (timeout): Performance Baseline, UI/UX Auditor (noted in findings)
 - Report verified by devil's advocate
-- **DA Verdict**: 23 CONFIRMED, 8 PLAUSIBLE, 3 QUESTIONABLE, 1 REJECTED
+- **DA Verdict**: 24 CONFIRMED, 8 PLAUSIBLE, 3 QUESTIONABLE, 1 REJECTED
 ```
 
 ## Graceful Degradation

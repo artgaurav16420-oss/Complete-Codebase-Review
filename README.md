@@ -2,7 +2,7 @@
 
 # Complete Codebase Review
 
-### AI-powered holistic codebase audit — 13 specialist agents, zero false positives, no code changes without your approval.
+### AI-powered holistic codebase audit — 14 specialist agents, zero false positives, no code changes without your approval.
 
 [![CI - Linux](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions/workflows/ci.yml/badge.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -21,12 +21,12 @@ flowchart TB
         A3 --> A4[Write Manifest]
     end
     subgraph Phase2[Phase 2: Parallel Analysis]
-        B1[Spawn 13 Agents] --> B2[Architecture]
+        B1[Spawn 14 Agents] --> B2[Architecture]
         B1 --> B3[Security]
         B1 --> B4[Code Quality]
         B1 --> B5[Tech Debt]
         B1 --> B6[Test Health]
-        B1 --> B7[... 8 more agents]
+        B1 --> B7[... 9 more agents]
     end
     subgraph Phase3[Phase 3: Synthesis + Roadmap]
         C1[Deduplicate] --> C2[Normalize Severity]
@@ -60,8 +60,8 @@ Maps languages, frameworks, build systems, entry points, git churn, and config a
 </td>
 <td width="50%">
 
-### 🧠 13 Specialist Agents
-Architecture, Security, Code Quality, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards — in parallel.
+### 🧠 14 Specialist Agents
+Architecture, Security, Code Quality, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards, Process Quality — in parallel.
 
 </td>
 </tr>
@@ -99,7 +99,7 @@ Works identically on Windows PowerShell and Unix bash. Auto-detects OS, uses pla
 
 | Criterion | Manual Review | Single-Agent Audit | Complete Codebase Review |
 |-----------|--------------|-------------------|------------------------|
-| Coverage | Inconsistent | Single domain | 13 domains in parallel |
+| Coverage | Inconsistent | Single domain | 14 domains in parallel |
 | False positives | High (subjective) | Moderate | Minimal (DA-verified) |
 | Quantified tech debt | Guesswork | Rough estimate | Per-finding hour estimates |
 | Trend tracking | None | None | Baseline snapshots |
@@ -129,7 +129,7 @@ Here's a real health report excerpt for a medium-sized web application:
 | Security | 4 | 2 | 3 | 1 | 0 |
 | Test Health | 5 | 0 | 2 | 2 | 1 |
 | ... | ... | ... | ... | ... | ... |
-| **Overall** | **6.5** | **3** | **10** | **15** | **13** |
+| **Overall** | **6.5** | **3** | **11** | **16** | **15** |
 
 ## Detailed Findings
 | Finding | Severity | Domain | Est. Hours | DA Verdict |
@@ -225,10 +225,10 @@ Runs Security, Code Quality, and Architecture agents with a ~10% codebase sample
 The review runs in four phases:
 
 ### Phase 1: Discovery
-Maps the codebase: languages, frameworks, build systems, directory structure, entry points, git history. Runs an environment check to verify tool availability. Identifies which of the 13 health dimensions apply to this project.
+Maps the codebase: languages, frameworks, build systems, directory structure, entry points, git history. Runs an environment check to verify tool availability. Identifies which of the 14 health dimensions apply to this project.
 
-### Phase 2: Parallel Analysis
-Spawns up to 13 specialist agents simultaneously. Each agent loads a domain-specific skill, runs methodology-driven analysis, quantifies findings, and web-verifies claims. Agents time out independently — partial results are preserved.
+**Phase 2: Parallel Analysis**
+Spawns up to 14 specialist agents simultaneously. Each agent loads a domain-specific skill, runs methodology-driven analysis, quantifies findings, and web-verifies claims. Agents time out independently — partial results are preserved.
 
 ### Phase 3: Synthesis + Roadmap
 Deduplicates findings across agents, normalizes severity, resolves cross-agent conflicts, and quantifies tech debt. The Devil's Advocate agent independently challenges every finding, web-verifies claims, and assigns CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED verdicts. A 3-phase roadmap prioritizes by impact vs. effort.

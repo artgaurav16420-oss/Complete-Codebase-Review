@@ -5,12 +5,12 @@ Known failure modes when an agent does a codebase review without this skill:
 ## Failure 1: Shallow Surface Scan
 Agent reads file tree, maybe a few configs, declares "looks good."
 **Misses:** architecture issues, tech debt patterns, dependency risks.
-**Guarded by:** 13 specialist agents each with domain-specific methodology + web verification.
+**Guarded by:** 14 specialist agents each with domain-specific methodology + web verification.
 
 ## Failure 2: Single-Pass Bias
 Agent does one sequential pass and covers only what's visible from entry points.
 **Misses:** deep nested modules, rarely-touched legacy code, background services.
-**Guarded by:** ALL 13 agents must return; parallel spawn prevents sequential drift.
+**Guarded by:** ALL 14 agents must return; parallel spawn prevents sequential drift.
 
 ## Failure 3: No Structured Domains
 Agent mixes architecture comments with style nits with security concerns.

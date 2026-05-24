@@ -256,10 +256,11 @@ def test_integration_parallel_analysis(content):
         "Architecture Analyzer", "Code Quality Auditor", "Security Posture",
         "Tech Debt Tracker", "Test Health Auditor", "Dependency Auditor",
         "Documentation Auditor", "Build & CI Auditor", "Performance Baseline",
-        "Database & Schema", "UI/UX Auditor", "DevOps & Infra", "Standards Compliance"
+        "Database & Schema", "UI/UX Auditor", "DevOps & Infra", "Standards Compliance",
+        "Process Quality (Karpathy Compliance)"
     ]
     matched_agent_names = sum(1 for agent in agent_names if agent in content)
-    run_check("All 13 agents have unique coverage", matched_agent_names >= 13)
+    run_check("All 14 agents have unique coverage", matched_agent_names >= 14)
     run_check("Each agent has methodology requirement", 'Methodology' in content and 'Step-by-step' in content)
     run_check("Each agent must quantify findings", 'Quantify findings' in content or 'Quantification' in content)
     run_check("Each agent must web verify", 'Web Verify' in content)
