@@ -1,0 +1,7 @@
+.skills
+.code-review-cache/
+__pycache__/
+*.pyc
+.DS_Store
+*.egg-info/
+
