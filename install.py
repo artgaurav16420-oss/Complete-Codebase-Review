@@ -31,6 +31,14 @@ def print_error(msg):
     print(f"[\033[91mERROR\033[0m] {msg}")
 
 
+def _claude_code_dir(home: Path) -> Path:
+    """Return Claude Code skill directory, respecting XDG_CONFIG_HOME on Linux."""
+    if platform.system() == "Linux":
+        xdg = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+        return xdg / "claude" / "skills"
+    return home / ".claude" / "skills"
+
+
 def get_target_dirs():
     """Determine the target installation directories for supported AI agents.
 
@@ -40,7 +48,7 @@ def get_target_dirs():
     home = Path.home()
 
     dirs = {
-        "Claude Code": home / ".claude" / "skills",
+        "Claude Code": _claude_code_dir(home),
         "OpenCode": home / ".opencode" / "skills",
         "Cursor": home / ".cursor" / "skills",
         "Continue": home / ".continue" / "skills",
@@ -102,11 +110,39 @@ def main():
     parser = argparse.ArgumentParser(
         description="Install the Complete Codebase Review skill for AI coding agents."
     )
-    parser.parse_args()
+    parser.add_argument(
+        "--target",
+        metavar="DIR",
+        default=None,
+        help="Install to a specific directory instead of auto-detecting agent configs.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Print what would be installed without copying any files.",
+    )
+    args = parser.parse_args()
 
     print_info(f"Starting Universal Installer on {platform.system()}")
 
     src_dir = Path(__file__).parent.resolve()
+
+    if args.target:
+        target = Path(args.target)
+        if args.dry_run:
+            print_info(f"[DRY-RUN] Would install to {target / 'complete-codebase-review'}")
+            print_success("Dry run complete.")
+            return
+        try:
+            dest_path = copy_skill(src_dir, target)
+            print_success(f"Installed to: {dest_path}")
+        except (PermissionError, OSError) as e:
+            print_error(f"Install failed: {e}")
+            sys.exit(1)
+        print_success("Installation complete!")
+        return
+
     target_dirs = get_target_dirs()
     installed_any = False
 
@@ -115,6 +151,10 @@ def main():
             print_info(
                 f"Detected {tool_name} configuration at {target_dir.parent}"
             )
+            if args.dry_run:
+                print_info(f"[DRY-RUN] Would install to {tool_name}: {target_dir / 'complete-codebase-review'}")
+                installed_any = True
+                continue
             try:
                 dest_path = copy_skill(src_dir, target_dir)
                 print_success(f"Installed to {tool_name}: {dest_path}")
@@ -134,6 +174,10 @@ def main():
                 "WARNING: .skills/ is listed in .gitignore — "
                 "your local install will not be tracked by git."
             )
+        if args.dry_run:
+            print_info(f"[DRY-RUN] Would install to local directory: {local_target / 'complete-codebase-review'}")
+            print_success("Dry run complete.")
+            return
         try:
             dest_path = copy_skill(src_dir, local_target)
             print_success(f"Installed to local directory: {dest_path}")
