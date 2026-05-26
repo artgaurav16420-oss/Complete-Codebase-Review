@@ -25,7 +25,7 @@ Assert-TestResult "Discovery verifies cache access first" { $content -match 'Ver
 
 Write-Host "=== Integration: Parallel Analysis ===" -ForegroundColor Cyan
 
-Assert-TestResult "All 13 agents have unique coverage" {
+Assert-TestResult "All 14 agents have unique coverage" {
     $agents = @(
         "Architecture Analyzer",
         "Code Quality Auditor",
@@ -39,9 +39,10 @@ Assert-TestResult "All 13 agents have unique coverage" {
         "Database & Schema",
         "UI/UX Auditor",
         "DevOps & Infra",
-        "Standards Compliance"
+        "Standards Compliance",
+        "Process Quality (Karpathy Compliance)"
     )
-    ($agents | Where-Object { $content -match $_ }).Count -ge 13
+    ($agents | Where-Object { $content -match $_ }).Count -ge 14
 }
 Assert-TestResult "Each agent has methodology requirement" { $content -match 'Methodology' -and $content -match 'Step-by-step' }
 Assert-TestResult "Each agent must quantify findings" { $content -match 'Quantify findings' -or $content -match 'Quantification' }

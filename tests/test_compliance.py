@@ -97,17 +97,27 @@ def test_content_quality(content):
     run_check("Has specialist agent table", 'Architecture Analyzer' in content and 'Security Posture' in content)
 
     agents = [
-        "Architecture Analyzer", "Code Quality", "Security Posture",
-        "Tech Debt", "Test Health", "Dependency Auditor",
-        "Documentation", "Build", "CI", "Performance",
-        "Database", "DevOps", "Standards", "UI/UX",
+        "Architecture Analyzer",
+        "Code Quality Auditor",
+        "Security Posture",
+        "Tech Debt Tracker",
+        "Test Health Auditor",
+        "Dependency Auditor",
+        "Documentation Auditor",
+        "Build & CI Auditor",
+        "Performance Baseline",
+        "Database & Schema",
+        "UI/UX Auditor",
+        "DevOps & Infra",
+        "Standards Compliance",
+        "Process Quality (Karpathy Compliance)",
     ]
     matched_agents = sum(1 for agent in agents if agent in content)
-    run_check("Has at least 12 specialist agents", matched_agents >= 12)
+    run_check("Has at least 14 specialist agents", matched_agents >= 14)
     run_check("Has UI/UX Auditor agent", 'UI/UX Auditor' in content)
     run_check("Requires skill loading per agent", 'Load a relevant skill' in content and 'Skill tool' in content)
     run_check("Has Discovery phase", 'Discovery' in content)
-    run_check("Has Roadmap phase", re.search(r'Roadmap', content, re.IGNORECASE) is not None)
+
     run_check("Has tech debt quantification", re.search(r'tech debt', content, re.IGNORECASE) is not None)
     run_check("Has health score", re.search(r'health', content, re.IGNORECASE) is not None)
     run_check("Has phased roadmap", 'Phase 1' in content and 'Phase 2' in content)

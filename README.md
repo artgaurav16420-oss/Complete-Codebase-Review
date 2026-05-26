@@ -202,7 +202,7 @@ Customize execution with environment variables:
 | `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing and caching. |
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline snapshot filename for trend tracking. |
 | `CODE_REVIEW_AGENTS` | all applicable | Comma-separated agent names (e.g. `security,architecture`). |
-| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Seconds between progress checkpoints. |
+| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Logged on agent result receipt, not a background timer. |
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL+HIGH findings. |
 
 See [help.md](help.md) for detailed documentation.

@@ -275,7 +275,7 @@ prompt: "You are auditing the Security Posture of {TARGET_DIR}.
 4. Collect results as each returns. Maintain a shared `completedCount` variable that is incremented each time an agent reports back (in the event/callback that collects results). After each agent result arrives and `completedCount` is incremented, if the elapsed wall-clock duration since the last status log exceeds `${CODE_REVIEW_STATUS_INTERVAL:-300}` seconds, emit: `[STATUS] X/Y agents completed`. This is event-driven, not timer-driven: log on result receipt when the interval has elapsed, not on a background tick. When `completedCount` reaches N, proceed to synthesis.
 5. Once all N have reported, proceed to synthesis.
 
-**CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: increment `completedCount` and track the result. The progress timer reads this counter passively. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
+**CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: increment `completedCount` and track the result. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
 
 ## Phase 3: Synthesis + Roadmap
 
@@ -392,6 +392,7 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 - **Health**: YELLOW → YELLOW (stable)
 - **Tech Debt**: 120h → 95h (↓21%)
 - **Critical Issues**: 5 → 2 (↓60%)
+- **Domain Activity Changes**: Performance, UI/UX newly LOW-ACTIVITY / none reactivated
 ```
 
 ### 4f. Re-review After Partial Fixes
@@ -554,6 +555,7 @@ When `CODE_REVIEW_FILTER=critical-high`, omit MEDIUM and LOW findings from all r
 - **Health**: [previous] → [current] (improved/stable/declined)
 - **Tech Debt**: [previous]h → [current]h (Δ%)
 - **Critical Issues**: [previous] → [current] (Δ%)
+- **Domain Activity Changes**: [domains newly marked LOW-ACTIVITY] / [domains reactivated from LOW-ACTIVITY] (or "none" if unchanged)
 
 ## Agent Status
 - Completed: X/X agents

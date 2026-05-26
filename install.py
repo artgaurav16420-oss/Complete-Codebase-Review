@@ -32,11 +32,16 @@ def print_error(msg):
 
 
 def _claude_code_dir(home: Path) -> Path:
-    """Return Claude Code skill directory, respecting XDG_CONFIG_HOME on Linux."""
+    """Return Claude Code skill directory.
+
+    On Linux, honours XDG_CONFIG_HOME when explicitly set, otherwise falls
+    back to ~/.claude/skills (the conventional Claude Code install location).
+    On other platforms, always returns ~/.claude/skills.
+    """
     if platform.system() == "Linux":
-        xdg_env = os.environ.get("XDG_CONFIG_HOME")
-        xdg = Path(xdg_env) if xdg_env else home / ".config"
-        return xdg / "claude" / "skills"
+        xdg_env = os.environ.get("XDG_CONFIG_HOME", "").strip()
+        if xdg_env:
+            return Path(xdg_env) / "claude" / "skills"
     return home / ".claude" / "skills"
 
 
@@ -164,19 +169,29 @@ def main():
                 print_error(f"Failed to install to {tool_name}")
                 continue
 
+    if args.dry_run and installed_any:
+        print_success("Dry run complete.")
+        return
+
     if not installed_any:
         print_info(
             "No existing global tool configurations detected. Installing locally."
         )
         local_target = Path.cwd() / ".skills"
         gitignore = Path.cwd() / ".gitignore"
-        if gitignore.exists() and any(line.strip() in [".skills", ".skills/"] for line in gitignore.read_text(encoding='utf-8', errors='replace').splitlines()):
+        if gitignore.exists() and any(
+            line.strip() in [".skills", ".skills/"]
+            for line in gitignore.read_text(encoding="utf-8", errors="replace").splitlines()
+        ):
             print_info(
                 "WARNING: .skills/ is listed in .gitignore — "
                 "your local install will not be tracked by git."
             )
         if args.dry_run:
-            print_info(f"[DRY-RUN] Would install to local directory: {local_target / 'complete-codebase-review'}")
+            print_info(
+                f"[DRY-RUN] Would install to local directory: "
+                f"{local_target / 'complete-codebase-review'}"
+            )
             print_success("Dry run complete.")
             return
         try:
