@@ -34,7 +34,8 @@ def print_error(msg):
 def _claude_code_dir(home: Path) -> Path:
     """Return Claude Code skill directory, respecting XDG_CONFIG_HOME on Linux."""
     if platform.system() == "Linux":
-        xdg = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+        xdg_env = os.environ.get("XDG_CONFIG_HOME")
+        xdg = Path(xdg_env) if xdg_env else home / ".config"
         return xdg / "claude" / "skills"
     return home / ".claude" / "skills"
 
