@@ -61,17 +61,34 @@ if ! grep -q "effort: \${CODE_REVIEW_EFFORT:-max}" "$SKILL_FILE"; then
     FAIL=1
 fi
 
+if [ ! -f "karpathy-guidelines.md" ]; then
+    echo "[ERROR] karpathy-guidelines.md missing — Process Quality agent will fail"
+    FAIL=1
+else
+    echo "[SUCCESS] karpathy-guidelines.md exists"
+fi
+
 echo "[INFO] Simulating skill evaluation against expected issues..."
-MOCK_OUTPUT="Identified CWE-798 in app.py. Also found CWE-78 command injection. Noticed unused-import as well."
+# Build MOCK_OUTPUT dynamically from expected_issues.json so this test
+# stays in sync when the JSON is updated.
+MOCK_OUTPUT=$(python3 -c "
+import json, sys
+issues = json.load(open('tests/expected_issues.json', encoding='utf-8'))
+print(' '.join(issues))
+")
 
 while IFS= read -r issue; do
     if echo "$MOCK_OUTPUT" | grep -q "$issue"; then
         echo "[SUCCESS] Found expected issue: $issue"
     else
-        echo "[ERROR] Expected issue $issue not found in mock output"
+        echo "[ERROR] Expected issue '$issue' not found in mock output"
         FAIL=1
     fi
-done < <(python3 -c "import json,sys; [print(i) for i in json.load(open('tests/expected_issues.json'))]")
+done < <(python3 -c "
+import json
+issues = json.load(open('tests/expected_issues.json', encoding='utf-8'))
+print('\n'.join(issues))
+")
 
 if [ "$FAIL" -eq 1 ]; then
     echo "[ERROR] Tests failed!"

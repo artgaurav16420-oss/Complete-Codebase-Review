@@ -22,7 +22,7 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
 | `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 14: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards, Process Quality. Filtered by project dimensions (see Step 2). |
-| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Seconds between status checkpoints reporting completed agent count. |
+| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer. |
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 
 
@@ -181,6 +181,14 @@ Each agent MUST:
 Each specialist agent MUST return findings in this exact structure:
 
 ```markdown
+## SUMMARY (required — synthesis agent reads this first)
+| Severity | Count | Top 3 Findings (one-line each) |
+|----------|-------|-------------------------------|
+| CRITICAL | N | Finding A; Finding B; Finding C |
+| HIGH     | N | Finding D; Finding E; Finding F |
+| MEDIUM   | N | ... |
+| LOW      | N | ... |
+
 ## Agent: [name]
 **Score:** X/10
 
@@ -198,6 +206,8 @@ Each specialist agent MUST return findings in this exact structure:
 ### LOW
 ...
 ```
+
+**Required:** The SUMMARY block must appear before all other content. The synthesis agent reads SUMMARY blocks for deduplication. Full finding tables are only read for CRITICAL and HIGH entries. Omitting SUMMARY causes synthesis to parse the full report, risking context overflow.
 
 This ensures the synthesis agent can reliably parse, deduplicate, and score findings across all domains.
 
@@ -248,7 +258,9 @@ Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. S
 2. Log pre-flight estimate (see above).
 3. Spawn N Task agents in parallel. Use the Task tool for each:
 
-**Orchestrator pre-step**: resolve `SKILL_DIR=$(dirname $(realpath SKILL.md))` and inject into every agent prompt that references skill-local files.
+**Orchestrator pre-step**: Resolve `SKILL_DIR` as the absolute path of the directory containing *this* SKILL.md file — i.e. the installed skill directory, not the target codebase directory. Use whichever mechanism your agent runtime provides to locate the currently-executing skill file (e.g. the `skill_path` variable injected by Claude Code, or the absolute path recorded at install time). Inject `SKILL_DIR=<resolved-absolute-path>` into every sub-agent prompt that references skill-local files (currently: the Process Quality agent, which reads `karpathy-guidelines.md`).
+
+**Never** resolve `SKILL_DIR` by running `realpath SKILL.md` from the target codebase directory — that path resolves against the wrong CWD.
 
 ```
 task name: security-posture-audit
@@ -260,7 +272,7 @@ prompt: "You are auditing the Security Posture of {TARGET_DIR}.
   Return findings in the standard severity-grouped format."
 ```
 
-4. Collect results as each returns. Maintain a shared `completedCount` variable that is incremented each time an agent reports back (in the event/callback that collects results). Start a timer driven by `CODE_REVIEW_STATUS_INTERVAL` that logs "X/Y agents completed so far" by reading the current `completedCount` value—do NOT poll agents inside the timer. When `completedCount` reaches N, stop the timer and proceed to synthesis.
+4. Collect results as each returns. Maintain a shared `completedCount` variable that is incremented each time an agent reports back (in the event/callback that collects results). After each agent result arrives and `completedCount` is incremented, if the elapsed wall-clock duration since the last status log exceeds `${CODE_REVIEW_STATUS_INTERVAL:-300}` seconds, emit: `[STATUS] X/Y agents completed`. This is event-driven, not timer-driven: log on result receipt when the interval has elapsed, not on a background tick. When `completedCount` reaches N, proceed to synthesis.
 5. Once all N have reported, proceed to synthesis.
 
 **CRITICAL:** After spawning all agents, do nothing else until every agent reports back. No messages, no drafting, no polling. When a result arrives: increment `completedCount` and track the result. The progress timer reads this counter passively. Proceed only when all N are in. If any agent exceeds ${CODE_REVIEW_TIMEOUT_SEC:-900} seconds, proceed with partial results and note the gap. See Sub-Agent Failure Recovery below.
@@ -291,7 +303,7 @@ Actions:
 - Web-verify each claim
 - Independently read code to confirm
 - Assign: CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED
-- DA may not introduce new finding *categories*. DA may escalate severity, add confirming evidence, or flag a finding as `DA-ESCALATION` if it independently discovers something material the specialists missed. DA runs before roadmap generation; DA-ESCALATION findings are included in roadmap prioritization.
+- DA may escalate severity of existing findings, add confirming evidence, or emit a `DA-ESCALATION` finding if it independently discovers something material the specialists missed. `DA-ESCALATION` findings must fall within an already-active domain (one of the 14 standard dimensions). DA must not open a new domain category that was excluded by Phase 1 dimension selection. All `DA-ESCALATION` findings are included in roadmap prioritization.
 - All DA additions are tagged `DA-ESCALATION` and reviewed separately in the synthesis report
 
 ### 3c. Roadmap Agent
@@ -364,9 +376,14 @@ After the fix plan is generated, save a baseline snapshot to `$RESOLVED_CACHE_DI
   "tech_debt_hours": 123,
   "critical_count": 5,
   "per_domain_scores": {},
+  "per_domain_open_findings": {
+    "<domain>": { "critical": 0, "high": 0 }
+  },
   "task_count": 12
 }
 ```
+
+`per_domain_open_findings` stores confirmed + plausible CRITICAL and HIGH finding counts per domain after DA verification. Phase 4f uses this field to classify domains as `[LOW-ACTIVITY]` on re-review.
 
 If a previous baseline exists, diff current vs previous and report trend in the executive summary:
 
@@ -382,7 +399,7 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
 1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
-2. Re-run Phase 2 (parallel analysis) for active domains only. Domains with no previously open HIGH/CRITICAL findings are marked `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend table. All other domains receive full re-analysis. The 75%/66% completion threshold (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY domains excluded from denominator.
+2. Re-run Phase 2 (parallel analysis) for active domains only. Domains where `per_domain_open_findings[domain].critical == 0` AND `per_domain_open_findings[domain].high == 0` in the loaded baseline are marked `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend table. All other domains receive full re-analysis. The 75%/66% completion threshold (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY domains excluded from denominator.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
@@ -688,7 +705,7 @@ Cross-domain signals are captured in a structured notes block by the orchestrato
 - **CI**: removed invalid update-pip parameter from setup-python action
 - **Tests**: dead regex fixed, temp-dir fallback assertion corrected, gitignore warning tests added
 
-### v2.0.0 (2026-05-24)
+### v2.0.0 (2026-05-23)
 - **Env vars**: Added `CODE_REVIEW_EFFORT`, `CODE_REVIEW_TIMEOUT_SEC`, `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_AGENTS`, `CODE_REVIEW_STATUS_INTERVAL`
 - **New sections**: Checkpointing, Quick Mode, Sample Output, Changelog
 - **Dynamic effort**: Removed hardcoded `model: opus`, effort reads from `CODE_REVIEW_EFFORT` env var

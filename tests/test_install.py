@@ -30,7 +30,8 @@ class TestGetTargetDirs(unittest.TestCase):
 
     def test_paths_are_under_home(self):
         home = Path.home()
-        dirs = install.get_target_dirs()
+        with patch("install.platform.system", return_value="Darwin"):
+            dirs = install.get_target_dirs()
         expected = {
             "Claude Code": home / ".claude" / "skills",
             "OpenCode": home / ".opencode" / "skills",
@@ -38,6 +39,38 @@ class TestGetTargetDirs(unittest.TestCase):
             "Continue": home / ".continue" / "skills",
         }
         self.assertEqual(dirs, expected)
+
+    def test_claude_code_uses_xdg_on_linux(self):
+        with (
+            patch("install.platform.system", return_value="Linux"),
+            patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}),
+        ):
+            dirs = install.get_target_dirs()
+        self.assertEqual(dirs["Claude Code"], Path("/custom/xdg/claude/skills"))
+
+    def test_claude_code_uses_default_xdg_when_env_unset_on_linux(self):
+        env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
+        with (
+            patch("install.platform.system", return_value="Linux"),
+            patch.dict(os.environ, env, clear=True),
+        ):
+            dirs = install.get_target_dirs()
+        self.assertEqual(dirs["Claude Code"], Path.home() / ".config" / "claude" / "skills")
+
+    def test_claude_code_uses_default_xdg_when_env_empty_on_linux(self):
+        env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
+        env["XDG_CONFIG_HOME"] = ""
+        with (
+            patch("install.platform.system", return_value="Linux"),
+            patch.dict(os.environ, env, clear=True),
+        ):
+            dirs = install.get_target_dirs()
+        self.assertEqual(dirs["Claude Code"], Path.home() / ".config" / "claude" / "skills")
+
+    def test_claude_code_uses_dot_claude_on_non_linux(self):
+        with patch("install.platform.system", return_value="Darwin"):
+            dirs = install.get_target_dirs()
+        self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
 
 
 class TestCopySkill(unittest.TestCase):
@@ -212,6 +245,32 @@ class TestPrintFunctions(unittest.TestCase):
         install.print_info("line")
         output = self.mock_stdout.getvalue()
         self.assertTrue(output.endswith("\n"))
+
+
+class TestMainArgparse(unittest.TestCase):
+    def test_dry_run_does_not_call_copy_skill(self):
+        with (
+            patch("sys.argv", ["install.py", "--dry-run"]),
+            patch("install.get_target_dirs", return_value={
+                "Claude Code": Path("/home/user/.claude/skills")
+            }),
+            patch("install.copy_skill") as mock_copy,
+            patch.object(Path, "exists", return_value=True),
+            patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            install.main()
+        mock_copy.assert_not_called()
+
+    def test_target_flag_installs_to_specified_dir(self):
+        with (
+            patch("sys.argv", ["install.py", "--target", "/custom/dir"]),
+            patch("install.copy_skill") as mock_copy,
+            patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            mock_copy.return_value = Path("/custom/dir/complete-codebase-review")
+            install.main()
+        mock_copy.assert_called_once()
+        self.assertEqual(mock_copy.call_args[0][1], Path("/custom/dir"))
 
 
 class TestMainFunction(unittest.TestCase):
