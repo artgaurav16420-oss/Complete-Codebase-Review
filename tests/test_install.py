@@ -57,6 +57,16 @@ class TestGetTargetDirs(unittest.TestCase):
             dirs = install.get_target_dirs()
         self.assertEqual(dirs["Claude Code"], Path.home() / ".config" / "claude" / "skills")
 
+    def test_claude_code_uses_default_xdg_when_env_empty_on_linux(self):
+        env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
+        env["XDG_CONFIG_HOME"] = ""
+        with (
+            patch("install.platform.system", return_value="Linux"),
+            patch.dict(os.environ, env, clear=True),
+        ):
+            dirs = install.get_target_dirs()
+        self.assertEqual(dirs["Claude Code"], Path.home() / ".config" / "claude" / "skills")
+
     def test_claude_code_uses_dot_claude_on_non_linux(self):
         with patch("install.platform.system", return_value="Darwin"):
             dirs = install.get_target_dirs()
