@@ -270,7 +270,6 @@ class TestMainArgparse(unittest.TestCase):
             mock_copy.return_value = Path("/custom/dir/complete-codebase-review")
             install.main()
         mock_copy.assert_called_once()
-        _, call_args = mock_copy.call_args[0], mock_copy.call_args
         self.assertEqual(mock_copy.call_args[0][1], Path("/custom/dir"))
 
 
