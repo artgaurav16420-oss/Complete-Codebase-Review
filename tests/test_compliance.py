@@ -97,10 +97,20 @@ def test_content_quality(content):
     run_check("Has specialist agent table", 'Architecture Analyzer' in content and 'Security Posture' in content)
 
     agents = [
-        "Architecture Analyzer", "Code Quality", "Security Posture",
-        "Tech Debt", "Test Health", "Dependency Auditor",
-        "Documentation", "Build", "CI", "Performance",
-        "Database", "DevOps", "Standards", "UI/UX",
+        "Architecture Analyzer",
+        "Code Quality Auditor",
+        "Security Posture",
+        "Tech Debt Tracker",
+        "Test Health Auditor",
+        "Dependency Auditor",
+        "Documentation Auditor",
+        "Build & CI Auditor",
+        "Performance Baseline",
+        "Database & Schema",
+        "UI/UX Auditor",
+        "DevOps & Infra",
+        "Standards Compliance",
+        "Process Quality (Karpathy Compliance)",
     ]
     matched_agents = sum(1 for agent in agents if agent in content)
     run_check("Has at least 12 specialist agents", matched_agents >= 12)
