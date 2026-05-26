@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, Task"
 effort: ${CODE_REVIEW_EFFORT:-max}
-version: 2.0.1
+version: 2.0.2
 ---
 
 # Complete Codebase Review

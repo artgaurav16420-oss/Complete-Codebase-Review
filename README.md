@@ -315,7 +315,7 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 |-------|---------|----------|
 | Python compliance | `python3 tests/test_compliance.py` | 60+ assertions across 17 test functions |
 | Bash integration | `./test.sh` | CLI and cross-platform behavior |
-| Install tests | `python3 tests/test_install.py` | 28 unit tests across 6 classes |
+| Install tests | `python3 tests/test_install.py` | 35 unit tests across 7 classes |
 
 ---
 
