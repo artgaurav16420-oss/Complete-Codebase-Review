@@ -29,7 +29,4 @@ jobs:
         run: ./test.sh
         shell: bash
 
-      - name: Run PowerShell compliance tests (deprecated — all checks moved to Python)
-        if: false
-        shell: pwsh
-        run: ./tests/run-compliance-tests.ps1
+      # PowerShell test suites removed — all checks migrated to Python

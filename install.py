@@ -10,7 +10,10 @@ Installs the skill to supported AI agent skill directories:
 Usage:
     python install.py          # Install to detected agent configs
     python install.py --help   # Show this help message
+    python install.py --version  # Show version
 """
+
+VERSION = "2.0.2"
 import argparse
 import os
 import shutil
@@ -128,7 +131,16 @@ def main():
         default=False,
         help="Print what would be installed without copying any files.",
     )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Show version and exit.",
+    )
     args = parser.parse_args()
+
+    if args.version:
+        print(f"complete-codebase-review v{VERSION}")
+        return
 
     print_info(f"Starting Universal Installer on {platform.system()}")
 
@@ -181,7 +193,7 @@ def main():
         gitignore = Path.cwd() / ".gitignore"
         if gitignore.exists() and any(
             line.strip() in [".skills", ".skills/"]
-            for line in gitignore.read_text(encoding="utf-8", errors="replace").splitlines()
+            for line in gitignore.read_text(encoding="utf-8").splitlines()
         ):
             print_info(
                 "WARNING: .skills/ is listed in .gitignore — "
