@@ -1,0 +1,8 @@
+[run]
+source = .
+omit =
+    .skills/*
+    .code-review-cache/*
+    __pycache__/*
+    tests/dummy_repo/*
+    ADRs/*

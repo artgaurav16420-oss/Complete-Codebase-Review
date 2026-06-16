@@ -26,12 +26,19 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install test dependencies
+        run: python -m pip install coverage
+
       - name: Run Python compliance tests
         run: python tests/test_compliance.py
+
+      - name: Run all unittest suites
+        run: python -m coverage run --source=. --omit=".skills/*,.code-review-cache/*,__pycache__/*,tests/dummy_repo/*,ADRs/*" -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Coverage report
+        run: python -m coverage report
 
       - name: Run Bash test suite
         if: runner.os != 'Windows'
         run: ./test.sh
         shell: bash
-
-      # PowerShell test suites removed — all checks migrated to Python
