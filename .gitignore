@@ -4,4 +4,7 @@ __pycache__/
 *.pyc
 .DS_Store
 *.egg-info/
+.env
+.secret
+.credentials
 

@@ -1,5 +1,12 @@
 [
   "CWE-798",
   "CWE-78",
-  "unused-import"
+  "CWE-22",
+  "CWE-200",
+  "CWE-295",
+  "unused-import",
+  "circular-dep",
+  "hardcoded-secret",
+  "missing-error-handling",
+  "dead-code"
 ]

@@ -158,6 +158,13 @@ export CODE_REVIEW_EFFORT=min
 /complete-codebase-review src/
 ```
 
+> **Security note:** The one-liner pipes from HTTPS. For production use, verify the script checksum after download:
+> ```bash
+> curl -fsSL -o install.py https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py
+> # Review the script, then run:
+> python3 install.py
+> ```
+
 That's it. You'll get a full health report in 5-15 minutes.
 
 ---

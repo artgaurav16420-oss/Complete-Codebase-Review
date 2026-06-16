@@ -131,22 +131,23 @@ def copy_skill(src_dir, dest_dir):
 def main():
     """Execute the main installation process."""
     parser = argparse.ArgumentParser(
-        description="Install the Complete Codebase Review skill for AI coding agents."
+        description="Install the Complete Codebase Review skill for AI coding agents.",
+        epilog="Examples:\n  python install.py\n  python install.py --target ~/my-skills\n  python install.py --dry-run\n  python install.py --version",
     )
     parser.add_argument(
-        "--target",
+        "--target", "-t",
         metavar="DIR",
         default=None,
         help="Install to a specific directory instead of auto-detecting agent configs.",
     )
     parser.add_argument(
-        "--dry-run",
+        "--dry-run", "-n",
         action="store_true",
         default=False,
         help="Print what would be installed without copying any files.",
     )
     parser.add_argument(
-        "--version",
+        "--version", "-V",
         action="store_true",
         help="Show version and exit.",
     )
