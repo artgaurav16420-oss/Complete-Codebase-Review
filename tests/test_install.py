@@ -159,6 +159,14 @@ class TestCopySkill(unittest.TestCase):
             self.assertTrue(skill_dest.exists())
             self.assertTrue((skill_dest / "SKILL.md").exists())
 
+    def test_copy_skill_to_file_path_raises_oserror(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            file_target = Path(tmpdir) / "file.txt"
+            file_target.write_text("not a directory")
+            with self.assertRaises(OSError):
+                install.copy_skill(src, file_target)
+
     def test_ignore_patterns_excludes_expected_items(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir, {
