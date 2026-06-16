@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import unittest
+from pathlib import Path
 
 
 def check(test_name, condition):
@@ -337,6 +338,18 @@ class TestStructural(_BaseComplianceTest):
         self.assertIsNotNone(re.search(r'(?m)^name: ', self.content))
         self.assertIn('description: Use when', self.content)
         self.assertIsNotNone(re.search(r'(?m)^version: ', self.content))
+
+    def test_version_sources_stay_in_sync(self):
+        repo_root = Path(self.skill_path).resolve().parent
+        skill_version = re.search(r'(?m)^version:\s*([^\s]+)', self.content).group(1)
+        pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+        pyproject_version = re.search(
+            r'(?m)^version\s*=\s*"([^"]+)"', pyproject
+        ).group(1)
+        install_py = (repo_root / "install.py").read_text(encoding="utf-8")
+
+        self.assertEqual(skill_version, pyproject_version)
+        self.assertIn("VERSION = _read_version()", install_py)
 
     def test_no_workflow_summary_in_description(self):
         desc_match = re.search(r'description: (.*?)(?:\n|$)', self.content)
