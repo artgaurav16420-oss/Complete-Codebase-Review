@@ -83,8 +83,10 @@ def validate_roadmap(roadmap, findings=None):
         for idx, finding in enumerate(findings):
             if finding.get("da_verdict") != "REJECTED":
                 continue
-            title = finding.get("finding", "").lower()
-            if any(title in item.lower() or item.lower() in title for item in roadmap_items):
+            title = finding.get("finding", "").strip().casefold()
+            if not title:
+                continue
+            if any(title == item.strip().casefold() for item in roadmap_items):
                 errors.append(
                     f"finding[{idx}] rejected DA verdict must be excluded from roadmap"
                 )
@@ -236,6 +238,19 @@ class TestOutputSchemas(unittest.TestCase):
         bad["improvement_roadmap"] = roadmap
         errors = validate_review_output(bad)
         self.assertTrue(any("rejected DA verdict" in e for e in errors))
+
+    def test_rejected_findings_use_exact_title_matching(self):
+        bad = dict(SAMPLE_VALID_OUTPUT)
+        bad_findings = list(bad["detailed_findings"])
+        bad_findings[3] = dict(bad_findings[3], finding="No CI")
+        bad["detailed_findings"] = bad_findings
+        bad["improvement_roadmap"] = {
+            "phase_1": ["Add CI concurrency", "No CI concurrency block"],
+            "phase_2": ["Add env-var config tests"],
+            "phase_3": ["Coverage measurement"],
+        }
+        errors = validate_review_output(bad)
+        self.assertFalse(any("rejected DA verdict" in e for e in errors))
 
     def test_scores_out_of_range(self):
         bad = dict(SAMPLE_VALID_OUTPUT)

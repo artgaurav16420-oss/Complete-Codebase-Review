@@ -74,6 +74,27 @@ def test_structural(content, skill_path):
     run_check("No workflow summary in description", not has_summary)
     return result()
 
+
+def test_version_sources_stay_in_sync(content, skill_path):
+    """Check SKILL.md, pyproject.toml, and install.py version sources."""
+    run_check, result = make_checker("Version Source Sync")
+    repo_root = Path(skill_path).resolve().parent
+    skill_match = re.search(r'(?m)^version:\s*([^\s]+)', content)
+    pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+    pyproject_match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject)
+    install_py = (repo_root / "install.py").read_text(encoding="utf-8")
+
+    run_check("SKILL.md version is present", skill_match is not None)
+    run_check("pyproject.toml version is present", pyproject_match is not None)
+    versions_match = bool(
+        skill_match
+        and pyproject_match
+        and skill_match.group(1) == pyproject_match.group(1)
+    )
+    run_check("SKILL.md and pyproject.toml versions match", versions_match)
+    run_check("install.py VERSION reads via _read_version()", "VERSION = _read_version()" in install_py)
+    return result()
+
 def test_command_frontmatter(content):
     """Check user-invocable, argument-hint, effort, and model fields."""
     run_check, result = make_checker("Command Frontmatter")
@@ -692,6 +713,10 @@ def main():
     total_failed = 0
 
     p, f = test_structural(content, skill_path)
+    total_passed += p
+    total_failed += f
+
+    p, f = test_version_sources_stay_in_sync(content, skill_path)
     total_passed += p
     total_failed += f
 
