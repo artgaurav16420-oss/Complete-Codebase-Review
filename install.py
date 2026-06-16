@@ -13,7 +13,6 @@ Usage:
     python install.py --version  # Show version
 """
 
-VERSION = "2.0.2"
 import argparse
 import os
 import shutil
@@ -21,17 +20,32 @@ import sys
 import platform
 from pathlib import Path
 
+VERSION = "2.0.2"
+
+
+def _use_color():
+    return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+
 
 def print_success(msg):
-    print(f"[\033[92mSUCCESS\033[0m] {msg}")
+    if _use_color():
+        print(f"[\033[92mSUCCESS\033[0m] {msg}")
+    else:
+        print(f"[SUCCESS] {msg}")
 
 
 def print_info(msg):
-    print(f"[\033[94mINFO\033[0m] {msg}")
+    if _use_color():
+        print(f"[\033[94mINFO\033[0m] {msg}")
+    else:
+        print(f"[INFO] {msg}")
 
 
 def print_error(msg):
-    print(f"[\033[91mERROR\033[0m] {msg}")
+    if _use_color():
+        print(f"[\033[91mERROR\033[0m] {msg}")
+    else:
+        print(f"[ERROR] {msg}")
 
 
 def _claude_code_dir(home: Path) -> Path:

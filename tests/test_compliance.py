@@ -281,55 +281,72 @@ def main():
     total_failed = 0
 
     p, f = test_structural(content, skill_path)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_command_frontmatter(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_required_sections(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_content_quality(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_cross_platform(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_fix_plan(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_baseline_failure_coverage(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_non_negotiable_rules(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_anti_rationalization(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_red_flags(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_integration_discovery_phase(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_integration_parallel_analysis(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_integration_synthesis_roadmap(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_integration_output_cleanup(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_integration_fix_plan(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_integration_safety(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     p, f = test_integration_cross_platform(content)
-    total_passed += p; total_failed += f
+    total_passed += p
+    total_failed += f
 
     print("\n================================")
     color = "\033[92m" if total_failed == 0 else "\033[91m"

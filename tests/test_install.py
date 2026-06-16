@@ -229,7 +229,8 @@ class TestPrintFunctions(unittest.TestCase):
         self.patcher.stop()
 
     def test_print_success_contains_green_code(self):
-        install.print_success("done")
+        with patch.object(sys.stdout, "isatty", return_value=True):
+            install.print_success("done")
         output = self.mock_stdout.getvalue()
         self.assertIn("SUCCESS", output)
         self.assertIn("\x1b[92m", output)
@@ -237,7 +238,8 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("done", output)
 
     def test_print_info_contains_blue_code(self):
-        install.print_info("hello")
+        with patch.object(sys.stdout, "isatty", return_value=True):
+            install.print_info("hello")
         output = self.mock_stdout.getvalue()
         self.assertIn("INFO", output)
         self.assertIn("\x1b[94m", output)
@@ -245,7 +247,8 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("hello", output)
 
     def test_print_error_contains_red_code(self):
-        install.print_error("fail")
+        with patch.object(sys.stdout, "isatty", return_value=True):
+            install.print_error("fail")
         output = self.mock_stdout.getvalue()
         self.assertIn("ERROR", output)
         self.assertIn("\x1b[91m", output)
@@ -253,9 +256,10 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("fail", output)
 
     def test_multiple_calls_accumulate(self):
-        install.print_info("first")
-        install.print_success("second")
-        install.print_error("third")
+        with patch.object(sys.stdout, "isatty", return_value=True):
+            install.print_info("first")
+            install.print_success("second")
+            install.print_error("third")
         output = self.mock_stdout.getvalue()
         self.assertIn("first", output)
         self.assertIn("second", output)
