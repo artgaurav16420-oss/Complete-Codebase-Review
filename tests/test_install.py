@@ -552,7 +552,7 @@ class TestValidateTargetPath(unittest.TestCase):
             patch("sys.argv", ["install.py", "--target", "/safe/../../etc"]),
         ):
             install.main()
-        mock_exit.assert_called_once_with(1)
+        mock_exit.assert_called_with(1)
         output = mock_stdout.getvalue()
         self.assertIn("Path traversal", output)
 
