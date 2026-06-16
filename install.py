@@ -119,6 +119,8 @@ def copy_skill(src_dir, dest_dir):
             ]
 
         shutil.copytree(src_dir, skill_dest, ignore=ignore_patterns)
+        copied = sum(len(files) for _, _, files in os.walk(skill_dest))
+        print_info(f"Copied {copied} file(s) to {skill_dest}")
         return skill_dest
     except PermissionError:
         print_error(f"Permission denied: cannot write to {dest_dir}")
