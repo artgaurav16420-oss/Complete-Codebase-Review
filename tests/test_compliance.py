@@ -1,7 +1,6 @@
 import os
 import re
 import sys
-
 def check(test_name, condition):
     if condition:
         print(f"\033[92mPASS:\033[0m {test_name}")
@@ -24,6 +23,7 @@ def make_checker(section_name):
     def result():
         return pass_count, fail_count
     return run_check, result
+
 
 def test_structural(content, skill_path):
     run_check, result = make_checker("Structural")

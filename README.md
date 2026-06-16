@@ -285,7 +285,7 @@ Yes. Run in Quick Mode (`CODE_REVIEW_EFFORT=min`) for fast checks. The exit code
 We welcome contributions of all sizes. Here's how to get started:
 
 1. **Fork** the repo and create a feature branch.
-2. **Write tests** for any new functionality. Python compliance tests are the source of truth.
+2. **Write tests** for any new functionality. We maintain test parity between [Python](tests/test_compliance.py) and [PowerShell](tests/) test suites.
 3. **Run the test suite**: `python3 tests/test_compliance.py`
 4. **Submit a PR** with a clear description of the change and any related issue.
 
