@@ -24,6 +24,8 @@ from pathlib import Path
 
 def _read_version():
     pyproject = Path(__file__).parent / "pyproject.toml"
+    if not pyproject.exists():
+        return "2.0.2"
     match = re.search(
         r'(?m)^version\s*=\s*"([^"]+)"',
         pyproject.read_text(encoding="utf-8")
