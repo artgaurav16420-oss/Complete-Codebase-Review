@@ -493,6 +493,62 @@ class TestGitignoreWarning(_BaseInstallTestWithArgv):
         self.assertNotIn("gitignore", output.lower())
 
 
+class TestValidateTargetPath(unittest.TestCase):
+    """Tests for _validate_target_path()."""
+
+    def test_valid_absolute_path(self):
+        result = install._validate_target_path(Path("/home/user/skills"))
+        self.assertEqual(result, Path("/home/user/skills").resolve())
+
+    def test_valid_relative_path(self):
+        result = install._validate_target_path(Path("skills"))
+        self.assertEqual(result, Path("skills").resolve())
+
+    def test_path_traversal_detected(self):
+        with self.assertRaises(ValueError) as ctx:
+            install._validate_target_path(Path("/home/user/../../etc"))
+        self.assertIn("Path traversal", str(ctx.exception))
+
+    def test_path_traversal_simple(self):
+        with self.assertRaises(ValueError):
+            install._validate_target_path(Path("../evil"))
+
+    def test_path_traversal_encoded(self):
+        with self.assertRaises(ValueError):
+            install._validate_target_path(Path("safe/../../etc"))
+
+    def test_path_traversal_in_middle(self):
+        with self.assertRaises(ValueError):
+            install._validate_target_path(Path("/home/user/../other/skills"))
+
+    def test_dot_without_dotdot_is_valid(self):
+        result = install._validate_target_path(Path("./skills"))
+        self.assertIsNotNone(result)
+
+    def test_normal_path_with_symlinks_resolves(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            real = Path(tmpdir) / "real"
+            real.mkdir()
+            link = Path(tmpdir) / "link"
+            try:
+                link.symlink_to(real, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("Symlinks not supported on this platform")
+            result = install._validate_target_path(link)
+            self.assertEqual(result, real.resolve())
+
+    @patch("install.sys.exit")
+    @patch("install.sys.stdout", new_callable=io.StringIO)
+    def test_target_path_traversal_exits_with_error(self, mock_stdout, mock_exit):
+        with (
+            patch("sys.argv", ["install.py", "--target", "/safe/../../etc"]),
+        ):
+            install.main()
+        mock_exit.assert_called_once_with(1)
+        output = mock_stdout.getvalue()
+        self.assertIn("Path traversal", output)
+
+
 class TestMainEdgeCases(_BaseInstallTestWithArgv):
     """Edge-case tests for main()."""
 

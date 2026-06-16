@@ -128,6 +128,27 @@ def copy_skill(src_dir, dest_dir):
         raise
 
 
+def _validate_target_path(path):
+    """Validate that a target installation path is safe.
+
+    Checks for path traversal (``..``) which could allow writing outside
+    the intended directory. Actual filesystem permission checks are left
+    to the OS.
+
+    Args:
+        path (Path): The target path to validate.
+
+    Returns:
+        Path: The resolved absolute path.
+
+    Raises:
+        ValueError: If path traversal (``..``) is detected in the path.
+    """
+    if ".." in str(path):
+        raise ValueError(f"Path traversal detected: {path}")
+    return path.resolve()
+
+
 def main():
     """Execute the main installation process."""
     parser = argparse.ArgumentParser(
@@ -163,6 +184,11 @@ def main():
 
     if args.target:
         target = Path(args.target)
+        try:
+            _validate_target_path(target)
+        except ValueError as e:
+            print_error(str(e))
+            sys.exit(1)
         if args.dry_run:
             print_info(f"[DRY-RUN] Would install to {target / 'complete-codebase-review'}")
             print_success("Dry run complete.")

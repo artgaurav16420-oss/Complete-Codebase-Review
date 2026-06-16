@@ -28,6 +28,13 @@ To run a rapid, surface-level assessment, use Quick Mode by exporting `CODE_REVI
 
 Phases 1 through 3 of this skill are strictly **read-only**. The agents will not alter your source code, configuration, or structural directories. Only Phase 4 allows code fixes to be generated and applied, and ONLY if you explicitly approve individual tasks.
 
+## 🚦 Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success — review completed, fix applied, or dry-run finished with no errors |
+| `1` | Failure — review halted mid-pipeline, agent threshold unmet, install failed, or post-fix verification failed |
+
 ## 📖 Usage Example
 
 ```bash
