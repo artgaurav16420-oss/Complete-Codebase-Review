@@ -69,9 +69,9 @@ else
 fi
 
 echo "[INFO] Simulating skill evaluation against expected issues..."
-# Keep the mock review output independent from expected_issues.json. If the
-# expectation file is changed without updating this fixture, this check fails
-# instead of validating the list against itself.
+# Keep the mock review output independent from expected_issues.json. This is
+# intentionally brittle: every new expected issue must be added to this fixture
+# so the test fails rather than validating the expectation list against itself.
 MOCK_OUTPUT=$(cat <<'OUTPUT'
 CWE-798
 CWE-78
