@@ -1,6 +1,20 @@
+"""Compliance tests for SKILL.md.
+
+Checks structural, content, cross-platform, fix-plan, and integration
+requirements against the SKILL.md file. Uses a custom ``check()`` /
+``make_checker()`` DSL for compact assertion of 130+ string-matching tests
+without requiring pytest or any third-party dependency.
+
+Usage:
+    python tests/test_compliance.py
+
+Returns exit code 0 on all-pass, 1 on any failure.
+"""
 import os
 import re
 import sys
+
+
 def check(test_name, condition):
     if condition:
         print(f"\033[92mPASS:\033[0m {test_name}")
@@ -11,6 +25,15 @@ def check(test_name, condition):
 
 
 def make_checker(section_name):
+    """Create a paired (run_check, result) closure for a test section.
+
+    Args:
+        section_name: Display name for the section (printed as header).
+
+    Returns:
+        Tuple of (run_check, result). run_check accumulates pass/fail;
+        result() returns (pass_count, fail_count).
+    """
     print(f"\033[96m=== {section_name} ===\033[0m")
     pass_count = 0
     fail_count = 0
@@ -26,6 +49,7 @@ def make_checker(section_name):
 
 
 def test_structural(content, skill_path):
+    """Check SKILL.md existence, YAML frontmatter, and version field."""
     run_check, result = make_checker("Structural")
     run_check("SKILL.md exists", os.path.exists(skill_path))
     karpathy_path = os.path.join(os.path.dirname(skill_path), "karpathy-guidelines.md")
@@ -49,6 +73,7 @@ def test_structural(content, skill_path):
     return result()
 
 def test_command_frontmatter(content):
+    """Check user-invocable, argument-hint, effort, and model fields."""
     run_check, result = make_checker("Command Frontmatter")
     run_check("Has user-invocable: true", 'user-invocable: true' in content)
     run_check("Has argument-hint", 'argument-hint:' in content)
@@ -61,6 +86,7 @@ def test_command_frontmatter(content):
     return result()
 
 def test_required_sections(content):
+    """Verify all required section headings exist in SKILL.md."""
     run_check, result = make_checker("Required Sections")
     sections = [
         "## Overview", "## When to Use", "## Phase 1", "## Phase 2", "## Phase 3",
@@ -74,6 +100,7 @@ def test_required_sections(content):
     return result()
 
 def test_content_quality(content):
+    """Check DA mentions, specialist agent table, health scores, roadmaps."""
     run_check, result = make_checker("Content Quality")
     run_check("Mentions devil's advocate", re.search(r"devil'?s advocate", content, re.IGNORECASE) is not None)
     run_check("Mentions CONFIRMED", 'CONFIRMED' in content)
@@ -116,6 +143,7 @@ def test_content_quality(content):
     return result()
 
 def test_cross_platform(content):
+    """Check Windows/Unix directory commands, temp dir, OS detection."""
     run_check, result = make_checker("Cross-Platform")
     run_check("Has cross-platform directory commands", 'Get-ChildItem' in content and 'find' in content)
     run_check("Has OS detection", '$IsWindows' in content or 'uname' in content)
@@ -127,6 +155,7 @@ def test_cross_platform(content):
     return result()
 
 def test_fix_plan(content):
+    """Check Phase 4 fix-plan table, approval flow, and post-fix verification."""
     run_check, result = make_checker("Fix Plan")
     run_check("Has Phase 4 section", '## Phase 4' in content)
     run_check("Has fix plan table", 'Task ID' in content and 'T-001' in content)
@@ -139,6 +168,7 @@ def test_fix_plan(content):
     return result()
 
 def test_baseline_failure_coverage(content):
+    """Check that failure-mode coverage includes shallow-scan, single-pass, and no-structure."""
     run_check, result = make_checker("Baseline Failure Coverage")
     run_check("Covers shallow scan failure", 'Discovery' in content and 'Specialist Agents' in content)
     run_check("Covers single-pass bias failure", re.search(r'fewer than \d+% of agents complete', content) is not None or ('fewer than' in content and 'parallel' in content))
@@ -149,6 +179,7 @@ def test_baseline_failure_coverage(content):
     return result()
 
 def test_non_negotiable_rules(content):
+    """Check rule count, dynamic timeout, web verification, and read-only rules."""
     run_check, result = make_checker("Non-Negotiable Rules")
     rule_lines = [line for line in content.split('\n') if re.match(r'^\|\s*\d+\s*\|', line)]
     run_check("Has at least 10 rules", len(rule_lines) >= 10)
@@ -159,6 +190,7 @@ def test_non_negotiable_rules(content):
     return result()
 
 def test_anti_rationalization(content):
+    """Check anti-rationalization table entries and web verification mention."""
     run_check, result = make_checker("Anti-Rationalization")
     anti_rat_lines = [line for line in content.split('\n') if re.match(r'^\| ".+ | ".+', line)]
     run_check("Has at least 6 entries", len(anti_rat_lines) >= 6)
@@ -166,6 +198,7 @@ def test_anti_rationalization(content):
     return result()
 
 def test_red_flags(content):
+    """Check red-flag count and coverage of agent failure, skipped web-verify, file-modification."""
     run_check, result = make_checker("Red Flags")
     red_flag_lines = [line for line in content.split('\n') if re.match(r'^- ', line) and not any(x in line for x in ['User', 'source', 'title', 'rubric'])]
     run_check("Has at least 5 red flags", len(red_flag_lines) >= 5)
@@ -175,6 +208,7 @@ def test_red_flags(content):
     return result()
 
 def test_integration_discovery_phase(content):
+    """Check Phase 1 discovery collects languages, git history, manifest, and health dimensions."""
     run_check, result = make_checker("Integration: Discovery Phase")
     run_check("Discovery collects languages", 'Languages' in content and 'Frameworks' in content)
     run_check("Discovery collects git history", 'git' in content and re.search(r'churn|history', content, re.IGNORECASE) is not None)
@@ -185,6 +219,7 @@ def test_integration_discovery_phase(content):
     return result()
 
 def test_integration_parallel_analysis(content):
+    """Check Phase 2 spawns all 14 agents with methodology, quantification, web-verify, skill-loading."""
     run_check, result = make_checker("Integration: Parallel Analysis")
     agent_names = [
         "Architecture Analyzer",
@@ -214,6 +249,7 @@ def test_integration_parallel_analysis(content):
     return result()
 
 def test_integration_synthesis_roadmap(content):
+    """Check Phase 3 dedup, severity normalization, DA verdicts, and 3-phase roadmap."""
     run_check, result = make_checker("Integration: Synthesis + Roadmap")
     run_check("Synthesis deduplicates findings", 'Deduplicate' in content)
     run_check("Synthesis normalizes severity", 'Normalize severity' in content)
@@ -228,6 +264,7 @@ def test_integration_synthesis_roadmap(content):
     return result()
 
 def test_integration_output_cleanup(content):
+    """Check output destination, temp cleanup, executive summary, per-domain scores, filter."""
     run_check, result = make_checker("Integration: Output + Cleanup")
     run_check("Asks user for output destination", 'Where should I write' in content)
     run_check("Deletes temp files after output", 'Delete' in content and 'temp' in content)
@@ -239,6 +276,7 @@ def test_integration_output_cleanup(content):
     return result()
 
 def test_integration_fix_plan(content):
+    """Check task IDs, approval gates, selective apply, 'all'/'skip' shortcuts, estimate conflicts."""
     run_check, result = make_checker("Integration: Fix Plan")
     run_check("Fix plan generates tasks with IDs", 'Task ID' in content and 'T-001' in content)
     run_check("Fix plan requires user approval", 'Do NOT apply' in content and 'user explicitly' in content)
@@ -252,6 +290,7 @@ def test_integration_fix_plan(content):
     return result()
 
 def test_integration_safety(content):
+    """Check read-only declaration, no-auto-apply rule, modifying-files red flag."""
     run_check, result = make_checker("Integration: Safety")
     run_check("Declares READ-ONLY", 'NEVER modify the codebase' in content or 'READ-ONLY' in content)
     run_check("Rule 9: no codebase modification", 'NEVER modify the codebase during Phases 1-3' in content)
@@ -261,6 +300,7 @@ def test_integration_safety(content):
     return result()
 
 def test_integration_cross_platform(content):
+    """Check OS detection, Windows Get-ChildItem, Unix find, temp-dir fallback."""
     run_check, result = make_checker("Integration: Cross-Platform")
     run_check("Detects OS", '$IsWindows' in content or 'uname' in content)
     run_check("Windows commands available", 'Get-ChildItem' in content)
@@ -272,6 +312,11 @@ SKILL_PATH = os.path.join(os.path.dirname(__file__), "..", "SKILL.md")
 
 
 def main():
+    """Run all compliance checks and print results.
+
+    Loads SKILL.md, runs every test_* function, aggregates pass/fail
+    counts, and exits with code 0 only if all tests pass.
+    """
     skill_path = SKILL_PATH
 
     with open(skill_path, "r", encoding="utf-8") as f:
