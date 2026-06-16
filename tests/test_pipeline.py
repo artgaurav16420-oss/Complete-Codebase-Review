@@ -62,14 +62,32 @@ def validate_findings(findings):
     return errors
 
 
-def validate_roadmap(roadmap):
+def validate_roadmap(roadmap, findings=None):
     """Validate improvement roadmap structure. Returns list of error strings."""
     errors = []
+    if not isinstance(roadmap, dict):
+        errors.append("improvement_roadmap must be a dictionary")
+        return errors
     for phase in ["phase_1", "phase_2", "phase_3"]:
         if phase not in roadmap:
             errors.append(f"improvement_roadmap missing '{phase}'")
         elif not isinstance(roadmap[phase], list) or len(roadmap[phase]) == 0:
             errors.append(f"improvement_roadmap.{phase} must be a non-empty list")
+    if findings:
+        roadmap_items = [
+            item
+            for phase in roadmap.values()
+            if isinstance(phase, list)
+            for item in phase
+        ]
+        for idx, finding in enumerate(findings):
+            if finding.get("da_verdict") != "REJECTED":
+                continue
+            title = finding.get("finding", "").lower()
+            if any(title in item.lower() or item.lower() in title for item in roadmap_items):
+                errors.append(
+                    f"finding[{idx}] rejected DA verdict must be excluded from roadmap"
+                )
     return errors
 
 
@@ -83,7 +101,9 @@ def validate_review_output(output):
     errors.extend(validate_executive_summary(output["executive_summary"]))
     errors.extend(validate_scores(output["per_domain_scores"]))
     errors.extend(validate_findings(output["detailed_findings"]))
-    errors.extend(validate_roadmap(output["improvement_roadmap"]))
+    errors.extend(validate_roadmap(
+        output["improvement_roadmap"], output["detailed_findings"]
+    ))
     return errors
 
 
@@ -147,7 +167,7 @@ SAMPLE_VALID_OUTPUT = {
         },
     ],
     "improvement_roadmap": {
-        "phase_1": ["Fix hardcoded credential", "Add CI concurrency", "Remove unused import"],
+        "phase_1": ["Fix hardcoded credential", "Add CI concurrency"],
         "phase_2": ["Add env-var config tests", "Add smoke tests", "Create CONTRIBUTING.md"],
         "phase_3": ["Pipeline functional test", "Coverage measurement"],
     },
@@ -204,6 +224,18 @@ class TestOutputSchemas(unittest.TestCase):
         bad["detailed_findings"] = bad_findings
         errors = validate_review_output(bad)
         self.assertTrue(any("severity" in e for e in errors))
+
+    def test_rejected_findings_are_excluded_from_roadmap(self):
+        bad = dict(SAMPLE_VALID_OUTPUT)
+        rejected_title = bad["detailed_findings"][3]["finding"]
+        roadmap = {
+            phase: list(items)
+            for phase, items in bad["improvement_roadmap"].items()
+        }
+        roadmap["phase_1"].append(rejected_title)
+        bad["improvement_roadmap"] = roadmap
+        errors = validate_review_output(bad)
+        self.assertTrue(any("rejected DA verdict" in e for e in errors))
 
     def test_scores_out_of_range(self):
         bad = dict(SAMPLE_VALID_OUTPUT)

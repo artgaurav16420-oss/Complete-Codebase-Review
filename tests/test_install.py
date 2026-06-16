@@ -159,6 +159,16 @@ class TestCopySkill(unittest.TestCase):
             self.assertTrue(skill_dest.exists())
             self.assertTrue((skill_dest / "SKILL.md").exists())
 
+    def test_copy_skill_includes_karpathy_guidelines(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {
+                "karpathy-guidelines.md": "# Guidelines",
+            })
+            dest = Path(tmpdir) / "dest"
+            result = install.copy_skill(src, dest)
+
+            self.assertTrue((result / "karpathy-guidelines.md").exists())
+
     def test_copy_skill_to_file_path_raises_oserror(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
@@ -237,7 +247,10 @@ class TestPrintFunctions(unittest.TestCase):
         self.patcher.stop()
 
     def test_print_success_contains_green_code(self):
-        with patch.object(sys.stdout, "isatty", return_value=True):
+        with (
+            patch.object(sys.stdout, "isatty", return_value=True),
+            patch.dict(os.environ, {}, clear=True),
+        ):
             install.print_success("done")
         output = self.mock_stdout.getvalue()
         self.assertIn("SUCCESS", output)
@@ -246,7 +259,10 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("done", output)
 
     def test_print_info_contains_blue_code(self):
-        with patch.object(sys.stdout, "isatty", return_value=True):
+        with (
+            patch.object(sys.stdout, "isatty", return_value=True),
+            patch.dict(os.environ, {}, clear=True),
+        ):
             install.print_info("hello")
         output = self.mock_stdout.getvalue()
         self.assertIn("INFO", output)
@@ -255,7 +271,10 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("hello", output)
 
     def test_print_error_contains_red_code(self):
-        with patch.object(sys.stdout, "isatty", return_value=True):
+        with (
+            patch.object(sys.stdout, "isatty", return_value=True),
+            patch.dict(os.environ, {}, clear=True),
+        ):
             install.print_error("fail")
         output = self.mock_stdout.getvalue()
         self.assertIn("ERROR", output)
@@ -264,7 +283,10 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("fail", output)
 
     def test_multiple_calls_accumulate(self):
-        with patch.object(sys.stdout, "isatty", return_value=True):
+        with (
+            patch.object(sys.stdout, "isatty", return_value=True),
+            patch.dict(os.environ, {}, clear=True),
+        ):
             install.print_info("first")
             install.print_success("second")
             install.print_error("third")
@@ -532,6 +554,10 @@ class TestValidateTargetPath(unittest.TestCase):
     def test_dot_without_dotdot_is_valid(self):
         result = install._validate_target_path(Path("./skills"))
         self.assertIsNotNone(result)
+
+    def test_dotdot_substring_in_path_component_is_valid(self):
+        result = install._validate_target_path(Path("/home/user/..safe"))
+        self.assertEqual(result, Path("/home/user/..safe").resolve())
 
     def test_normal_path_with_symlinks_resolves(self):
         with tempfile.TemporaryDirectory() as tmpdir:

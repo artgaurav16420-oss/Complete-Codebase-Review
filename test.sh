@@ -14,8 +14,7 @@ cd "$SCRIPT_DIR"
 
 echo "[INFO] Starting Mock Validation Test Suite"
 
-TEST_DIR="tests/dummy_repo"
-mkdir -p "$TEST_DIR"
+TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ccr-dummy-repo.XXXXXX")"
 cat << 'CODE' > "$TEST_DIR/app.py"
 import os
 import subprocess
@@ -28,6 +27,7 @@ def login(user, password):
     return False
 
 def ping_host(host):
+    # Intentional vulnerable fixture for integration tests: CWE-78.
     subprocess.run(["ping", "-c", "1", host], check=False)
 CODE
 
@@ -69,16 +69,18 @@ else
 fi
 
 echo "[INFO] Simulating skill evaluation against expected issues..."
-# Build MOCK_OUTPUT dynamically from expected_issues.json so this test
-# stays in sync when the JSON is updated.
-MOCK_OUTPUT=$(python3 -c "
-import json, sys
-issues = json.load(open('tests/expected_issues.json', encoding='utf-8'))
-print(' '.join(issues))
-")
+# Keep the mock review output independent from expected_issues.json. If the
+# expectation file is changed without updating this fixture, this check fails
+# instead of validating the list against itself.
+MOCK_OUTPUT=$(cat <<'OUTPUT'
+CWE-798
+CWE-78
+unused-import
+OUTPUT
+)
 
 while IFS= read -r issue; do
-    if echo "$MOCK_OUTPUT" | grep -q "$issue"; then
+    if echo "$MOCK_OUTPUT" | grep -Fxq "$issue"; then
         echo "[SUCCESS] Found expected issue: $issue"
     else
         echo "[ERROR] Expected issue '$issue' not found in mock output"

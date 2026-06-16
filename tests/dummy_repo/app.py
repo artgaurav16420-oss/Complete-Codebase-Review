@@ -9,4 +9,5 @@ def login(user, password):
     return False
 
 def ping_host(host):
+    # Intentional vulnerable fixture for integration tests: CWE-78.
     subprocess.run(["ping", "-c", "1", host], check=False)

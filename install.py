@@ -15,12 +15,27 @@ Usage:
 
 import argparse
 import os
+import re
 import shutil
 import sys
 import platform
 from pathlib import Path
 
-VERSION = "2.0.2"
+
+def _read_version():
+    pyproject = Path(__file__).parent / "pyproject.toml"
+    if not pyproject.exists():
+        return "2.0.2"
+    match = re.search(
+        r'(?m)^version\s*=\s*"([^"]+)"',
+        pyproject.read_text(encoding="utf-8")
+    )
+    if not match:
+        raise RuntimeError("version missing from pyproject.toml")
+    return match.group(1)
+
+
+VERSION = _read_version()
 
 
 def _use_color():
@@ -133,9 +148,9 @@ def copy_skill(src_dir, dest_dir):
 def _validate_target_path(path):
     """Validate that a target installation path is safe.
 
-    Checks for path traversal (``..``) which could allow writing outside
-    the intended directory. Actual filesystem permission checks are left
-    to the OS.
+    Checks for explicit path traversal components (``..``) which could allow
+    writing outside the intended directory. Actual filesystem permission checks
+    are left to the OS.
 
     Args:
         path (Path): The target path to validate.
@@ -146,7 +161,7 @@ def _validate_target_path(path):
     Raises:
         ValueError: If path traversal (``..``) is detected in the path.
     """
-    if ".." in str(path):
+    if ".." in path.parts:
         raise ValueError(f"Path traversal detected: {path}")
     return path.resolve()
 
