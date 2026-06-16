@@ -83,8 +83,8 @@ def validate_roadmap(roadmap, findings=None):
         for idx, finding in enumerate(findings):
             if finding.get("da_verdict") != "REJECTED":
                 continue
-            title = finding.get("finding")
-            if title in roadmap_items:
+            title = finding.get("finding", "").lower()
+            if any(title in item.lower() or item.lower() in title for item in roadmap_items):
                 errors.append(
                     f"finding[{idx}] rejected DA verdict must be excluded from roadmap"
                 )
