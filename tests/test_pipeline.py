@@ -65,6 +65,9 @@ def validate_findings(findings):
 def validate_roadmap(roadmap, findings=None):
     """Validate improvement roadmap structure. Returns list of error strings."""
     errors = []
+    if not isinstance(roadmap, dict):
+        errors.append("improvement_roadmap must be a dictionary")
+        return errors
     for phase in ["phase_1", "phase_2", "phase_3"]:
         if phase not in roadmap:
             errors.append(f"improvement_roadmap missing '{phase}'")
