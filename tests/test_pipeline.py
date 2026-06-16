@@ -86,7 +86,7 @@ def validate_roadmap(roadmap, findings=None):
             title = finding.get("finding", "").strip().casefold()
             if not title:
                 continue
-            if any(title == item.strip().casefold() for item in roadmap_items):
+            if any(isinstance(item, str) and title == item.strip().casefold() for item in roadmap_items):
                 errors.append(
                     f"finding[{idx}] rejected DA verdict must be excluded from roadmap"
                 )
