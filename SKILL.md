@@ -171,7 +171,8 @@ tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 ```
 
 Each agent MUST:
-- **Load a relevant skill**: Use the Skill tool to load any skill matching the agent's domain (e.g. `accessibility`, `security-review`, `postgres-patterns`, `frontend-patterns`, `motion-foundations`, `ui-ux-pro-max`) before starting analysis
+- **Load a relevant skill**: Use the Skill tool to load the domain-specific skill (e.g. `security-review`, `accessibility`, `postgres-patterns`) AND the `karpathy-guidelines` skill before starting analysis
+- **Follow Karpathy Guidelines**: Apply simplicity/YAGNI, surgical changes, verify before done, surface assumptions in all analysis
 - **Include Methodology**: Step-by-step audit process
 - **Quantify findings**: Numeric score or density metric wherever possible
 - **Web Verify**: CVE lookups, framework best-practices checks
@@ -214,6 +215,8 @@ This ensures the synthesis agent can reliably parse, deduplicate, and score find
 
 ### Process Quality Agent Instructions
 Read the file at the absolute path stored in $SKILL_DIR/karpathy-guidelines.md, where $SKILL_DIR is the directory containing this SKILL.md file (injected by the orchestrator into the agent prompt at spawn time as SKILL_DIR=<absolute-path>).
+
+This agent is the **enforcer** of Karpathy Guidelines compliance across the codebase. All other agents also load karpathy-guidelines.md and follow its principles, but this agent evaluates the target codebase's adherence.
 
 Data sources (if available):
 - .git/logs/HEAD or output of git log --oneline (if git is accessible)
@@ -259,7 +262,7 @@ Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. S
 2. Log pre-flight estimate (see above).
 3. Spawn N Task agents in parallel. Use the Task tool for each:
 
-**Orchestrator pre-step**: Resolve `SKILL_DIR` as the absolute path of the directory containing *this* SKILL.md file — i.e. the installed skill directory, not the target codebase directory. Use whichever mechanism your agent runtime provides to locate the currently-executing skill file (e.g. the `skill_path` variable injected by Claude Code, or the absolute path recorded at install time). Inject `SKILL_DIR=<resolved-absolute-path>` into every sub-agent prompt that references skill-local files (currently: the Process Quality agent, which reads `karpathy-guidelines.md`).
+**Orchestrator pre-step**: Resolve `SKILL_DIR` as the absolute path of the directory containing *this* SKILL.md file — i.e. the installed skill directory, not the target codebase directory. Use whichever mechanism your agent runtime provides to locate the currently-executing skill file (e.g. the `skill_path` variable injected by Claude Code, or the absolute path recorded at install time). Inject `SKILL_DIR=<resolved-absolute-path>` into **every** sub-agent prompt (all 14 specialist agents, synthesis, DA, roadmap, Phase 4 fix agents, Phase 5 reviewer). Every agent reads `karpathy-guidelines.md` from this path and follows Karpathy Guidelines.
 
 **Never** resolve `SKILL_DIR` by running `realpath SKILL.md` from the target codebase directory — that path resolves against the wrong CWD.
 
@@ -268,8 +271,9 @@ task name: security-posture-audit
 subagent_type: general
 prompt: "You are auditing the Security Posture of {TARGET_DIR}.
   SKILL_DIR=${SKILL_DIR}
-  Load the 'security-review' skill. Run OWASP checks, scan for
-  hardcoded secrets, and check dependency CVEs.
+  Load the 'security-review' skill AND the 'karpathy-guidelines' skill.
+  Run OWASP checks, scan for hardcoded secrets, and check dependency CVEs.
+  Apply simplicity/YAGNI, verify before asserting, surface assumptions.
   Return findings in the standard severity-grouped format."
 ```
 
@@ -319,6 +323,11 @@ Actions:
 - Estimate total tech debt in engineering hours
 - Assign ownership suggestions by team/domain
 
+**All Phase 3 agents (Synthesis, DA, Roadmap) also load `karpathy-guidelines.md` via `SKILL_DIR` and follow Karpathy Guidelines:**
+- Synthesis: deduplicate surgically, avoid over-engineering deduplication logic
+- DA: verify each claim before challenging, avoid over-skepticism, surface assumptions in challenges
+- Roadmap: prioritize by impact/effort (YAGNI — no aspirational work in Phase 1), surface assumptions in estimates
+
 ### 3d. Output + Cleanup
 
 1. Ask user: "Where should I write the health report? [file path | stdout]"
@@ -362,8 +371,13 @@ Print the fix plan table. Then ask:
 ### 4d. Apply Approved Fixes
 
 Only after user approval:
-- For each approved task, create a Task agent that loads the relevant skill, reads the target files, applies the fix, and verifies it.
+- For each approved task, create a Task agent that loads the relevant skill **AND the `karpathy-guidelines` skill** (via `SKILL_DIR`), reads the target files, applies the fix, and verifies it.
 - CRITICAL items first, then HIGH, then MEDIUM.
+- **Fix agents MUST follow Karpathy Guidelines:**
+  - **Surgical changes only**: fix exactly what the task describes, no refactoring, no formatting changes, no unrelated improvements
+  - **Verify before done**: run targeted tests for the changed behavior; do not assume the fix works
+  - **No over-engineering (YAGNI)**: do not add abstractions, interfaces, or patterns not required by the fix
+  - **Surface assumptions**: if the fix requires a design decision, document it in a comment or ADR
 
 ### 4e. Baseline Snapshot
 
@@ -440,15 +454,26 @@ Spawn a fresh Task agent (not the original fixers). Give it:
 - The list of changed files from Phase 4d
 - The original fix plan tasks for context
 - Instructions to review each change for correctness, edge cases, and regressions
+- Load the `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines
 
 The reviewer MUST NOT have been involved in Phase 4d execution to avoid confirmation bias.
+**Reviewer follows Karpathy Guidelines:**
+- **Surgical review**: focus only on changed files and their immediate dependencies
+- **Verify before asserting**: independently read code to confirm each potential issue; do not rely on heuristics
+- **No over-engineering (YAGNI)**: flag only real regressions and bugs, not style preferences or speculative improvements
+- **Surface assumptions**: note any design decisions in the changed code that lack documentation
 
 ### 5b. Apply Corrections
 
 If the reviewer finds bugs, edge cases missed, or regressions introduced:
 1. For each issue, create a corrective task with the same structure as 4a (Task ID, Target files, Suggested change)
 2. Apply the correction immediately (no additional user approval — Phase 4 already approved the fix scope)
-3. Log each correction in the final report
+3. **Correction agents load `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines:**
+   - **Surgical fixes only**: change exactly what's needed to fix the regression
+   - **Verify before done**: run targeted tests for the corrected behavior
+   - **No over-engineering (YAGNI)**: no new abstractions or patterns beyond the fix
+   - **Surface assumptions**: document any design decisions in comments/ADRs
+4. Log each correction in the final report
 
 ### 5c. Full Test Suite Run
 
