@@ -249,7 +249,7 @@ Before spawning agents, estimate and log expected resource consumption:
 | Agents | N (from Orchestration step 1) |
 | Min wall time | N × ~30s per agent (prompt + tool calls) |
 | Max wall time | N × `CODE_REVIEW_TIMEOUT_SEC` (900s default) |
-| Est. token cost per agent | ~15K–80K input (scales with codebase size) + ~5K output; large codebases may exceed 100K input tokens per agent |
+| Est. token cost per agent | ~15K–80K input (scales with codebase size) + Karpathy Guidelines load overhead per spawned agent + ~5K output; large codebases may exceed 100K input tokens per agent |
 
 Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. Set CODE_REVIEW_EFFORT=min for Quick Mode (3 agents, 120s timeout)."`
 
@@ -467,13 +467,14 @@ The reviewer MUST NOT have been involved in Phase 4d execution to avoid confirma
 
 If the reviewer finds bugs, edge cases missed, or regressions introduced:
 1. For each issue, create a corrective task with the same structure as 4a (Task ID, Target files, Suggested change)
-2. Apply the correction immediately (no additional user approval — Phase 4 already approved the fix scope)
-3. **Correction agents load `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines:**
+2. Present the correction tasks to the user and wait for explicit approval by Task ID or "all" before applying them; Phase 4 approval covers only the originally approved fix tasks, not newly discovered corrections
+3. Do NOT apply Phase 5 corrections without explicit user approval
+4. **Correction agents load `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines:**
    - **Surgical fixes only**: change exactly what's needed to fix the regression
    - **Verify before done**: run targeted tests for the corrected behavior
    - **No over-engineering (YAGNI)**: no new abstractions or patterns beyond the fix
    - **Surface assumptions**: document any design decisions in comments/ADRs
-4. Log each correction in the final report
+5. Log each approved correction in the final report
 
 ### 5c. Full Test Suite Run
 

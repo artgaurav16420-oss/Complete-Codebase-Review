@@ -2,7 +2,7 @@ Karpathy Guidelines v3.7 MANDATORY. Follow `karpathy-guidelines.md` as primary b
 
 # AGENTS.md — Complete Codebase Review
 
-**Skill repo.** `SKILL.md` (720-line 4-phase skill). Not a library/app. Tests: `tests/`. Docs: `help.md`, `SECURITY.md`. Architecture references: `ADRs/` (3 docs). Zero deps, stdlib only, Python >= 3.9.
+**Skill repo.** `SKILL.md` (multi-phase skill). Not a library/app. Tests: `tests/`. Docs: `help.md`, `SECURITY.md`. Architecture references: `ADRs/` (3 docs). Zero deps, stdlib only, Python >= 3.9.
 
 ## Commands
 
@@ -24,15 +24,16 @@ Karpathy Guidelines v3.7 MANDATORY. Follow `karpathy-guidelines.md` as primary b
 
 ## Key Architecture
 
-4-phase pipeline defined in `SKILL.md`:
+5-phase pipeline defined in `SKILL.md`:
 ```
 Phase 1: Discovery    → map codebase, env check, health dimensions, manifest
 Phase 2: Parallel     → 14 specialist agents (Task sub-agents)
 Phase 3: Synthesis+DA → dedup, normalize, Devil's Advocate (CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED)
 Phase 4: Fix Plan     → user-approved tasks → apply fixes → verify (lint → typecheck → test)
+Phase 5: Review+Test   → independent review → user-approved corrections → full suite
 ```
 
-Read-only (Phases 1-3). Phase 4 waits for explicit user approval (by task ID or "all"). No auto-retry on post-fix verification.
+Read-only (Phases 1-3). Phase 4 and Phase 5 corrections wait for explicit user approval (by task ID or "all"). No auto-retry on post-fix verification.
 
 Key env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIMEOUT_SEC`, `CODE_REVIEW_FILTER`, `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_STATUS_INTERVAL`.
 
@@ -49,7 +50,7 @@ Key env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW
 - **Tech debt floor estimates**: Table in SKILL.md (circular dep = 8h, hardcoded secret = 2h, missing coverage = 4h, etc.). Documented multipliers allowed (2×, 0.5×).
 - **Cross-platform**: SKILL.md has separate command tables for Windows (`Get-ChildItem`) and Unix (`find`).
 - **`install.py` version**: Read from `pyproject.toml` via `_read_version()` — raises if file missing. Sync enforced by compliance test.
-- **`CHANGELOG.md`**: Extracted from SKILL.md. SKILL.md no longer carries version history (reduced from 720 to ~693 lines).
+- **`CHANGELOG.md`**: Extracted from SKILL.md. SKILL.md no longer carries version history; avoid hardcoded SKILL.md line-count claims because they drift.
 - **`test.sh` mock evaluation**: Hardcoded mock output matching `tests/expected_issues.json` (3 issues: CWE-798, CWE-78, unused-import). Brittle — adding an issue requires updating both.
 - **.gitignore**: Excludes `.skills`, `.code-review-cache/`, `__pycache__/`, `*.pyc`, `.DS_Store`, `*.egg-info/`, `.env`, `.secret`, `.credentials`, `ccr-baseline.json`.
 - **.gitattributes**: `* text=auto eol=lf`.
