@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, Task"
 effort: ${CODE_REVIEW_EFFORT:-max}
-version: 2.0.2
+version: 2.1.0
 ---
 
 # Complete Codebase Review
@@ -36,6 +36,7 @@ Four-phase pattern for holistic codebase health assessment. Invoke with `/comple
 **Phase 2: Parallel Analysis** → Spawn N specialist agents across health dimensions
 **Phase 3: Synthesis + Roadmap** → Synthesis, then DA verification, then prioritized roadmap
 **Phase 4: Fix Plan** → Generate per-agent code fix tasks, present for user review, wait for permission
+**Phase 5: Independent Review & Test** → Independent agent audits applied fixes, corrects regressions, runs full test suite
 
 ### Argument Handling
 
@@ -428,6 +429,55 @@ After fixes are applied, verify they didn't introduce regressions:
 ```
 
 6. If any check fails, report the failure to the user and suggest remediation. Do not auto-retry.
+
+## Phase 5: Independent Review & Test
+
+After Phase 4 fixes are applied, an independent agent reviews all changes, corrects any regressions, runs the full test suite, and confirms the codebase is intact.
+
+### 5a. Spawn Independent Reviewer
+
+Spawn a fresh Task agent (not the original fixers). Give it:
+- The list of changed files from Phase 4d
+- The original fix plan tasks for context
+- Instructions to review each change for correctness, edge cases, and regressions
+
+The reviewer MUST NOT have been involved in Phase 4d execution to avoid confirmation bias.
+
+### 5b. Apply Corrections
+
+If the reviewer finds bugs, edge cases missed, or regressions introduced:
+1. For each issue, create a corrective task with the same structure as 4a (Task ID, Target files, Suggested change)
+2. Apply the correction immediately (no additional user approval — Phase 4 already approved the fix scope)
+3. Log each correction in the final report
+
+### 5c. Full Test Suite Run
+
+After all corrections are applied:
+1. Detect the project's test runner:
+   - `python -m pytest` / `python -m unittest` for Python
+   - `npm test` / `npx jest` for Node.js
+   - `cargo test` for Rust
+   - `go test ./...` for Go
+   - Default: try `make test`, `npm test`, `pytest`
+2. Run the full test suite
+3. If any tests fail:
+   - Report failures to the user
+   - Do NOT auto-retry or auto-fix
+   - List which tests failed and their error messages
+
+### 5d. Final Report
+
+Produce a Phase 5 summary:
+
+```
+### Independent Review & Test Results
+- **Files reviewed**: [n]
+- **Corrections applied**: [n]
+- **Test suite**: [n/n PASS | FAILED]
+- **Status**: [PASS / TESTS FAILED]
+```
+
+If tests failed, suggest the user investigate before considering the review complete.
 
 ## Web Verification
 

@@ -186,13 +186,16 @@ def test_cross_platform(content):
     return result()
 
 def test_fix_plan(content):
-    """Check Phase 4 fix-plan table, approval flow, and post-fix verification."""
+    """Check Phase 4 fix-plan table, approval flow, post-fix verification, and Phase 5 independent review."""
     run_check, result = make_checker("Fix Plan")
     run_check("Has Phase 4 section", '## Phase 4' in content)
     run_check("Has fix plan table", 'Task ID' in content and 'T-001' in content)
     run_check("Asks user for approval", 'Do NOT apply' in content and 'user explicitly' in content)
     run_check("Only applies on approved Task IDs", 'Task IDs' in content or '"all"' in content)
     run_check("Has post-fix verification phase", 'Post-Fix Verification' in content or 'Verify Fixes' in content)
+    run_check("Has Phase 5 section", '## Phase 5' in content)
+    run_check("Has independent review phase", 'Independent Review' in content or 'independent agent' in content)
+    run_check("Has full test suite run", 'full test suite' in content or 'test suite' in content)
     run_check("Applies CRITICAL before HIGH", 'CRITICAL items first' in content)
     run_check("Has baseline snapshot for trend", 'baseline' in content and 'trend' in content)
     run_check("Has re-review guidance", 'Re-review' in content or 'follow-up' in content)
@@ -602,6 +605,17 @@ class TestFixPlan(_BaseComplianceTest):
 
     def test_estimate_conflicts_logged(self):
         self.assertIn('EST-CONFLICT', self.content)
+
+    def test_phase_5_section_exists(self):
+        self.assertIn('## Phase 5', self.content)
+
+    def test_independent_review_phase(self):
+        self.assertTrue(
+            'Independent Review' in self.content or 'independent agent' in self.content)
+
+    def test_full_test_suite_run(self):
+        self.assertTrue(
+            'full test suite' in self.content or 'test suite' in self.content)
 
 
 class TestIntegration(_BaseComplianceTest):
