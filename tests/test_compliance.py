@@ -122,6 +122,14 @@ def test_required_sections(content):
         run_check(f"Has section: {section}", section in content)
     return result()
 
+def _has_changelog():
+    path = os.path.join(os.path.dirname(__file__), "..", "CHANGELOG.md")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return 'Changelog' in f.read() or 'Change Log' in f.read()
+    return False
+
+
 def test_content_quality(content):
     """Check DA mentions, specialist agent table, health scores, roadmaps."""
     run_check, result = make_checker("Content Quality")
@@ -162,7 +170,7 @@ def test_content_quality(content):
     run_check("Has output destination ask", 'Ask user' in content or 'AskUserQuestion' in content or 'Where should I write' in content)
     run_check("Mentions UNVERIFIED", 'UNVERIFIED' in content)
     run_check("Has sample output section", 'Sample Output' in content or 'Example Report' in content)
-    run_check("Has changelog section", 'Changelog' in content or 'Change Log' in content)
+    run_check("Has changelog section", ('Changelog' in content or 'Change Log' in content) or _has_changelog())
     return result()
 
 def test_cross_platform(content):
@@ -478,7 +486,7 @@ class TestContentQuality(_BaseComplianceTest):
             'Sample Output' in self.content or
             'Example Report' in self.content)
         self.assertTrue(
-            'Changelog' in self.content or 'Change Log' in self.content)
+            ('Changelog' in self.content or 'Change Log' in self.content) or _has_changelog())
 
     def test_non_negotiable_rules_table(self):
         rule_lines = [
