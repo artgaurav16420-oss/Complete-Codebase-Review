@@ -25,7 +25,7 @@ from pathlib import Path
 def _read_version():
     pyproject = Path(__file__).parent / "pyproject.toml"
     if not pyproject.exists():
-        return "2.0.2"
+        raise RuntimeError("pyproject.toml not found; cannot determine version")
     match = re.search(
         r'(?m)^version\s*=\s*"([^"]+)"',
         pyproject.read_text(encoding="utf-8")
@@ -42,39 +42,32 @@ def _use_color():
     return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 
 
-def print_success(msg):
+def _print(msg, label, color):
     if _use_color():
-        print(f"[\033[92mSUCCESS\033[0m] {msg}")
+        print(f"[{color}{label}\033[0m] {msg}")
     else:
-        print(f"[SUCCESS] {msg}")
+        print(f"[{label}] {msg}")
+
+
+def print_success(msg):
+    _print(msg, "SUCCESS", "\033[92m")
 
 
 def print_info(msg):
-    if _use_color():
-        print(f"[\033[94mINFO\033[0m] {msg}")
-    else:
-        print(f"[INFO] {msg}")
+    _print(msg, "INFO", "\033[94m")
 
 
 def print_error(msg):
-    if _use_color():
-        print(f"[\033[91mERROR\033[0m] {msg}")
-    else:
-        print(f"[ERROR] {msg}")
+    _print(msg, "ERROR", "\033[91m")
 
 
-def _claude_code_dir(home: Path) -> Path:
-    """Return Claude Code skill directory.
-
-    On Linux, honours XDG_CONFIG_HOME when explicitly set, otherwise falls
-    back to ~/.claude/skills (the conventional Claude Code install location).
-    On other platforms, always returns ~/.claude/skills.
-    """
+def _xdg_or_home_dir(home, app_dir):
+    """Return app skill dir under XDG_CONFIG_HOME on Linux, else ~/.<app_dir>/skills."""
     if platform.system() == "Linux":
         xdg_env = os.environ.get("XDG_CONFIG_HOME", "").strip()
         if xdg_env:
-            return Path(xdg_env) / "claude" / "skills"
-    return home / ".claude" / "skills"
+            return Path(xdg_env) / app_dir / "skills"
+    return home / f".{app_dir}" / "skills"
 
 
 def get_target_dirs():
@@ -86,10 +79,10 @@ def get_target_dirs():
     home = Path.home()
 
     dirs = {
-        "Claude Code": _claude_code_dir(home),
-        "OpenCode": home / ".opencode" / "skills",
-        "Cursor": home / ".cursor" / "skills",
-        "Continue": home / ".continue" / "skills",
+        "Claude Code": _xdg_or_home_dir(home, "claude"),
+        "OpenCode": _xdg_or_home_dir(home, "opencode"),
+        "Cursor": _xdg_or_home_dir(home, "cursor"),
+        "Continue": _xdg_or_home_dir(home, "continue"),
     }
 
     return dirs
@@ -166,6 +159,70 @@ def _validate_target_path(path):
     return path.resolve()
 
 
+def _run_target_install(src_dir, target, dry_run):
+    try:
+        resolved = _validate_target_path(Path(target))
+    except ValueError as e:
+        print_error(str(e))
+        sys.exit(1)
+    if dry_run:
+        print_info(f"[DRY-RUN] Would install to {resolved / 'complete-codebase-review'}")
+        print_success("Dry run complete.")
+        return
+    try:
+        dest_path = copy_skill(src_dir, resolved)
+        print_success(f"Installed to: {dest_path}")
+    except (PermissionError, OSError) as e:
+        print_error(f"Install failed: {e}")
+        sys.exit(1)
+    print_success("Installation complete!")
+
+
+def _run_auto_install(src_dir, target_dirs, dry_run):
+    installed_any = False
+    for tool_name, target_dir in target_dirs.items():
+        if not target_dir.parent.exists():
+            continue
+        print_info(f"Detected {tool_name} configuration at {target_dir.parent}")
+        if dry_run:
+            print_info(f"[DRY-RUN] Would install to {tool_name}: {target_dir / 'complete-codebase-review'}")
+            installed_any = True
+            continue
+        try:
+            dest_path = copy_skill(src_dir, target_dir)
+            print_success(f"Installed to {tool_name}: {dest_path}")
+            installed_any = True
+        except (PermissionError, OSError):
+            print_error(f"Failed to install to {tool_name}")
+    return installed_any
+
+
+def _run_local_fallback(src_dir, dry_run):
+    local_target = Path.cwd() / ".skills"
+    gitignore = Path.cwd() / ".gitignore"
+    if gitignore.exists() and any(
+        line.strip() in [".skills", ".skills/"]
+        for line in gitignore.read_text(encoding="utf-8").splitlines()
+    ):
+        print_info(
+            "WARNING: .skills/ is listed in .gitignore — "
+            "your local install will not be tracked by git."
+        )
+    if dry_run:
+        print_info(
+            f"[DRY-RUN] Would install to local directory: "
+            f"{local_target / 'complete-codebase-review'}"
+        )
+        print_success("Dry run complete.")
+        return
+    try:
+        dest_path = copy_skill(src_dir, local_target)
+        print_success(f"Installed to local directory: {dest_path}")
+    except (PermissionError, OSError) as e:
+        print_error(f"Local installation failed: {e}")
+        sys.exit(1)
+
+
 def main():
     """Execute the main installation process."""
     parser = argparse.ArgumentParser(
@@ -200,76 +257,20 @@ def main():
     src_dir = Path(__file__).parent.resolve()
 
     if args.target:
-        target = Path(args.target)
-        try:
-            _validate_target_path(target)
-        except ValueError as e:
-            print_error(str(e))
-            sys.exit(1)
-        if args.dry_run:
-            print_info(f"[DRY-RUN] Would install to {target / 'complete-codebase-review'}")
-            print_success("Dry run complete.")
-            return
-        try:
-            dest_path = copy_skill(src_dir, target)
-            print_success(f"Installed to: {dest_path}")
-        except (PermissionError, OSError) as e:
-            print_error(f"Install failed: {e}")
-            sys.exit(1)
-        print_success("Installation complete!")
+        _run_target_install(src_dir, args.target, args.dry_run)
         return
 
     target_dirs = get_target_dirs()
-    installed_any = False
-
-    for tool_name, target_dir in target_dirs.items():
-        if target_dir.parent.exists():
-            print_info(
-                f"Detected {tool_name} configuration at {target_dir.parent}"
-            )
-            if args.dry_run:
-                print_info(f"[DRY-RUN] Would install to {tool_name}: {target_dir / 'complete-codebase-review'}")
-                installed_any = True
-                continue
-            try:
-                dest_path = copy_skill(src_dir, target_dir)
-                print_success(f"Installed to {tool_name}: {dest_path}")
-                installed_any = True
-            except (PermissionError, OSError):
-                print_error(f"Failed to install to {tool_name}")
-                continue
+    installed_any = _run_auto_install(src_dir, target_dirs, args.dry_run)
 
     if args.dry_run and installed_any:
         print_success("Dry run complete.")
         return
 
     if not installed_any:
-        print_info(
-            "No existing global tool configurations detected. Installing locally."
-        )
-        local_target = Path.cwd() / ".skills"
-        gitignore = Path.cwd() / ".gitignore"
-        if gitignore.exists() and any(
-            line.strip() in [".skills", ".skills/"]
-            for line in gitignore.read_text(encoding="utf-8").splitlines()
-        ):
-            print_info(
-                "WARNING: .skills/ is listed in .gitignore — "
-                "your local install will not be tracked by git."
-            )
+        _run_local_fallback(src_dir, args.dry_run)
         if args.dry_run:
-            print_info(
-                f"[DRY-RUN] Would install to local directory: "
-                f"{local_target / 'complete-codebase-review'}"
-            )
-            print_success("Dry run complete.")
             return
-        try:
-            dest_path = copy_skill(src_dir, local_target)
-            print_success(f"Installed to local directory: {dest_path}")
-        except (PermissionError, OSError) as e:
-            print_error(f"Local installation failed: {e}")
-            sys.exit(1)
 
     print_success("Installation complete!")
 

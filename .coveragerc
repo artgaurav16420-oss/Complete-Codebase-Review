@@ -4,5 +4,9 @@ omit =
     .skills/*
     .code-review-cache/*
     __pycache__/*
-    tests/dummy_repo/*
+    tests/*
     ADRs/*
+
+[report]
+fail_under = 60
+show_missing = True

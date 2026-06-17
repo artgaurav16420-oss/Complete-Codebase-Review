@@ -1,0 +1,5 @@
+<type>: <description>
+
+[optional body]
+
+Types: feat, fix, test, docs, refactor, ci, chore

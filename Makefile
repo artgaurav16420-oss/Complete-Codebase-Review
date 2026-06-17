@@ -1,7 +1,11 @@
-.PHONY: test test-py test-bash clean clean-windows
+.PHONY: test test-py test-bash test-windows clean clean-windows
 
 test: test-py test-bash
 	@echo "[SUCCESS] All tests passed!"
+
+test-windows: test-py
+	@echo "[INFO] Bash tests skipped on Windows."
+	@echo "[SUCCESS] All Windows tests passed!"
 
 test-py:
 	python tests/test_compliance.py

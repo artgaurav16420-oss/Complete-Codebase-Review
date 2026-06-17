@@ -3,6 +3,7 @@
 Runs install.py with various flags and asserts exit codes/output.
 No mocking — tests the real entry point as a user would invoke it.
 """
+import os
 import subprocess
 import sys
 import unittest
@@ -128,6 +129,47 @@ class TestSmokeDryRun(unittest.TestCase):
             capture_output=True, text=True
         )
         self.assertEqual(result.stderr, "")
+
+
+class TestSmokeTargetPath(unittest.TestCase):
+    """Tests for --target path validation."""
+
+    def test_target_traversal_rejected(self):
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--target", "../evil"],
+            capture_output=True, text=True
+        )
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_target_traversal_prints_error(self):
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--target", "../evil"],
+            capture_output=True, text=True
+        )
+        self.assertIn("Path traversal", result.stdout)
+
+
+class TestNoColorEnv(unittest.TestCase):
+    """Tests for NO_COLOR env var suppressing ANSI codes."""
+
+    def _no_color_env(self):
+        env = os.environ.copy()
+        env["NO_COLOR"] = "1"
+        return env
+
+    def test_no_color_suppresses_ansi(self):
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--dry-run"],
+            capture_output=True, text=True, env=self._no_color_env()
+        )
+        self.assertNotIn("\033[", result.stdout)
+
+    def test_no_color_still_outputs_text(self):
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--dry-run"],
+            capture_output=True, text=True, env=self._no_color_env()
+        )
+        self.assertIn("Dry run complete", result.stdout)
 
 
 if __name__ == "__main__":

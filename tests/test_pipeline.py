@@ -1,7 +1,8 @@
-"""Functional pipeline test: validate review output schema per SKILL.md.
+"""Schema contract tests: validate review output structure per SKILL.md.
 
-Defines the expected output schema for a completed review (Phases 1-4)
-and validates that sample/reference outputs conform.
+Defines the expected output schema (executive_summary, per_domain_scores,
+detailed_findings, improvement_roadmap) and validates that sample outputs
+conform. This is a schema-contract test, not a pipeline integration test.
 """
 import json
 import unittest
