@@ -192,7 +192,7 @@ def test_fix_plan(content):
     run_check("Has fix plan table", 'Task ID' in content and 'T-001' in content)
     run_check("Asks user for approval", 'Do NOT apply' in content and 'user explicitly' in content)
     run_check("Only applies on approved Task IDs", 'Task IDs' in content or '"all"' in content)
-    run_check("Has post-fix verification phase", 'Phase 4g' in content or 'Verify Fixes' in content)
+    run_check("Has post-fix verification phase", 'Post-Fix Verification' in content or 'Verify Fixes' in content)
     run_check("Applies CRITICAL before HIGH", 'CRITICAL items first' in content)
     run_check("Has baseline snapshot for trend", 'baseline' in content and 'trend' in content)
     run_check("Has re-review guidance", 'Re-review' in content or 'follow-up' in content)
@@ -587,7 +587,7 @@ class TestFixPlan(_BaseComplianceTest):
 
     def test_post_fix_verification(self):
         self.assertTrue(
-            'Phase 4g' in self.content or 'Verify Fixes' in self.content)
+            'Post-Fix Verification' in self.content or 'Verify Fixes' in self.content)
 
     def test_critical_before_high(self):
         self.assertIn('CRITICAL items first', self.content)
