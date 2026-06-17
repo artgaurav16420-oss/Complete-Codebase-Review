@@ -39,9 +39,15 @@ flowchart TB
         D2 -->|Skip| D4[Exit]
         D3 --> D5[Post-Fix Verification]
     end
+    subgraph Phase5[Phase 5: Independent Review & Test]
+        E1[Spawn Reviewer] --> E2[Apply Corrections]
+        E2 --> E3[Full Test Suite]
+        E3 --> E4[Final Report]
+    end
     Phase1 --> Phase2
     Phase2 --> Phase3
     Phase3 --> Phase4
+    Phase4 --> Phase5
 ```
 
 </div>
@@ -248,6 +254,9 @@ vs. effort across 3 phases.
 ### Phase 4: Fix Plan
 Generates structured fix tasks (T-001, T-002, ...) with effort estimates and dependencies. Presents the plan for your approval — apply specific tasks by ID, apply all, or skip. After fixes, runs post-fix verification (lint, type check, tests).
 
+### Phase 5: Independent Review & Test
+An independent agent audits all applied fixes, applies any necessary corrections, runs the full project test suite, and produces a final verification report. This ensures Phase 4 fixes didn't introduce regressions and the full test suite passes before you consider the review complete.
+
 ---
 
 ## ❓ FAQ
@@ -320,7 +329,7 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 
 | Suite | Command | Coverage |
 |-------|---------|----------|
-| Python compliance | `python3 tests/test_compliance.py` | 60+ assertions across 17 test functions |
+| Python compliance | `python3 tests/test_compliance.py` | 139 assertions across 18 test functions |
 | Bash integration | `./test.sh` | CLI and cross-platform behavior |
 | Install tests | `python3 tests/test_install.py` | 35 unit tests across 7 classes |
 
