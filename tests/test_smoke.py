@@ -139,7 +139,7 @@ class TestSmokeTargetPath(unittest.TestCase):
             [PYTHON, INSTALL_PY, "--target", "../evil"],
             capture_output=True, text=True
         )
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 1)
 
     def test_target_traversal_prints_error(self):
         result = subprocess.run(
