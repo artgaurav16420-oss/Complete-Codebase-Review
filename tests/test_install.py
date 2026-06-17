@@ -338,10 +338,10 @@ class TestMainArgparse(_BaseInstallTest):
             patch("install.copy_skill") as mock_copy,
             patch("sys.stdout", new_callable=io.StringIO),
         ):
-            mock_copy.return_value = Path("/custom/dir/complete-codebase-review")
+            mock_copy.return_value = Path("/custom/dir/complete-codebase-review").resolve()
             install.main()
         mock_copy.assert_called_once()
-        self.assertEqual(mock_copy.call_args[0][1], Path("/custom/dir"))
+        self.assertEqual(mock_copy.call_args[0][1], Path("/custom/dir").resolve())
 
     def test_dry_run_auto_detect_prints_dry_run_complete_not_installed(self):
         with (

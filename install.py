@@ -165,6 +165,7 @@ def _run_target_install(src_dir, target, dry_run):
     except ValueError as e:
         print_error(str(e))
         sys.exit(1)
+        return
     if dry_run:
         print_info(f"[DRY-RUN] Would install to {resolved / 'complete-codebase-review'}")
         print_success("Dry run complete.")
@@ -268,6 +269,7 @@ def main():
         return
 
     if not installed_any:
+        print_info("No existing global tool configurations")
         _run_local_fallback(src_dir, args.dry_run)
         if args.dry_run:
             return
