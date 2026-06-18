@@ -17,12 +17,14 @@ import argparse
 import os
 import re
 import shutil
+import stat
 import sys
 import platform
 from pathlib import Path
 
 
 def _read_version():
+    """Parse version from pyproject.toml. Raises RuntimeError if missing."""
     pyproject = Path(__file__).parent / "pyproject.toml"
     if not pyproject.exists():
         raise RuntimeError("pyproject.toml not found; cannot determine version")
@@ -35,14 +37,24 @@ def _read_version():
     return match.group(1)
 
 
-VERSION = _read_version()
+_VERSION_CACHE = None
+
+
+def get_version():
+    """Return the cached version string, reading from pyproject.toml on first call."""
+    global _VERSION_CACHE
+    if _VERSION_CACHE is None:
+        _VERSION_CACHE = _read_version()
+    return _VERSION_CACHE
 
 
 def _use_color():
+    """Return True if stdout is a TTY and NO_COLOR env var is unset."""
     return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 
 
 def _print(msg, label, color):
+    """Print [label] msg with ANSI color if supported, else plain text."""
     if _use_color():
         print(f"[{color}{label}\033[0m] {msg}")
     else:
@@ -50,14 +62,17 @@ def _print(msg, label, color):
 
 
 def print_success(msg):
+    """Print a success message."""
     _print(msg, "SUCCESS", "\033[92m")
 
 
 def print_info(msg):
+    """Print an informational message."""
     _print(msg, "INFO", "\033[94m")
 
 
 def print_error(msg):
+    """Print an error message."""
     _print(msg, "ERROR", "\033[91m")
 
 
@@ -108,10 +123,27 @@ def copy_skill(src_dir, dest_dir):
 
         skill_dest = dest_dir / "complete-codebase-review"
 
-        if skill_dest.exists():
+        if os.path.lexists(skill_dest):
             print_info(f"Updating existing installation in {skill_dest}")
-            if skill_dest.is_dir():
-                shutil.rmtree(skill_dest)
+            if skill_dest.is_symlink():
+                skill_dest.unlink()
+            elif skill_dest.is_dir():
+                if getattr(shutil.rmtree, "avoids_symlink_attacks", False):
+                    shutil.rmtree(skill_dest)
+                else:
+                    for root, dirs, files in os.walk(skill_dest, topdown=False):
+                        for name in files:
+                            path = os.path.join(root, name)
+                            if not os.path.islink(path):
+                                os.chmod(path, stat.S_IWRITE)
+                            os.unlink(path)
+                        for name in dirs:
+                            path = os.path.join(root, name)
+                            if os.path.islink(path):
+                                os.unlink(path)
+                            else:
+                                os.rmdir(path)
+                    skill_dest.rmdir()
             else:
                 skill_dest.unlink()
 
@@ -146,7 +178,7 @@ def _validate_target_path(path):
     """Validate that a target installation path is safe.
 
     Checks for explicit path traversal components (``..``) which could allow
-    writing outside the intended directory. Actual filesystem permission checks
+    writing outside the intended directory. Filesystem permission checks
     are left to the OS.
 
     Args:
@@ -156,7 +188,7 @@ def _validate_target_path(path):
         Path: The resolved absolute path.
 
     Raises:
-        ValueError: If path traversal (``..``) is detected in the path.
+        ValueError: If path traversal is detected.
     """
     if ".." in path.parts:
         raise ValueError(f"Path traversal detected: {path}")
@@ -164,6 +196,7 @@ def _validate_target_path(path):
 
 
 def _run_target_install(src_dir, target, dry_run):
+    """Install skill to a user-specified --target directory. Exits on error."""
     try:
         resolved = _validate_target_path(Path(target))
     except ValueError as e:
@@ -171,7 +204,8 @@ def _run_target_install(src_dir, target, dry_run):
         sys.exit(1)
         return
     if dry_run:
-        print_info(f"[DRY-RUN] Would install to {resolved / 'complete-codebase-review'}")
+        skill_dest = resolved / 'complete-codebase-review'
+        print_info("[DRY-RUN] Would install to %s" % skill_dest)
         print_success("Dry run complete.")
         return
     try:
@@ -184,25 +218,33 @@ def _run_target_install(src_dir, target, dry_run):
 
 
 def _run_auto_install(src_dir, target_dirs, dry_run):
+    """Install skill to all detected AI agent config directories. Returns True if any succeeded."""
     installed_any = False
     for tool_name, target_dir in target_dirs.items():
         if not target_dir.parent.exists():
             continue
         print_info(f"Detected {tool_name} configuration at {target_dir.parent}")
+        try:
+            target_dir = _validate_target_path(target_dir)
+        except ValueError as e:
+            print_error(f"Invalid target path for {tool_name}: {e}")
+            continue
         if dry_run:
-            print_info(f"[DRY-RUN] Would install to {tool_name}: {target_dir / 'complete-codebase-review'}")
+            skill_dest = target_dir / 'complete-codebase-review'
+            print_info("[DRY-RUN] Would install to %s: %s" % (tool_name, skill_dest))
             installed_any = True
             continue
         try:
             dest_path = copy_skill(src_dir, target_dir)
             print_success(f"Installed to {tool_name}: {dest_path}")
             installed_any = True
-        except (PermissionError, OSError):
-            print_error(f"Failed to install to {tool_name}")
+        except (PermissionError, OSError) as e:
+            print_error(f"Failed to install to {tool_name}: {e}")
     return installed_any
 
 
 def _run_local_fallback(src_dir, dry_run):
+    """Install skill to .skills/ under the current working directory. Exits on error."""
     local_target = Path.cwd() / ".skills"
     gitignore = Path.cwd() / ".gitignore"
     if gitignore.exists() and any(
@@ -214,9 +256,9 @@ def _run_local_fallback(src_dir, dry_run):
             "your local install will not be tracked by git."
         )
     if dry_run:
+        skill_dest = local_target / 'complete-codebase-review'
         print_info(
-            f"[DRY-RUN] Would install to local directory: "
-            f"{local_target / 'complete-codebase-review'}"
+            "[DRY-RUN] Would install to local directory: %s" % skill_dest
         )
         print_success("Dry run complete.")
         return
@@ -254,10 +296,10 @@ def main():
     args = parser.parse_args()
 
     if args.version:
-        print(f"complete-codebase-review v{VERSION}")
+        print(f"complete-codebase-review v{get_version()}")
         return
 
-    print_info(f"Starting Universal Installer on {platform.system()}")
+    print_info("Starting Universal Installer on %s" % platform.system())
 
     src_dir = Path(__file__).parent.resolve()
 
