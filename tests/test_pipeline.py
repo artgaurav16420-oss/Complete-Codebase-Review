@@ -1,9 +1,10 @@
 """Schema contract tests: validate review output structure per SKILL.md Output Format.
+AKA test_output_schema.py in spirit — this is a schema-contract test, not a pipeline
+integration test.
 
 Defines the expected Markdown output structure (Executive Summary, Per-Domain
 Scores, Detailed Findings, Improvement Roadmap, Tech Debt Summary, Agent
-Status) and validates that sample outputs conform. This is a schema-contract
-test, not a pipeline integration test.
+Status) and validates that sample outputs conform.
 """
 import re
 import unittest
@@ -481,6 +482,22 @@ class TestSampleOutputValidation(unittest.TestCase):
                 any(title == item.strip().casefold() for item in roadmap_items),
                 f"REJECTED finding '{f['finding']}' found in roadmap",
             )
+
+    def test_actual_health_report_passes_validation(self):
+        import os
+        report_path = os.path.join(
+            os.path.dirname(__file__), os.pardir, ".code-review-cache", "health-report.md"
+        )
+        if not os.path.isfile(report_path):
+            self.skipTest(f"Health report not found at {report_path}")
+        with open(report_path, encoding="utf-8") as f:
+            content = f.read()
+        errors = validate_markdown_output(content)
+        self.assertEqual(
+            errors,
+            [],
+            f"Actual health-report.md failed validation:\n" + "\n".join(f"  - {e}" for e in errors),
+        )
 
 
 if __name__ == "__main__":

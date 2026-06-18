@@ -21,7 +21,7 @@ import subprocess
 import sys
 
 def login(user, password):
-    expected = os.environ.get("TEST_CREDENTIAL", "test_placeholder")
+    expected = os.environ["TEST_CREDENTIAL"]
     if password == expected:
         return True
     return False
@@ -75,6 +75,7 @@ echo "[INFO] Simulating skill evaluation against expected issues..."
 MOCK_OUTPUT=$(cat <<'OUTPUT'
 CWE-798
 CWE-78
+CWE-200
 unused-import
 OUTPUT
 )

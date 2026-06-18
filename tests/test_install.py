@@ -1,4 +1,8 @@
-"""Unit tests for install.py."""
+"""Unit tests for install.py.
+
+T-030 (deferred): Mock-heavy test pattern is a design concern. Would require
+significant refactoring to reduce mock coupling — deferred.
+"""
 import io
 import os
 import sys
@@ -117,6 +121,15 @@ class TestGetTargetDirs(unittest.TestCase):
         with patch("install.platform.system", return_value="Darwin"):
             dirs = install.get_target_dirs()
         self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
+
+    def test_windows_uses_dot_app_style_paths(self):
+        with patch("install.platform.system", return_value="Windows"):
+            dirs = install.get_target_dirs()
+        home = Path.home()
+        self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
+        self.assertEqual(dirs["OpenCode"], home / ".opencode" / "skills")
+        self.assertEqual(dirs["Cursor"], home / ".cursor" / "skills")
+        self.assertEqual(dirs["Continue"], home / ".continue" / "skills")
 
 
 class TestCopySkill(unittest.TestCase):
@@ -609,6 +622,20 @@ class TestValidateTargetPath(unittest.TestCase):
 
 class TestMainEdgeCases(_BaseInstallTestWithArgv):
     """Edge-case tests for main()."""
+
+    @patch("install._validate_target_path")
+    @patch("install.copy_skill", side_effect=PermissionError("denied"))
+    @patch("install.sys.exit")
+    @patch("install.sys.stdout", new_callable=io.StringIO)
+    def test_target_install_permission_error_exits(
+        self, mock_stdout, mock_exit, mock_copy, mock_validate
+    ):
+        mock_validate.return_value = Path("/resolved")
+        with patch("sys.argv", ["install.py", "--target", "/custom/dir"]):
+            install.main()
+        mock_exit.assert_called_once_with(1)
+        output = mock_stdout.getvalue()
+        self.assertIn("Install failed", output)
 
     @patch("install.get_target_dirs")
     @patch("install.copy_skill")

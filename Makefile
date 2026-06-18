@@ -4,7 +4,7 @@ test: test-py test-bash
 	@echo "[SUCCESS] All tests passed!"
 
 test-windows: test-py
-	@echo "[INFO] Bash tests skipped on Windows."
+	powershell -File tests/Test-Windows.ps1
 	@echo "[SUCCESS] All Windows tests passed!"
 
 test-py:
@@ -17,7 +17,4 @@ clean:
 	rm -rf .code-review-cache/ __pycache__/
 	find . -name "*.pyc" -delete
 
-clean-windows:
-	if exist .code-review-cache\ rmdir /s /q .code-review-cache
-	if exist __pycache__\ rmdir /s /q __pycache__
-	del /s /q *.pyc 2>nul
+clean-windows: clean

@@ -17,6 +17,7 @@ import argparse
 import os
 import re
 import shutil
+import stat
 import sys
 import platform
 from pathlib import Path
@@ -35,7 +36,14 @@ def _read_version():
     return match.group(1)
 
 
-VERSION = _read_version()
+_VERSION_CACHE = None
+
+
+def get_version():
+    global _VERSION_CACHE
+    if _VERSION_CACHE is None:
+        _VERSION_CACHE = _read_version()
+    return _VERSION_CACHE
 
 
 def _use_color():
@@ -50,14 +58,17 @@ def _print(msg, label, color):
 
 
 def print_success(msg):
+    """Print a success message."""
     _print(msg, "SUCCESS", "\033[92m")
 
 
 def print_info(msg):
+    """Print an informational message."""
     _print(msg, "INFO", "\033[94m")
 
 
 def print_error(msg):
+    """Print an error message."""
     _print(msg, "ERROR", "\033[91m")
 
 
@@ -111,7 +122,16 @@ def copy_skill(src_dir, dest_dir):
         if skill_dest.exists():
             print_info(f"Updating existing installation in {skill_dest}")
             if skill_dest.is_dir():
-                shutil.rmtree(skill_dest)
+                if getattr(shutil.rmtree, "avoids_symlink_attacks", False):
+                    shutil.rmtree(skill_dest)
+                else:
+                    for root, dirs, files in os.walk(skill_dest, topdown=False):
+                        for name in files:
+                            os.chmod(os.path.join(root, name), stat.S_IWRITE)
+                            os.unlink(os.path.join(root, name))
+                        for name in dirs:
+                            os.rmdir(os.path.join(root, name))
+                    skill_dest.rmdir()
             else:
                 skill_dest.unlink()
 
@@ -146,7 +166,7 @@ def _validate_target_path(path):
     """Validate that a target installation path is safe.
 
     Checks for explicit path traversal components (``..``) which could allow
-    writing outside the intended directory. Actual filesystem permission checks
+    writing outside the intended directory. Filesystem permission checks
     are left to the OS.
 
     Args:
@@ -156,7 +176,7 @@ def _validate_target_path(path):
         Path: The resolved absolute path.
 
     Raises:
-        ValueError: If path traversal (``..``) is detected in the path.
+        ValueError: If path traversal is detected.
     """
     if ".." in path.parts:
         raise ValueError(f"Path traversal detected: {path}")
@@ -171,7 +191,8 @@ def _run_target_install(src_dir, target, dry_run):
         sys.exit(1)
         return
     if dry_run:
-        print_info(f"[DRY-RUN] Would install to {resolved / 'complete-codebase-review'}")
+        skill_dest = resolved / 'complete-codebase-review'
+        print_info("[DRY-RUN] Would install to %s" % skill_dest)
         print_success("Dry run complete.")
         return
     try:
@@ -189,16 +210,22 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
         if not target_dir.parent.exists():
             continue
         print_info(f"Detected {tool_name} configuration at {target_dir.parent}")
+        try:
+            target_dir = _validate_target_path(target_dir)
+        except ValueError as e:
+            print_error(f"Invalid target path for {tool_name}: {e}")
+            continue
         if dry_run:
-            print_info(f"[DRY-RUN] Would install to {tool_name}: {target_dir / 'complete-codebase-review'}")
+            skill_dest = target_dir / 'complete-codebase-review'
+            print_info("[DRY-RUN] Would install to %s: %s" % (tool_name, skill_dest))
             installed_any = True
             continue
         try:
             dest_path = copy_skill(src_dir, target_dir)
             print_success(f"Installed to {tool_name}: {dest_path}")
             installed_any = True
-        except (PermissionError, OSError):
-            print_error(f"Failed to install to {tool_name}")
+        except (PermissionError, OSError) as e:
+            print_error(f"Failed to install to {tool_name}: {e}")
     return installed_any
 
 
@@ -214,9 +241,9 @@ def _run_local_fallback(src_dir, dry_run):
             "your local install will not be tracked by git."
         )
     if dry_run:
+        skill_dest = local_target / 'complete-codebase-review'
         print_info(
-            f"[DRY-RUN] Would install to local directory: "
-            f"{local_target / 'complete-codebase-review'}"
+            "[DRY-RUN] Would install to local directory: %s" % skill_dest
         )
         print_success("Dry run complete.")
         return
@@ -254,10 +281,10 @@ def main():
     args = parser.parse_args()
 
     if args.version:
-        print(f"complete-codebase-review v{VERSION}")
+        print(f"complete-codebase-review v{get_version()}")
         return
 
-    print_info(f"Starting Universal Installer on {platform.system()}")
+    print_info("Starting Universal Installer on %s" % platform.system())
 
     src_dir = Path(__file__).parent.resolve()
 

@@ -34,8 +34,68 @@ Phases 1 through 3 of this skill are strictly **read-only**. The agents will not
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success — review completed, fix applied, or dry-run finished with no errors |
-| `1` | Failure — review halted mid-pipeline, agent threshold unmet, install failed, or post-fix verification failed |
+| `0` | Success — review completed, fix applied, dry-run finished, or `--version` shown |
+| `1` | Review halted mid-pipeline (<75% agents in full mode, <66% in Quick Mode) |
+| `1` | Install failed (permission denied, copy error, or path traversal detected) |
+| `1` | Post-fix verification failed (lint, typecheck, or test suite regression) |
+| `1` | Compliance test failed (one or more SKILL.md assertions not met) |
+
+## ⚙️ Windows Environment Variables
+
+PowerShell syntax:
+```powershell
+# Quick Mode
+$env:CODE_REVIEW_EFFORT="min"
+$env:CODE_REVIEW_TIMEOUT_SEC="120"
+
+# Filter to critical/high only
+$env:CODE_REVIEW_FILTER="critical-high"
+
+# Run the review
+/complete-codebase-review src/
+
+# Unset when done
+Remove-Item env:CODE_REVIEW_EFFORT
+```
+
+CMD syntax:
+```cmd
+set CODE_REVIEW_EFFORT=min
+set CODE_REVIEW_TIMEOUT_SEC=120
+/complete-codebase-review src/
+```
+
+## 🔧 Troubleshooting
+
+**Review hangs or takes too long:**
+- Increase `CODE_REVIEW_TIMEOUT_SEC` (default 900s). Try 1800 for large codebases.
+- Use Quick Mode (`CODE_REVIEW_EFFORT=min`) for a rapid surface scan.
+
+**Specialist agents time out:**
+- Reduce scope with `CODE_REVIEW_MAX_FILES=<N>`.
+- Use Quick Mode which runs only 3 core agents with 120s timeout.
+- Filter to critical/high findings with `CODE_REVIEW_FILTER=critical-high`.
+
+**Installation fails:**
+- Use `--dry-run` first to verify paths: `python install.py --dry-run`.
+- On Linux, check `XDG_CONFIG_HOME` if agent configs are in a non-standard location.
+
+## 🤖 CI Integration
+
+```yaml
+# .github/workflows/review.yml
+name: Codebase Review
+on: [push, pull_request]
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run compliance tests
+        run: python tests/test_compliance.py
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+```
 
 ## 📖 Usage Example
 
@@ -46,4 +106,10 @@ Phases 1 through 3 of this skill are strictly **read-only**. The agents will not
 # Quick mode review
 export CODE_REVIEW_EFFORT=min
 /complete-codebase-review src/
+
+# Dry-run install first
+python install.py --dry-run
+
+# Show version
+python install.py --version
 ```
