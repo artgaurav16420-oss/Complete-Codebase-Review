@@ -68,30 +68,28 @@ else
     echo "[SUCCESS] karpathy-guidelines.md exists"
 fi
 
-echo "[INFO] Simulating skill evaluation against expected issues..."
-# Keep the mock review output independent from expected_issues.json. This is
-# intentionally brittle: every new expected issue must be added to this fixture
-# so the test fails rather than validating the expectation list against itself.
-MOCK_OUTPUT=$(cat <<'OUTPUT'
-CWE-798
-CWE-78
-CWE-200
-unused-import
-OUTPUT
-)
+echo "[INFO] Validating expected issues JSON..."
 
-while IFS= read -r issue; do
-    if echo "$MOCK_OUTPUT" | grep -Fxq "$issue"; then
-        echo "[SUCCESS] Found expected issue: $issue"
-    else
-        echo "[ERROR] Expected issue '$issue' not found in mock output"
-        FAIL=1
-    fi
-done < <(python3 -c "
+python3 -c "
 import json
-issues = json.load(open('tests/expected_issues.json', encoding='utf-8'))
-print('\n'.join(issues))
-")
+import sys
+
+try:
+    with open('tests/expected_issues.json', encoding='utf-8') as f:
+        issues = json.load(f)
+
+    assert isinstance(issues, list), 'Expected issues must be a list'
+    assert len(issues) > 0, 'Expected issues list cannot be empty'
+
+    for issue in issues:
+        assert isinstance(issue, str) and issue.strip(), f'Invalid issue format: {issue}'
+
+    print(f'[SUCCESS] Validated {len(issues)} expected issues from JSON.')
+
+except Exception as e:
+    print(f'[ERROR] expected_issues.json validation failed: {e}')
+    sys.exit(1)
+" || FAIL=1
 
 rm -rf "$TEST_DIR"
 

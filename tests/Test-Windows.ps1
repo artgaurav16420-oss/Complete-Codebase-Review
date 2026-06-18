@@ -20,47 +20,68 @@ if (Test-Path $KarpathyFile) {
     $Fail = 1
 }
 
-# --- Check 2: SKILL.md has required sections ---
-if (Select-String -Path $SkillFile -Pattern '🔧 Environment Variables' -SimpleMatch -Quiet) {
-    Write-Host "[SUCCESS] '🔧 Environment Variables' section found"
-} else {
-    Write-Host "[ERROR] '🔧 Environment Variables' section missing from SKILL.md"
+# --- Check 2: SKILL.md exists ---
+$SkillOk = $true
+if (-not (Test-Path $SkillFile)) {
+    Write-Host "[ERROR] SKILL.md missing at $SkillFile"
     $Fail = 1
+    $SkillOk = $false
 }
 
-if (Select-String -Path $SkillFile -Pattern '💾 Checkpointing' -SimpleMatch -Quiet) {
-    Write-Host "[SUCCESS] '💾 Checkpointing' section found"
-} else {
-    Write-Host "[ERROR] '💾 Checkpointing' section missing from SKILL.md"
-    $Fail = 1
-}
+if ($SkillOk) {
+    # --- Check 2a: '🔧 Environment Variables' section ---
+    if (Select-String -Path $SkillFile -Pattern '🔧 Environment Variables' -SimpleMatch -Quiet) {
+        Write-Host "[SUCCESS] '🔧 Environment Variables' section found"
+    } else {
+        Write-Host "[ERROR] '🔧 Environment Variables' section missing from SKILL.md"
+        $Fail = 1
+    }
 
-if (Select-String -Path $SkillFile -Pattern '⚡ Quick Mode' -SimpleMatch -Quiet) {
-    Write-Host "[SUCCESS] '⚡ Quick Mode' section found"
-} else {
-    Write-Host "[ERROR] '⚡ Quick Mode' section missing from SKILL.md"
-    $Fail = 1
-}
+    if (Select-String -Path $SkillFile -Pattern '💾 Checkpointing' -SimpleMatch -Quiet) {
+        Write-Host "[SUCCESS] '💾 Checkpointing' section found"
+    } else {
+        Write-Host "[ERROR] '💾 Checkpointing' section missing from SKILL.md"
+        $Fail = 1
+    }
 
-# --- Check 3: No hardcoded 'model: ' in frontmatter ---
-if (Select-String -Path $SkillFile -Pattern '^model: ' -Quiet) {
-    Write-Host "[ERROR] Hardcoded 'model: ' still present in SKILL.md frontmatter or templates"
-    $Fail = 1
-} else {
-    Write-Host "[SUCCESS] No hardcoded 'model: ' in SKILL.md"
-}
+    if (Select-String -Path $SkillFile -Pattern '⚡ Quick Mode' -SimpleMatch -Quiet) {
+        Write-Host "[SUCCESS] '⚡ Quick Mode' section found"
+    } else {
+        Write-Host "[ERROR] '⚡ Quick Mode' section missing from SKILL.md"
+        $Fail = 1
+    }
 
-# --- Check 4: Dynamic effort present ---
-if (Select-String -Path $SkillFile -Pattern 'effort: \${CODE_REVIEW_EFFORT:-max}' -Quiet) {
-    Write-Host '[SUCCESS] Dynamic effort found in SKILL.md'
-} else {
-    Write-Host '[ERROR] Dynamic effort not found in SKILL.md'
-    $Fail = 1
-}
+    # --- Check 3: No hardcoded 'model: ' in frontmatter ---
+    if (Select-String -Path $SkillFile -Pattern '^model: ' -Quiet) {
+        Write-Host "[ERROR] Hardcoded 'model: ' still present in SKILL.md frontmatter or templates"
+        $Fail = 1
+    } else {
+        Write-Host "[SUCCESS] No hardcoded 'model: ' in SKILL.md"
+    }
 
+    # --- Check 4: Dynamic effort present ---
+    if (Select-String -Path $SkillFile -Pattern 'effort: \${CODE_REVIEW_EFFORT:-max}' -Quiet) {
+        Write-Host '[SUCCESS] Dynamic effort found in SKILL.md'
+    } else {
+        Write-Host '[ERROR] Dynamic effort not found in SKILL.md'
+        $Fail = 1
+    }
+}
 # --- Check 5: Mock evaluation against expected_issues.json ---
 Write-Host '[INFO] Simulating skill evaluation against expected issues...'
-$expectedIssues = Get-Content -Path $ExpectedIssuesFile -Raw | ConvertFrom-Json
+if (-not (Test-Path $ExpectedIssuesFile)) {
+    Write-Host "[ERROR] expected_issues.json missing at $ExpectedIssuesFile"
+    $Fail = 1
+    $expectedIssues = @()
+} else {
+    try {
+        $expectedIssues = Get-Content -Path $ExpectedIssuesFile -Raw | ConvertFrom-Json
+    } catch {
+        Write-Host "[ERROR] Failed to parse expected_issues.json: $_"
+        $Fail = 1
+        $expectedIssues = @()
+    }
+}
 $mockOutput = @'
 CWE-798
 CWE-78

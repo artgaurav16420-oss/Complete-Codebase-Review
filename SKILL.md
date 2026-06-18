@@ -453,8 +453,24 @@ After Phase 4 fixes are applied, an independent agent reviews all changes, corre
 Spawn a fresh Task agent (not the original fixers). Give it:
 - The list of changed files from Phase 4d
 - The original fix plan tasks for context
-- Instructions to review each change for correctness, edge cases, and regressions
+- Instructions to review each change for:
+  - **Correctness**: does the code do what the fix plan intended?
+  - **Edge cases (adversarial)**: "what if empty input / corrupt data / missing file /
+    malicious symlink / concurrent access?"
+  - **Security anti-patterns**: symlink races, `os.chmod` on symlinks, TOCTOU,
+    path traversal, command injection, unsafe `shell=True`, hardcoded secrets
+  - **Error handling**: every error path logs the error, cleans up resources, and
+    does not crash the process or leave it in an inconsistent state
+  - **Cross-platform**: Windows vs Unix — execution policies, path separators,
+    signal handling, `os.rmdir` vs `os.unlink` for directory symlinks
+  - **CI gates**: verify the CI checks the project would run (see 5c step 3)
 - Load the `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines
+- **File-type checklist** — apply relevant checks per changed file extension:
+  - `.ps1`: `$ErrorActionPreference`, `Test-Path` guards, `-ExecutionPolicy Bypass`
+  - `.sh`: variable quoting, `set -e`, non-bashism POSIX portability
+  - `Makefile`: `.PHONY` targets, shell portability, tab indentation
+  - `.py`: docstrings on new/changed public functions, `os.chmod`/`os.rmdir`/symlink patterns
+  - `.yml`: indentation, action version pinning
 
 The reviewer MUST NOT have been involved in Phase 4d execution to avoid confirmation bias.
 **Reviewer follows Karpathy Guidelines:**
@@ -486,7 +502,16 @@ After all corrections are applied:
    - `go test ./...` for Go
    - Default: try `make test`, `npm test`, `pytest`
 2. Run the full test suite
-3. If any tests fail:
+3. **Run CI gates locally**: detect and run the project's CI checks beyond the test suite:
+   - Coverage: if `.coveragerc` or `pyproject.toml` has a coverage threshold,
+     run `coverage run ... && coverage report` and verify the threshold is met
+   - Linting: if a linter config exists (`.ruff.toml`, `.flake8`, `pyproject.toml`
+     with ruff/flake8 section), run the configured linter
+   - Type checking: if a type checker config exists (`pyrightconfig.json`,
+     `mypy.ini`, or pyproject.toml with mypy/pyright section), run it
+   - Compliance/smoke: if a compliance script exists (e.g. `test_compliance.py`,
+     `test.sh`, `Test-Windows.ps1`), run it and confirm it passes
+4. If any tests or CI gates fail:
    - Report failures to the user
    - Do NOT auto-retry or auto-fix
    - List which tests failed and their error messages
