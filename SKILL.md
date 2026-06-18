@@ -706,8 +706,8 @@ Below is a realistic example of what a completed health report looks like for a 
 - ... (remaining 8 tasks)
 
 ## Tech Debt Summary
-- **Total estimated**: 226 hours
-- **By domain**: Security 18h, Architecture 24h, Code Quality 32h, Test Health 48h, Process Quality 12h, Dependencies 12h, Documentation 20h, Standards 16h, Database 18h, UI/UX 26h
+- **Total estimated**: 200 hours
+- **By domain**: Security 18h, Architecture 24h, Code Quality 32h, Test Health 48h, Process Quality 12h, Dependencies 12h, Documentation 20h, Standards 16h, Database 18h
 - **Trend**: First baseline — no trend data
 
 ## Agent Status

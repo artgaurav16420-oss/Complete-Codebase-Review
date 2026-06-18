@@ -4,7 +4,7 @@
 
 ### AI-powered holistic codebase audit — 14 specialist agents, zero false positives, no code changes without your approval.
 
-[![CI - Linux](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions/workflows/ci.yml/badge.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions)
+[![CI](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions/workflows/ci.yml/badge.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org)
 [![Windows](https://img.shields.io/badge/Windows-supported-success)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review)
@@ -235,7 +235,7 @@ Runs Security, Code Quality, and Architecture agents with a ~10% codebase sample
 
 ## 🏗 Architecture
 
-The review runs in four phases:
+The review runs in five phases:
 
 ### Phase 1: Discovery
 Maps the codebase: languages, frameworks, build systems, directory structure, entry points, git history. Runs an environment check to verify tool availability. Identifies which of the 14 health dimensions apply to this project.

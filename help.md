@@ -28,6 +28,8 @@ To run a rapid, surface-level assessment, use Quick Mode by exporting `CODE_REVI
 
 Phases 1 through 3 of this skill are strictly **read-only**. The agents will not alter your source code, configuration, or structural directories. Only Phase 4 allows code fixes to be generated and applied, and ONLY if you explicitly approve individual tasks.
 
+**Phase 5 (Independent Review & Test):** After Phase 4 fixes are applied, Phase 5 audits all changes, corrects regressions, and runs the full project test suite to ensure nothing was broken before finalizing.
+
 ## 🚦 Exit Codes
 
 | Code | Meaning |
