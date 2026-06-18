@@ -120,6 +120,9 @@ def copy_skill(src_dir, dest_dir):
                 ".git", "__pycache__", "install.py", "install.sh",
                 "install.ps1", ".skills", ".env", ".secret",
                 ".credentials", ".code-review-cache",
+                "tests", ".github", "ADRs", ".gitignore",
+                ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
+                "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
             }
             return [
                 n for n in names
