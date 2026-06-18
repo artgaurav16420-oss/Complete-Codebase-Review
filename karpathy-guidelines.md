@@ -341,7 +341,8 @@ confirm branch before commit. never commit to main. detached HEAD or unknown bra
 - revert trigger = failure attributable to your change, not rule violation (inverted: "revert only when violating RULE_0-3" is wrong — revert on any attributable failure)
 
 ## ESCALATION_COUNTERS
-per_session: BLOCK(max=2) → STOP+summarize; STOP(max=1) → wait; overflow_both → halt_silently
+per_session: BLOCK(max=2) → STOP+summarize; STOP(max=1) → wait_for_operator (30s timeout, then escalate per STOP_LIMIT_RESOLUTION); overflow_both → halt_silently
+**Precedence:** STOP_LIMIT_RESOLUTION takes precedence over overflow_both — escalate with state dump before silent halt.
 
 STRIKE_RULE: same_error_twice → STOP
 same = same_message + same_line + same_stack
