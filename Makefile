@@ -4,7 +4,7 @@ test: test-py test-bash
 	@echo "[SUCCESS] All tests passed!"
 
 test-windows: test-py
-	powershell -File tests/Test-Windows.ps1
+	powershell -ExecutionPolicy Bypass -File tests/Test-Windows.ps1
 	@echo "[SUCCESS] All Windows tests passed!"
 
 test-py:

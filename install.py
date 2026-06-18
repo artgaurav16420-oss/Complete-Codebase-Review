@@ -24,6 +24,7 @@ from pathlib import Path
 
 
 def _read_version():
+    """Parse version from pyproject.toml. Raises RuntimeError if missing."""
     pyproject = Path(__file__).parent / "pyproject.toml"
     if not pyproject.exists():
         raise RuntimeError("pyproject.toml not found; cannot determine version")
@@ -40,6 +41,7 @@ _VERSION_CACHE = None
 
 
 def get_version():
+    """Return the cached version string, reading from pyproject.toml on first call."""
     global _VERSION_CACHE
     if _VERSION_CACHE is None:
         _VERSION_CACHE = _read_version()
@@ -47,10 +49,12 @@ def get_version():
 
 
 def _use_color():
+    """Return True if stdout is a TTY and NO_COLOR env var is unset."""
     return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 
 
 def _print(msg, label, color):
+    """Print [label] msg with ANSI color if supported, else plain text."""
     if _use_color():
         print(f"[{color}{label}\033[0m] {msg}")
     else:
@@ -119,18 +123,26 @@ def copy_skill(src_dir, dest_dir):
 
         skill_dest = dest_dir / "complete-codebase-review"
 
-        if skill_dest.exists():
+        if os.path.lexists(skill_dest):
             print_info(f"Updating existing installation in {skill_dest}")
-            if skill_dest.is_dir():
+            if skill_dest.is_symlink():
+                skill_dest.unlink()
+            elif skill_dest.is_dir():
                 if getattr(shutil.rmtree, "avoids_symlink_attacks", False):
                     shutil.rmtree(skill_dest)
                 else:
                     for root, dirs, files in os.walk(skill_dest, topdown=False):
                         for name in files:
-                            os.chmod(os.path.join(root, name), stat.S_IWRITE)
-                            os.unlink(os.path.join(root, name))
+                            path = os.path.join(root, name)
+                            if not os.path.islink(path):
+                                os.chmod(path, stat.S_IWRITE)
+                            os.unlink(path)
                         for name in dirs:
-                            os.rmdir(os.path.join(root, name))
+                            path = os.path.join(root, name)
+                            if os.path.islink(path):
+                                os.unlink(path)
+                            else:
+                                os.rmdir(path)
                     skill_dest.rmdir()
             else:
                 skill_dest.unlink()
@@ -184,6 +196,7 @@ def _validate_target_path(path):
 
 
 def _run_target_install(src_dir, target, dry_run):
+    """Install skill to a user-specified --target directory. Exits on error."""
     try:
         resolved = _validate_target_path(Path(target))
     except ValueError as e:
@@ -205,6 +218,7 @@ def _run_target_install(src_dir, target, dry_run):
 
 
 def _run_auto_install(src_dir, target_dirs, dry_run):
+    """Install skill to all detected AI agent config directories. Returns True if any succeeded."""
     installed_any = False
     for tool_name, target_dir in target_dirs.items():
         if not target_dir.parent.exists():
@@ -230,6 +244,7 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
 
 
 def _run_local_fallback(src_dir, dry_run):
+    """Install skill to .skills/ under the current working directory. Exits on error."""
     local_target = Path.cwd() / ".skills"
     gitignore = Path.cwd() / ".gitignore"
     if gitignore.exists() and any(
