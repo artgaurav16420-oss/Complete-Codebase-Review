@@ -1,3 +1,5 @@
+Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you MUST follow karpathy-guidelines.md as the primary behavioral ruleset.
+
 # AGENTS.md — Complete Codebase Review
 
 **Skill repo.** `SKILL.md` (769-line 5-phase skill). Not a library/app. Not on PyPI. Tests: `tests/`. Zero deps, stdlib only, Python >= 3.9.
