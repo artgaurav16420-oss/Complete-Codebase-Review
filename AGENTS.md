@@ -9,7 +9,7 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 | Command | What |
 |---------|------|
 | `python tests/test_compliance.py` | 130+ SKILL.md compliance assertions (custom DSL, not pytest) |
-| `python tests/test_install.py` | install.py unit tests (unittest, 7 classes) |
+| `python tests/test_install.py` | install.py unit tests (unittest, 9 classes) |
 | `python tests/test_pipeline.py` | Review output schema validation (REJECTED excluded from roadmap) |
 | `python tests/test_env_config.py` | Env-var config table completeness checks |
 | `python tests/test_smoke.py` | install.py subprocess smoke tests |
@@ -39,7 +39,7 @@ Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIM
 
 ## CI
 
-`.github/workflows/ci.yml`: 3 OS (ubuntu, windows, macos) × 5 Python (3.9-3.13). Steps: compliance.py → `coverage run -m unittest discover` → coverage report → test.sh (non-Windows only). Only dep: `coverage`. Coverage threshold 60% (`.coveragerc`).
+`.github/workflows/ci.yml`: 3 OS (ubuntu, windows, macos) × 5 Python (3.9-3.13). Steps: compliance.py → `coverage run -m unittest discover` → coverage report → test.sh (non-Windows only). Only dep: `coverage`. Coverage threshold 85% (`.coveragerc`).
 
 ## Gotchas
 

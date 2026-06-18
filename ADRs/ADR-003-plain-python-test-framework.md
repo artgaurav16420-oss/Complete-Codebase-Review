@@ -15,7 +15,7 @@ Test suites use only Python stdlib:
 | Suite | Framework | Reason |
 |-------|-----------|--------|
 | `test_compliance.py` | Custom `make_checker()` DSL | String-matching checks against SKILL.md — simpler than unittest boilerplate for 130+ assertions |
-| `test_install.py` | `unittest.TestCase` | Standard unittest — 7 classes, 35 tests, complex mocking |
+| `test_install.py` | `unittest.TestCase` | Standard unittest — 9 classes, 49 tests, complex mocking |
 | New suites | `unittest.TestCase` preferred | `make_checker()` is legacy; new tests should use standard patterns |
 
 The `main()` entry point in `test_compliance.py` provides exit-code output and colored pass/fail display without requiring pytest's test runner.

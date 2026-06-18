@@ -9,13 +9,13 @@ This project uses **only Python stdlib**. No `requirements.txt`, no `pip install
 ### Running Tests
 
 ```bash
-# All compliance checks (132 assertions)
+# All compliance checks (139 assertions)
 python tests/test_compliance.py
 
-# Installer unit tests (35+ tests, unittest)
+# Installer unit tests (49 tests, unittest)
 python -m unittest tests.test_install -v
 
-# CLI smoke tests (14 tests, unittest)
+# CLI smoke tests (18 tests, unittest)
 python -m unittest tests.test_smoke -v
 
 # All unittest suites
