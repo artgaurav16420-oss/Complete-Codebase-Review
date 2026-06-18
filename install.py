@@ -123,6 +123,7 @@ def copy_skill(src_dir, dest_dir):
                 "tests", ".github", "ADRs", ".gitignore",
                 ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
                 "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
+                "AGENTS.md", "SECURITY.md", "help.md", "pyproject.toml",
             }
             return [
                 n for n in names

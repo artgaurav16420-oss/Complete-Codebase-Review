@@ -247,18 +247,18 @@ Before spawning agents, estimate and log expected resource consumption:
 |--------|----------------|
 | Files scanned | `CODE_REVIEW_MAX_FILES` or detected file count |
 | Agents | N (from Orchestration step 1) |
-| Min wall time | N × ~30s per agent (prompt + tool calls) |
-| Max wall time | N × `CODE_REVIEW_TIMEOUT_SEC` (900s default) |
+| Min wall time | ~30s (agents run in parallel) |
+| Max wall time | `CODE_REVIEW_TIMEOUT_SEC` (900s default; agents run in parallel) |
 | Est. token cost per agent | ~15K–80K input (scales with codebase size) + Karpathy Guidelines load overhead per spawned agent + ~5K output; large codebases may exceed 100K input tokens per agent |
 
 Log: `"[PREFLIGHT] Scanning ~X files with N agents — est. ~M–Mmax minutes. Set CODE_REVIEW_EFFORT=min for Quick Mode (3 agents, 120s timeout)."`
 
 ### Orchestration
 
-1. Determine which agents to run:
-   - If `CODE_REVIEW_AGENTS` is set, use that comma-separated list (e.g. `CODE_REVIEW_AGENTS=security,architecture,code-quality`)
+1. Determine which agents to run (precedence order — first match wins):
+   - If `CODE_REVIEW_AGENTS` is set, use that comma-separated list (overrides Quick Mode and defaults)
+   - Otherwise, if `CODE_REVIEW_EFFORT=min` (Quick Mode), run only Security, Code Quality, and Architecture
    - Otherwise, run all 14 agents that match the project's health dimensions (see Step 2)
-   - In Quick Mode (`CODE_REVIEW_EFFORT=min`), run only Security, Code Quality, and Architecture
 2. Log pre-flight estimate (see above).
 3. Spawn N Task agents in parallel. Use the Task tool for each:
 

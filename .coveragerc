@@ -8,5 +8,5 @@ omit =
     ADRs/*
 
 [report]
-fail_under = 60
+fail_under = 85
 show_missing = True

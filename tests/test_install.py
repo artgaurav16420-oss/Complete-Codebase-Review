@@ -37,6 +37,14 @@ class _BaseInstallTestWithArgv(_BaseInstallTest):
 class TestReadVersion(unittest.TestCase):
     """Tests for _read_version()."""
 
+    def test_missing_pyproject_file_raises_runtime_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            (project_dir / "install.py").write_text("", encoding="utf-8")
+            with patch("install.__file__", str(project_dir / "install.py")):
+                with self.assertRaisesRegex(RuntimeError, "pyproject.toml not found"):
+                    install._read_version()
+
     def test_missing_pyproject_version_raises_runtime_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_dir = Path(tmpdir)
