@@ -17,10 +17,23 @@ import argparse
 import os
 import re
 import shutil
-import stat
 import sys
 import platform
 from pathlib import Path
+
+_SKILL_EXCLUDED = {
+    ".git", "__pycache__", "install.py", "install.sh",
+    "install.ps1", ".skills", ".env", ".secret",
+    ".credentials", ".code-review-cache",
+    "tests", ".github", "ADRs", ".gitignore",
+    ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
+    "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
+    "AGENTS.md", "help.md", "pyproject.toml",
+}
+
+
+def _ignore_skill_files(path, names):
+    return [n for n in names if n in _SKILL_EXCLUDED or n.endswith(".pyc")]
 
 
 def _read_version():
@@ -128,41 +141,11 @@ def copy_skill(src_dir, dest_dir):
             if skill_dest.is_symlink():
                 skill_dest.unlink()
             elif skill_dest.is_dir():
-                if getattr(shutil.rmtree, "avoids_symlink_attacks", False):
-                    shutil.rmtree(skill_dest)
-                else:
-                    for root, dirs, files in os.walk(skill_dest, topdown=False):
-                        for name in files:
-                            path = os.path.join(root, name)
-                            if not os.path.islink(path):
-                                os.chmod(path, stat.S_IWRITE)
-                            os.unlink(path)
-                        for name in dirs:
-                            path = os.path.join(root, name)
-                            if os.path.islink(path):
-                                os.unlink(path)
-                            else:
-                                os.rmdir(path)
-                    skill_dest.rmdir()
+                shutil.rmtree(skill_dest)
             else:
                 skill_dest.unlink()
 
-        def ignore_patterns(path, names):
-            excluded = {
-                ".git", "__pycache__", "install.py", "install.sh",
-                "install.ps1", ".skills", ".env", ".secret",
-                ".credentials", ".code-review-cache",
-                "tests", ".github", "ADRs", ".gitignore",
-                ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
-                "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
-                "AGENTS.md", "SECURITY.md", "help.md", "pyproject.toml",
-            }
-            return [
-                n for n in names
-                if n in excluded or n.endswith(".pyc")
-            ]
-
-        shutil.copytree(src_dir, skill_dest, ignore=ignore_patterns)
+        shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
         copied = sum(len(files) for _, _, files in os.walk(skill_dest))
         print_info(f"Copied {copied} file(s) to {skill_dest}")
         return skill_dest
@@ -175,11 +158,12 @@ def copy_skill(src_dir, dest_dir):
 
 
 def _validate_target_path(path):
-    """Validate that a target installation path is safe.
+    """Validate target path has no path traversal components.
 
-    Checks for explicit path traversal components (``..``) which could allow
-    writing outside the intended directory. Filesystem permission checks
-    are left to the OS.
+    Checks for explicit '..' components which could allow writing outside the
+    intended directory. Symlink resolution is performed via Path.resolve()
+    but does not validate the symlink target — callers must ensure the resolved
+    path is appropriate.
 
     Args:
         path (Path): The target path to validate.
@@ -202,10 +186,9 @@ def _run_target_install(src_dir, target, dry_run):
     except ValueError as e:
         print_error(str(e))
         sys.exit(1)
-        return
     if dry_run:
         skill_dest = resolved / 'complete-codebase-review'
-        print_info("[DRY-RUN] Would install to %s" % skill_dest)
+        print_info(f"[DRY-RUN] Would install to {skill_dest}")
         print_success("Dry run complete.")
         return
     try:
@@ -231,7 +214,7 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
             continue
         if dry_run:
             skill_dest = target_dir / 'complete-codebase-review'
-            print_info("[DRY-RUN] Would install to %s: %s" % (tool_name, skill_dest))
+            print_info(f"[DRY-RUN] Would install to {tool_name}: {skill_dest}")
             installed_any = True
             continue
         try:
@@ -258,7 +241,7 @@ def _run_local_fallback(src_dir, dry_run):
     if dry_run:
         skill_dest = local_target / 'complete-codebase-review'
         print_info(
-            "[DRY-RUN] Would install to local directory: %s" % skill_dest
+            f"[DRY-RUN] Would install to local directory: {skill_dest}"
         )
         print_success("Dry run complete.")
         return
@@ -270,11 +253,33 @@ def _run_local_fallback(src_dir, dry_run):
         sys.exit(1)
 
 
+def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
+    installed_any = _run_auto_install(src_dir, target_dirs, dry_run)
+
+    if dry_run and installed_any:
+        print_success("Dry run complete.")
+        return
+
+    if not installed_any:
+        print_info("No existing global tool configurations")
+        _run_local_fallback(src_dir, dry_run)
+        if dry_run:
+            return
+
+    print_success("Installation complete!")
+
+
 def main():
     """Execute the main installation process."""
     parser = argparse.ArgumentParser(
         description="Install the Complete Codebase Review skill for AI coding agents.",
-        epilog="Examples:\n  python install.py\n  python install.py --target ~/my-skills\n  python install.py --dry-run\n  python install.py --version",
+        epilog=(
+            "Examples:\n"
+            "  python install.py\n"
+            "  python install.py --target ~/my-skills\n"
+            "  python install.py --dry-run\n"
+            "  python install.py --version"
+        ),
     )
     parser.add_argument(
         "--target", "-t",
@@ -299,7 +304,7 @@ def main():
         print(f"complete-codebase-review v{get_version()}")
         return
 
-    print_info("Starting Universal Installer on %s" % platform.system())
+    print_info(f"Starting Universal Installer on {platform.system()}")
 
     src_dir = Path(__file__).parent.resolve()
 
@@ -308,19 +313,7 @@ def main():
         return
 
     target_dirs = get_target_dirs()
-    installed_any = _run_auto_install(src_dir, target_dirs, args.dry_run)
-
-    if args.dry_run and installed_any:
-        print_success("Dry run complete.")
-        return
-
-    if not installed_any:
-        print_info("No existing global tool configurations")
-        _run_local_fallback(src_dir, args.dry_run)
-        if args.dry_run:
-            return
-
-    print_success("Installation complete!")
+    _run_auto_or_local_install(src_dir, target_dirs, args.dry_run)
 
 
 if __name__ == "__main__":

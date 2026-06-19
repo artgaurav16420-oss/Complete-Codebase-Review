@@ -1,6 +1,5 @@
 import os
 import subprocess
-import sys
 
 def login(user, password):
     expected = os.environ["TEST_CREDENTIAL"]

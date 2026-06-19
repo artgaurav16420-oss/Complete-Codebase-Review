@@ -3,6 +3,7 @@
 T-030 (deferred): Mock-heavy test pattern is a design concern. Would require
 significant refactoring to reduce mock coupling — deferred.
 """
+import importlib
 import io
 import os
 import sys
@@ -11,8 +12,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import install
+
+def _import_install():
+    p = str(Path(__file__).resolve().parent.parent)
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    return importlib.import_module("install")
 
 
 _ARGV_PATCH = ["install.py"]
@@ -20,7 +25,8 @@ _ARGV_PATCH = ["install.py"]
 
 class _BaseInstallTest(unittest.TestCase):
     def setUp(self):
-        self.file_patch = patch("install.__file__", "/fake/path/install.py")
+        self.install = _import_install()
+        self.file_patch = patch.object(self.install, "__file__", "/fake/path/install.py")
         self.file_patch.start()
 
     def tearDown(self):
@@ -38,16 +44,16 @@ class _BaseInstallTestWithArgv(_BaseInstallTest):
         super().tearDown()
 
 
-class TestReadVersion(unittest.TestCase):
+class TestReadVersion(_BaseInstallTest):
     """Tests for _read_version()."""
 
     def test_missing_pyproject_file_raises_runtime_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_dir = Path(tmpdir)
             (project_dir / "install.py").write_text("", encoding="utf-8")
-            with patch("install.__file__", str(project_dir / "install.py")):
+            with patch.object(self.install, "__file__", str(project_dir / "install.py")):
                 with self.assertRaisesRegex(RuntimeError, "pyproject.toml not found"):
-                    install._read_version()
+                    self.install._read_version()
 
     def test_missing_pyproject_version_raises_runtime_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -57,29 +63,29 @@ class TestReadVersion(unittest.TestCase):
                 '[project]\nname = "complete-codebase-review"\n',
                 encoding="utf-8",
             )
-            with patch("install.__file__", str(project_dir / "install.py")):
+            with patch.object(self.install, "__file__", str(project_dir / "install.py")):
                 with self.assertRaisesRegex(RuntimeError, "version missing"):
-                    install._read_version()
+                    self.install._read_version()
 
 
-class TestGetTargetDirs(unittest.TestCase):
+class TestGetTargetDirs(_BaseInstallTest):
     """Tests for get_target_dirs()."""
 
     def test_returns_dict_with_expected_keys(self):
-        dirs = install.get_target_dirs()
+        dirs = self.install.get_target_dirs()
         expected_keys = {"Claude Code", "OpenCode", "Cursor", "Continue"}
         self.assertEqual(set(dirs.keys()), expected_keys)
 
     def test_values_are_path_instances(self):
-        dirs = install.get_target_dirs()
+        dirs = self.install.get_target_dirs()
         for name, path in dirs.items():
             with self.subTest(agent=name):
                 self.assertIsInstance(path, Path)
 
     def test_paths_are_under_home(self):
         home = Path.home()
-        with patch("install.platform.system", return_value="Darwin"):
-            dirs = install.get_target_dirs()
+        with patch.object(self.install.platform, "system", return_value="Darwin"):
+            dirs = self.install.get_target_dirs()
         expected = {
             "Claude Code": home / ".claude" / "skills",
             "OpenCode": home / ".opencode" / "skills",
@@ -89,42 +95,33 @@ class TestGetTargetDirs(unittest.TestCase):
         self.assertEqual(dirs, expected)
 
     def test_claude_code_uses_xdg_on_linux(self):
-        with (
-            patch("install.platform.system", return_value="Linux"),
-            patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}),
-        ):
-            dirs = install.get_target_dirs()
+        with patch.object(self.install.platform, "system", return_value="Linux"), patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}):
+            dirs = self.install.get_target_dirs()
         self.assertEqual(dirs["Claude Code"], Path("/custom/xdg/claude/skills"))
 
     def test_claude_code_uses_dot_claude_when_xdg_unset_on_linux(self):
         """Without XDG_CONFIG_HOME, Linux should use ~/.claude like other platforms."""
         env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
-        with (
-            patch("install.platform.system", return_value="Linux"),
-            patch.dict(os.environ, env, clear=True),
-        ):
-            dirs = install.get_target_dirs()
+        with patch.object(self.install.platform, "system", return_value="Linux"), patch.dict(os.environ, env, clear=True):
+            dirs = self.install.get_target_dirs()
         self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
 
     def test_claude_code_uses_dot_claude_when_xdg_empty_on_linux(self):
         """Empty XDG_CONFIG_HOME is treated as unset — use ~/.claude."""
         env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
         env["XDG_CONFIG_HOME"] = ""
-        with (
-            patch("install.platform.system", return_value="Linux"),
-            patch.dict(os.environ, env, clear=True),
-        ):
-            dirs = install.get_target_dirs()
+        with patch.object(self.install.platform, "system", return_value="Linux"), patch.dict(os.environ, env, clear=True):
+            dirs = self.install.get_target_dirs()
         self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
 
     def test_claude_code_uses_dot_claude_on_non_linux(self):
-        with patch("install.platform.system", return_value="Darwin"):
-            dirs = install.get_target_dirs()
+        with patch.object(self.install.platform, "system", return_value="Darwin"):
+            dirs = self.install.get_target_dirs()
         self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
 
     def test_windows_uses_dot_app_style_paths(self):
-        with patch("install.platform.system", return_value="Windows"):
-            dirs = install.get_target_dirs()
+        with patch.object(self.install.platform, "system", return_value="Windows"):
+            dirs = self.install.get_target_dirs()
         home = Path.home()
         self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
         self.assertEqual(dirs["OpenCode"], home / ".opencode" / "skills")
@@ -132,7 +129,7 @@ class TestGetTargetDirs(unittest.TestCase):
         self.assertEqual(dirs["Continue"], home / ".continue" / "skills")
 
 
-class TestCopySkill(unittest.TestCase):
+class TestCopySkill(_BaseInstallTest):
     """Tests for copy_skill()."""
 
     def _make_src(self, tmpdir, extra_files=None):
@@ -154,7 +151,7 @@ class TestCopySkill(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
             dest = Path(tmpdir) / "dest"
-            result = install.copy_skill(src, dest)
+            result = self.install.copy_skill(src, dest)
             self.assertEqual(result, dest / "complete-codebase-review")
             self.assertTrue(result.exists())
             self.assertTrue((result / "SKILL.md").exists())
@@ -167,7 +164,7 @@ class TestCopySkill(unittest.TestCase):
             skill_dest.mkdir(parents=True)
             (skill_dest / "old.txt").write_text("old")
 
-            install.copy_skill(src, dest)
+            self.install.copy_skill(src, dest)
 
             self.assertTrue(skill_dest.exists())
             self.assertTrue((skill_dest / "SKILL.md").exists())
@@ -181,7 +178,7 @@ class TestCopySkill(unittest.TestCase):
             skill_dest.parent.mkdir(parents=True)
             skill_dest.write_text("not-a-dir")
 
-            install.copy_skill(src, dest)
+            self.install.copy_skill(src, dest)
 
             self.assertTrue(skill_dest.exists())
             self.assertTrue(skill_dest.is_dir())
@@ -191,7 +188,7 @@ class TestCopySkill(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
             dest = Path(tmpdir) / "dest"
-            install.copy_skill(src, dest)
+            self.install.copy_skill(src, dest)
             skill_dest = dest / "complete-codebase-review"
             self.assertTrue(skill_dest.exists())
             self.assertTrue((skill_dest / "SKILL.md").exists())
@@ -202,7 +199,7 @@ class TestCopySkill(unittest.TestCase):
                 "karpathy-guidelines.md": "# Guidelines",
             })
             dest = Path(tmpdir) / "dest"
-            result = install.copy_skill(src, dest)
+            result = self.install.copy_skill(src, dest)
 
             self.assertTrue((result / "karpathy-guidelines.md").exists())
 
@@ -212,7 +209,7 @@ class TestCopySkill(unittest.TestCase):
             file_target = Path(tmpdir) / "file.txt"
             file_target.write_text("not a directory")
             with self.assertRaises(OSError):
-                install.copy_skill(src, file_target)
+                self.install.copy_skill(src, file_target)
 
     def test_ignore_patterns_excludes_expected_items(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -231,7 +228,7 @@ class TestCopySkill(unittest.TestCase):
                 "keep.py": "",
             })
             dest = Path(tmpdir) / "dest"
-            result = install.copy_skill(src, dest)
+            result = self.install.copy_skill(src, dest)
 
             self.assertTrue((result / "keep.py").exists())
             self.assertTrue((result / "SKILL.md").exists())
@@ -240,55 +237,49 @@ class TestCopySkill(unittest.TestCase):
             self.assertFalse((result / "install.py").exists())
             self.assertFalse((result / "foo.pyc").exists())
 
-    @patch("install.shutil.copytree", side_effect=PermissionError("denied"))
-    @patch("install.print_error")
-    def test_permission_error_is_raised(self, mock_print_error, mock_copytree):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src = self._make_src(tmpdir)
-            dest = Path(tmpdir) / "dest"
-            with self.assertRaises(PermissionError):
-                install.copy_skill(src, dest)
-        mock_print_error.assert_called_once()
+    def test_permission_error_is_raised(self):
+        with patch.object(self.install.shutil, "copytree", side_effect=PermissionError("denied")), patch.object(self.install, "print_error") as mock_print_error:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                src = self._make_src(tmpdir)
+                dest = Path(tmpdir) / "dest"
+                with self.assertRaises(PermissionError):
+                    self.install.copy_skill(src, dest)
+            mock_print_error.assert_called_once()
 
-    @patch("install.shutil.copytree", side_effect=OSError("disk full"))
-    @patch("install.print_error")
-    def test_os_error_is_raised(self, mock_print_error, mock_copytree):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src = self._make_src(tmpdir)
-            dest = Path(tmpdir) / "dest"
-            with self.assertRaises(OSError):
-                install.copy_skill(src, dest)
-        mock_print_error.assert_called_once()
+    def test_os_error_is_raised(self):
+        with patch.object(self.install.shutil, "copytree", side_effect=OSError("disk full")), patch.object(self.install, "print_error") as mock_print_error:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                src = self._make_src(tmpdir)
+                dest = Path(tmpdir) / "dest"
+                with self.assertRaises(OSError):
+                    self.install.copy_skill(src, dest)
+            mock_print_error.assert_called_once()
 
-    @patch("install.shutil.copytree", side_effect=PermissionError("denied"))
-    @patch("install.print_error")
-    def test_permission_error_does_not_call_mkdir_on_failure(
-        self, mock_print_error, mock_copytree
-    ):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src = self._make_src(tmpdir)
-            dest = Path(tmpdir) / "dest"
-            with self.assertRaises(PermissionError):
-                install.copy_skill(src, dest)
-        mock_print_error.assert_called_once()
+    def test_permission_error_does_not_call_mkdir_on_failure(self):
+        with patch.object(self.install.shutil, "copytree", side_effect=PermissionError("denied")), patch.object(self.install, "print_error") as mock_print_error:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                src = self._make_src(tmpdir)
+                dest = Path(tmpdir) / "dest"
+                with self.assertRaises(PermissionError):
+                    self.install.copy_skill(src, dest)
+            mock_print_error.assert_called_once()
 
 
-class TestPrintFunctions(unittest.TestCase):
+class TestPrintFunctions(_BaseInstallTest):
     """Tests for print_* helper functions."""
 
     def setUp(self):
+        super().setUp()
         self.patcher = patch("sys.stdout", new_callable=io.StringIO)
         self.mock_stdout = self.patcher.start()
 
     def tearDown(self):
         self.patcher.stop()
+        super().tearDown()
 
     def test_print_success_contains_green_code(self):
-        with (
-            patch.object(sys.stdout, "isatty", return_value=True),
-            patch.dict(os.environ, {}, clear=True),
-        ):
-            install.print_success("done")
+        with patch.object(sys.stdout, "isatty", return_value=True), patch.dict(os.environ, {}, clear=True):
+            self.install.print_success("done")
         output = self.mock_stdout.getvalue()
         self.assertIn("SUCCESS", output)
         self.assertIn("\x1b[92m", output)
@@ -296,11 +287,8 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("done", output)
 
     def test_print_info_contains_blue_code(self):
-        with (
-            patch.object(sys.stdout, "isatty", return_value=True),
-            patch.dict(os.environ, {}, clear=True),
-        ):
-            install.print_info("hello")
+        with patch.object(sys.stdout, "isatty", return_value=True), patch.dict(os.environ, {}, clear=True):
+            self.install.print_info("hello")
         output = self.mock_stdout.getvalue()
         self.assertIn("INFO", output)
         self.assertIn("\x1b[94m", output)
@@ -308,11 +296,8 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("hello", output)
 
     def test_print_error_contains_red_code(self):
-        with (
-            patch.object(sys.stdout, "isatty", return_value=True),
-            patch.dict(os.environ, {}, clear=True),
-        ):
-            install.print_error("fail")
+        with patch.object(sys.stdout, "isatty", return_value=True), patch.dict(os.environ, {}, clear=True):
+            self.install.print_error("fail")
         output = self.mock_stdout.getvalue()
         self.assertIn("ERROR", output)
         self.assertIn("\x1b[91m", output)
@@ -320,20 +305,17 @@ class TestPrintFunctions(unittest.TestCase):
         self.assertIn("fail", output)
 
     def test_multiple_calls_accumulate(self):
-        with (
-            patch.object(sys.stdout, "isatty", return_value=True),
-            patch.dict(os.environ, {}, clear=True),
-        ):
-            install.print_info("first")
-            install.print_success("second")
-            install.print_error("third")
+        with patch.object(sys.stdout, "isatty", return_value=True), patch.dict(os.environ, {}, clear=True):
+            self.install.print_info("first")
+            self.install.print_success("second")
+            self.install.print_error("third")
         output = self.mock_stdout.getvalue()
         self.assertIn("first", output)
         self.assertIn("second", output)
         self.assertIn("third", output)
 
     def test_output_ends_with_newline(self):
-        install.print_info("line")
+        self.install.print_info("line")
         output = self.mock_stdout.getvalue()
         self.assertTrue(output.endswith("\n"))
 
@@ -341,40 +323,20 @@ class TestPrintFunctions(unittest.TestCase):
 class TestMainArgparse(_BaseInstallTest):
 
     def test_dry_run_does_not_call_copy_skill(self):
-        with (
-            patch("sys.argv", ["install.py", "--dry-run"]),
-            patch("install.get_target_dirs", return_value={
-                "Claude Code": Path("/home/user/.claude/skills")
-            }),
-            patch("install.copy_skill") as mock_copy,
-            patch.object(Path, "exists", return_value=True),
-            patch("sys.stdout", new_callable=io.StringIO),
-        ):
-            install.main()
+        with patch("sys.argv", ["install.py", "--dry-run"]), patch.object(self.install, "get_target_dirs", return_value={"Claude Code": Path("/home/user/.claude/skills")}), patch.object(self.install, "copy_skill") as mock_copy, patch.object(Path, "exists", return_value=True), patch("sys.stdout", new_callable=io.StringIO):
+            self.install.main()
         mock_copy.assert_not_called()
 
     def test_target_flag_installs_to_specified_dir(self):
-        with (
-            patch("sys.argv", ["install.py", "--target", "/custom/dir"]),
-            patch("install.copy_skill") as mock_copy,
-            patch("sys.stdout", new_callable=io.StringIO),
-        ):
+        with patch("sys.argv", ["install.py", "--target", "/custom/dir"]), patch.object(self.install, "copy_skill") as mock_copy, patch("sys.stdout", new_callable=io.StringIO):
             mock_copy.return_value = Path("/custom/dir/complete-codebase-review").resolve()
-            install.main()
+            self.install.main()
         mock_copy.assert_called_once()
         self.assertEqual(mock_copy.call_args[0][1], Path("/custom/dir").resolve())
 
     def test_dry_run_auto_detect_prints_dry_run_complete_not_installed(self):
-        with (
-            patch("sys.argv", ["install.py", "--dry-run"]),
-            patch("install.get_target_dirs", return_value={
-                "Claude Code": Path("/home/user/.claude/skills")
-            }),
-            patch("install.copy_skill") as mock_copy,
-            patch.object(Path, "exists", return_value=True),
-            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
-        ):
-            install.main()
+        with patch("sys.argv", ["install.py", "--dry-run"]), patch.object(self.install, "get_target_dirs", return_value={"Claude Code": Path("/home/user/.claude/skills")}), patch.object(self.install, "copy_skill") as mock_copy, patch.object(Path, "exists", return_value=True), patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.install.main()
         mock_copy.assert_not_called()
         output = mock_stdout.getvalue()
         self.assertIn("Dry run complete", output)
@@ -384,84 +346,58 @@ class TestMainArgparse(_BaseInstallTest):
 class TestMainFunction(_BaseInstallTestWithArgv):
     """Tests for main()."""
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_install_to_detected_agents(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
+    def test_install_to_detected_agents(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
             "OpenCode": Path("/home/user/.opencode/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
-        mock_copy.return_value = Path("/installed/complete-codebase-review")
-
         existing = {p.parent for p in fake_dirs.values()}
 
-        with patch.object(Path, "exists", lambda p: p in existing):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", return_value=Path("/installed/complete-codebase-review")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", lambda p: p in existing):
+                self.install.main()
 
         self.assertEqual(mock_copy.call_count, 2)
         output = mock_stdout.getvalue()
         self.assertIn("SUCCESS", output)
         self.assertIn("Installation complete!", output)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_no_agent_configs_falls_back_to_local(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
+    def test_no_agent_configs_falls_back_to_local(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
             "OpenCode": Path("/home/user/.opencode/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
-        mock_copy.return_value = Path.cwd() / ".skills" / "complete-codebase-review"
 
-        with patch.object(Path, "exists", return_value=False):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", return_value=Path.cwd() / ".skills" / "complete-codebase-review") as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=False):
+                self.install.main()
 
         output = mock_stdout.getvalue()
         self.assertIn("No existing global tool configurations", output)
         self.assertIn("Installed to local directory", output)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_local_fallback_when_parent_exists_but_target_missing(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
+    def test_local_fallback_when_parent_exists_but_target_missing(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
-        mock_copy.return_value = Path.cwd() / ".skills" / "complete-codebase-review"
 
-        with patch.object(Path, "exists", return_value=False):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", return_value=Path.cwd() / ".skills" / "complete-codebase-review") as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=False):
+                self.install.main()
 
         output = mock_stdout.getvalue()
         self.assertIn("No existing global tool configurations", output)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_copy_skill_failure_continues_to_next_agent(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
+    def test_copy_skill_failure_continues_to_next_agent(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
             "OpenCode": Path("/home/user/.opencode/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
-        mock_copy.side_effect = [PermissionError("denied"), Path("/ok")]
-
         existing = {p.parent for p in fake_dirs.values()}
 
-        with patch.object(Path, "exists", lambda p: p in existing):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", side_effect=[PermissionError("denied"), Path("/ok")]) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", lambda p: p in existing):
+                self.install.main()
 
         self.assertEqual(mock_copy.call_count, 2)
         output = mock_stdout.getvalue()
@@ -469,131 +405,93 @@ class TestMainFunction(_BaseInstallTestWithArgv):
         self.assertIn("Installed to OpenCode", output)
         self.assertIn("Installation complete!", output)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.exit")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_local_install_permission_error_exits(
-        self, mock_stdout, mock_exit, mock_copy, mock_get_dirs
-    ):
+    def test_local_install_permission_error_exits(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
-        mock_copy.side_effect = PermissionError("denied")
 
-        with patch.object(Path, "exists", return_value=False):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", side_effect=PermissionError("denied")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=False):
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
 
-        mock_exit.assert_called_once_with(1)
+        self.assertEqual(ctx.exception.code, 1)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.exit")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_local_install_oserror_exits(
-        self, mock_stdout, mock_exit, mock_copy, mock_get_dirs
-    ):
+    def test_local_install_oserror_exits(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
-        mock_copy.side_effect = OSError("disk full")
 
-        with patch.object(Path, "exists", return_value=False):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", side_effect=OSError("disk full")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=False):
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
 
-        mock_exit.assert_called_once_with(1)
+        self.assertEqual(ctx.exception.code, 1)
 
 
 class TestGitignoreWarning(_BaseInstallTestWithArgv):
     """Tests for gitignore warning in main() local fallback."""
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_gitignore_warning_shown_when_skills_present(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
-        mock_get_dirs.return_value = {}
-        mock_copy.return_value = Path("/x")
+    def test_gitignore_warning_shown_when_skills_present(self):
         gitignore_content = ".skills\n__pycache__\n"
-        with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "read_text",
-                         return_value=gitignore_content),
-        ):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value={}), patch.object(self.install, "copy_skill", return_value=Path("/x")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=True), patch.object(Path, "read_text", return_value=gitignore_content):
+                self.install.main()
         output = mock_stdout.getvalue()
         self.assertIn("gitignore", output.lower())
         self.assertIn(".skills", output)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_no_gitignore_warning_when_skills_absent(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
-        mock_get_dirs.return_value = {}
-        mock_copy.return_value = Path("/x")
+    def test_no_gitignore_warning_when_skills_absent(self):
         gitignore_content = "__pycache__\n*.pyc\n"
-        with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "read_text",
-                         return_value=gitignore_content),
-        ):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value={}), patch.object(self.install, "copy_skill", return_value=Path("/x")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=True), patch.object(Path, "read_text", return_value=gitignore_content):
+                self.install.main()
         output = mock_stdout.getvalue()
         self.assertNotIn("gitignore", output.lower())
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_no_gitignore_warning_when_file_absent(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
-        mock_get_dirs.return_value = {}
-        mock_copy.return_value = Path("/x")
-        with patch.object(Path, "exists", return_value=False):
-            install.main()
+    def test_no_gitignore_warning_when_file_absent(self):
+        with patch.object(self.install, "get_target_dirs", return_value={}), patch.object(self.install, "copy_skill", return_value=Path("/x")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=False):
+                self.install.main()
         output = mock_stdout.getvalue()
         self.assertNotIn("gitignore", output.lower())
 
 
-class TestValidateTargetPath(unittest.TestCase):
+class TestValidateTargetPath(_BaseInstallTest):
     """Tests for _validate_target_path()."""
 
     def test_valid_absolute_path(self):
-        result = install._validate_target_path(Path("/home/user/skills"))
+        result = self.install._validate_target_path(Path("/home/user/skills"))
         self.assertEqual(result, Path("/home/user/skills").resolve())
 
     def test_valid_relative_path(self):
-        result = install._validate_target_path(Path("skills"))
+        result = self.install._validate_target_path(Path("skills"))
         self.assertEqual(result, Path("skills").resolve())
 
     def test_path_traversal_detected(self):
         with self.assertRaises(ValueError) as ctx:
-            install._validate_target_path(Path("/home/user/../../etc"))
+            self.install._validate_target_path(Path("/home/user/../../etc"))
         self.assertIn("Path traversal", str(ctx.exception))
 
     def test_path_traversal_simple(self):
         with self.assertRaises(ValueError):
-            install._validate_target_path(Path("../evil"))
+            self.install._validate_target_path(Path("../evil"))
 
     def test_path_traversal_encoded(self):
         with self.assertRaises(ValueError):
-            install._validate_target_path(Path("safe/../../etc"))
+            self.install._validate_target_path(Path("safe/../../etc"))
 
     def test_path_traversal_in_middle(self):
         with self.assertRaises(ValueError):
-            install._validate_target_path(Path("/home/user/../other/skills"))
+            self.install._validate_target_path(Path("/home/user/../other/skills"))
 
     def test_dot_without_dotdot_is_valid(self):
-        result = install._validate_target_path(Path("./skills"))
+        result = self.install._validate_target_path(Path("./skills"))
         self.assertIsNotNone(result)
 
     def test_dotdot_substring_in_path_component_is_valid(self):
-        result = install._validate_target_path(Path("/home/user/..safe"))
+        result = self.install._validate_target_path(Path("/home/user/..safe"))
         self.assertEqual(result, Path("/home/user/..safe").resolve())
 
     def test_normal_path_with_symlinks_resolves(self):
@@ -605,17 +503,14 @@ class TestValidateTargetPath(unittest.TestCase):
                 link.symlink_to(real, target_is_directory=True)
             except (OSError, NotImplementedError):
                 self.skipTest("Symlinks not supported on this platform")
-            result = install._validate_target_path(link)
+            result = self.install._validate_target_path(link)
             self.assertEqual(result, real.resolve())
 
-    @patch("install.sys.exit")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_target_path_traversal_exits_with_error(self, mock_stdout, mock_exit):
-        with (
-            patch("sys.argv", ["install.py", "--target", "/safe/../../etc"]),
-        ):
-            install.main()
-        mock_exit.assert_called_with(1)
+    def test_target_path_traversal_exits_with_error(self):
+        with patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout, patch("sys.argv", ["install.py", "--target", "/safe/../../etc"]):
+            with self.assertRaises(SystemExit) as ctx:
+                self.install.main()
+        self.assertEqual(ctx.exception.code, 1)
         output = mock_stdout.getvalue()
         self.assertIn("Path traversal", output)
 
@@ -623,56 +518,34 @@ class TestValidateTargetPath(unittest.TestCase):
 class TestMainEdgeCases(_BaseInstallTestWithArgv):
     """Edge-case tests for main()."""
 
-    @patch("install._validate_target_path")
-    @patch("install.copy_skill", side_effect=PermissionError("denied"))
-    @patch("install.sys.exit")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_target_install_permission_error_exits(
-        self, mock_stdout, mock_exit, mock_copy, mock_validate
-    ):
-        mock_validate.return_value = Path("/resolved")
-        with patch("sys.argv", ["install.py", "--target", "/custom/dir"]):
-            install.main()
-        mock_exit.assert_called_once_with(1)
+    def test_target_install_permission_error_exits(self):
+        with patch.object(self.install, "_validate_target_path", return_value=Path("/resolved")), patch.object(self.install, "copy_skill", side_effect=PermissionError("denied")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch("sys.argv", ["install.py", "--target", "/custom/dir"]):
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+        self.assertEqual(ctx.exception.code, 1)
         output = mock_stdout.getvalue()
         self.assertIn("Install failed", output)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_empty_target_dirs_uses_local_fallback(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
-        mock_get_dirs.return_value = {}
-        mock_copy.return_value = Path("/x")
-
-        with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "read_text", return_value=""),
-        ):
-            install.main()
+    def test_empty_target_dirs_uses_local_fallback(self):
+        with patch.object(self.install, "get_target_dirs", return_value={}), patch.object(self.install, "copy_skill", return_value=Path("/x")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=True), patch.object(Path, "read_text", return_value=""):
+                self.install.main()
 
         mock_copy.assert_called_once()
         args, _ = mock_copy.call_args
         self.assertEqual(args[1], Path.cwd() / ".skills")
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_one_agent_exists_one_missing_installs_partial(
-        self, mock_stdout, mock_copy, mock_get_dirs
-    ):
+    def test_one_agent_exists_one_missing_installs_partial(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
             "Cursor": Path("/home/user/.cursor/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
-        mock_copy.return_value = Path("/installed")
-
         existing_paths = {Path("/home/user/.claude")}
 
-        with patch.object(Path, "exists", lambda p: p in existing_paths):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", return_value=Path("/installed")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", lambda p: p in existing_paths):
+                self.install.main()
 
         self.assertEqual(mock_copy.call_count, 1)
         output = mock_stdout.getvalue()
@@ -681,24 +554,62 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
         self.assertNotIn("No existing global tool configurations", output)
         self.assertIn("Installation complete!", output)
 
-    @patch("install.get_target_dirs")
-    @patch("install.copy_skill", side_effect=PermissionError("no write"))
-    @patch("install.sys.exit")
-    @patch("install.sys.stdout", new_callable=io.StringIO)
-    def test_all_agents_fail_and_local_fails_exits(
-        self, mock_stdout, mock_exit, mock_copy, mock_get_dirs
-    ):
+    def test_all_agents_fail_and_local_fails_exits(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
         }
-        mock_get_dirs.return_value = fake_dirs
 
-        with patch.object(Path, "exists", return_value=False):
-            install.main()
+        with patch.object(self.install, "get_target_dirs", return_value=fake_dirs), patch.object(self.install, "copy_skill", side_effect=PermissionError("no write")) as mock_copy, patch.object(self.install.sys, "stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=False):
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
 
-        mock_exit.assert_called_once_with(1)
+        self.assertEqual(ctx.exception.code, 1)
         output = mock_stdout.getvalue()
         self.assertIn("Local installation failed", output)
+
+
+class TestInternalFunctions(_BaseInstallTest):
+    """Tests for previously uncovered internal helper functions."""
+
+    def test_use_color_returns_false_when_no_tty(self):
+        with patch.object(sys.stdout, "isatty", return_value=False):
+            result = self.install._use_color()
+        self.assertFalse(result)
+
+    def test_use_color_returns_false_when_no_color_set(self):
+        with patch.object(sys.stdout, "isatty", return_value=True), patch.dict(os.environ, {"NO_COLOR": "1"}, clear=True):
+            result = self.install._use_color()
+        self.assertFalse(result)
+
+    def test_use_color_returns_true_when_tty_and_no_no_color(self):
+        with patch.object(sys.stdout, "isatty", return_value=True), patch.dict(os.environ, {}, clear=True):
+            result = self.install._use_color()
+        self.assertTrue(result)
+
+    def test_xdg_or_home_dir_uses_xdg_on_linux(self):
+        with patch("install.platform.system", return_value="Linux"), patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}, clear=True):
+            result = self.install._xdg_or_home_dir(Path("/home/user"), "claude")
+        self.assertEqual(result, Path("/custom/xdg/claude/skills"))
+
+    def test_xdg_or_home_dir_uses_home_on_non_linux(self):
+        with patch("install.platform.system", return_value="Windows"):
+            result = self.install._xdg_or_home_dir(Path("/home/user"), "claude")
+        self.assertEqual(result, Path("/home/user/.claude/skills"))
+
+    def test_get_version_caches_result(self):
+        self.install._VERSION_CACHE = None
+        call_count = 0
+        def _counting_read_version():
+            nonlocal call_count
+            call_count += 1
+            return "1.0.0"
+        with patch.object(self.install, "_read_version", side_effect=_counting_read_version):
+            version1 = self.install.get_version()
+            version2 = self.install.get_version()
+        self.assertEqual(version1, version2)
+        self.assertEqual(call_count, 1)
+        self.install._VERSION_CACHE = None
 
 
 if __name__ == "__main__":

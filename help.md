@@ -6,6 +6,8 @@ This skill conducts a complete, multi-dimensional, read-only audit of your codeb
 
 You can configure the execution behavior by exporting these environment variables before invoking the agent:
 
+> **Source of truth:** `SKILL.md` in the installed skill directory is the canonical reference for all environment variables. This page may be a subset.
+
 *   `CODE_REVIEW_EFFORT` (default: `max`): Sets the effort level for AI analysis. Set to `min` for Quick Mode.
 *   `CODE_REVIEW_TIMEOUT_SEC` (default: `900`): Maximum time (in seconds) to wait for individual specialist agents.
 *   `CODE_REVIEW_MAX_FILES` (default: unlimited): Limits the number of files scanned in large codebases.
@@ -29,6 +31,35 @@ To run a rapid, surface-level assessment, use Quick Mode by exporting `CODE_REVI
 Phases 1 through 3 of this skill are strictly **read-only**. The agents will not alter your source code, configuration, or structural directories. Only Phase 4 allows code fixes to be generated and applied, and ONLY if you explicitly approve individual tasks.
 
 **Phase 5 (Independent Review & Test):** After Phase 4 fixes are applied, Phase 5 audits all changes, corrects regressions, and runs the full project test suite to ensure nothing was broken before finalizing.
+
+## 💾 Checkpointing & Trend Tracking
+
+Phase outputs and agent findings are cached in `$RESOLVED_CACHE_DIR` (default: `.code-review-cache/`). If the default cache directory is not writable, the system falls back to the OS temporary directory (`$TEMP` on Windows, `$TMPDIR` on Unix).
+
+### Baseline Snapshots
+
+After the fix plan is generated (Phase 4), a baseline snapshot is saved to `$RESOLVED_CACHE_DIR/$CODE_REVIEW_BASELINE` (default: `ccr-baseline.json`). This snapshot captures:
+
+| Field | Description |
+|-------|-------------|
+| `health_score` | Overall health: GREEN/YELLOW/RED |
+| `tech_debt_hours` | Total estimated tech debt |
+| `critical_count` | Number of CRITICAL findings |
+| `per_domain_scores` | Score per domain (0-10) |
+| `per_domain_open_findings` | CRITICAL/HIGH counts per domain |
+
+On re-review, the system compares against the previous baseline and reports trends:
+
+```markdown
+### Trend vs Previous Baseline
+- **Health**: YELLOW → YELLOW (stable)
+- **Tech Debt**: 120h → 95h (↓21%)
+- **Critical Issues**: 5 → 2 (↓60%)
+```
+
+### Low-Activity Domains
+
+Domains with zero CRITICAL and zero HIGH open findings are marked `[LOW-ACTIVITY]` on re-review. These domains are excluded from re-analysis — their previous scores carry forward in the trend table, reducing analysis time.
 
 ## 🚦 Exit Codes
 
