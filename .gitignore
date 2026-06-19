@@ -10,3 +10,4 @@ __pycache__/
 
 ccr-baseline.json
 .skills-index.json
+.coverage
