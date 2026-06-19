@@ -529,7 +529,7 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
 
 2. **Create branch**:
    ```bash
-   BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(echo "$TARGET_DIR" | sha256sum | cut -c1-8)"
+    BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(echo "$TARGET_DIR" | git hash-object --stdin | cut -c1-8)"
    git checkout -b "$BRANCH"
    ```
 
@@ -541,7 +541,14 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
    $(cat $RESOLVED_CACHE_DIR/fix-plan-summary.md 2>/dev/null || echo 'Phase 4 fix plan tasks applied.')"
    ```
 
-4. **Push branch**:
+4. **Confirm before pushing** — ask the user before pushing to remote and creating a PR:
+   ```text
+   Ready to push branch '$BRANCH' and create a pull request against <target>.
+   Reply 'push' to proceed, or 'skip' to stay local.
+   ```
+   If user skips, proceed to 5h with a note: "PR creation skipped — user declined. Branch with fixes exists locally."
+
+   If user approves:
    ```bash
    git push origin "$BRANCH"
    ```
@@ -560,8 +567,7 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
    ### Verification
    - Phase 5a independent review: PASS
    - Phase 5b corrections applied: <n>
-   - Phase 5c test suite: PASS" \
-     --reviewer "$(git log -1 --format=%an origin/main 2>/dev/null || echo 'maintainer')"
+   - Phase 5c test suite: PASS"
    ```
 
 6. Store the PR number as `$PR_NUMBER` for use in 5e-5f.
@@ -601,6 +607,10 @@ After the `/review` COMMENT is posted, fetch ALL review threads on the PR — in
    Also fetch the review bodies from the PR review API (the `/review` skill posts findings as a review, not in the PR description):
    ```bash
    gh api repos/:owner/:repo/pulls/$PR_NUMBER/reviews --jq '.[].body'
+   ```
+   Also fetch top-level PR conversation comments (some bots post via `gh pr comment`):
+   ```bash
+   gh api repos/:owner/:repo/issues/$PR_NUMBER/comments --jq '.[].body'
    ```
 
 2. **Collect all fixable issues** from all comments. Group by file and line number where applicable.
