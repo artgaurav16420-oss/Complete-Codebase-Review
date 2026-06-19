@@ -18,4 +18,4 @@ clean:
 	find . -name "*.pyc" -delete
 
 clean-windows:
-	python -c "import shutil, glob, os; shutil.rmtree('.code-review-cache', ignore_errors=True); [shutil.rmtree(d, ignore_errors=True) for d in glob.glob('**/__pycache__', recursive=True)]; [os.remove(f) for f in glob.glob('**/*.pyc', recursive=True)]"
+	python -c "import shutil, glob, os; shutil.rmtree('.code-review-cache', ignore_errors=True); [shutil.rmtree(d, ignore_errors=True) for d in glob.glob('**/__pycache__', recursive=True)]; [os.remove(f) for f in glob.glob('**/*.pyc', recursive=True) if os.path.isfile(f)]"
