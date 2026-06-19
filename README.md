@@ -336,12 +336,12 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 | Suite | Command | Coverage |
 |-------|---------|----------|
 | Python compliance | `python3 tests/test_compliance.py` | 139 assertions across 63 test functions |
-| Python unit tests | `python3 -m unittest discover -s tests -p "test_*.py"` | All unittest suites (157 tests) |
+| Python unit tests | `python3 -m unittest discover -s tests -p "test_*.py"` | Suites (157 tests) |
 | Install tests | `python3 tests/test_install.py` | 49 tests across 9 classes |
 | Pipeline validation | `python3 tests/test_pipeline.py` | Review output schema validation |
 | Env-var config | `python3 tests/test_env_config.py` | Env-var table completeness checks |
 | Bash integration | `./test.sh` | CLI and cross-platform behavior (Unix only) |
-| Windows test | `powershell tests/Test-Windows.ps1` | Compliance + install + mock checks for Windows devs |
+| Windows test | `powershell tests/Test-Windows.ps1` | Compliance + install + mock (Windows) |
 
 ---
 

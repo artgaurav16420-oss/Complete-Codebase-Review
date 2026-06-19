@@ -1,6 +1,6 @@
 ﻿param()
 
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Resolve-Path (Join-Path $ScriptDir '..')
@@ -100,25 +100,23 @@ foreach ($issue in $expectedIssues) {
 
 # --- Check 6: Run compliance tests ---
 Write-Host '[INFO] Running compliance tests...'
-$complianceOutput = & python (Join-Path $ScriptDir 'test_compliance.py') 2>&1
+python (Join-Path $ScriptDir 'test_compliance.py')
 $complianceExit = $LASTEXITCODE
 if ($complianceExit -eq 0) {
     Write-Host '[SUCCESS] Compliance tests passed'
 } else {
     Write-Host "[ERROR] Compliance tests failed (exit code: $complianceExit)"
-    Write-Host $complianceOutput
     $Fail = 1
 }
 
 # --- Check 7: Run Python unit tests ---
 Write-Host '[INFO] Running Python unit tests...'
-$unitTestOutput = & python -m unittest discover -s $ScriptDir -p 'test_*.py' 2>&1
+python -m unittest discover -s $ScriptDir -p 'test_*.py'
 $unitTestExit = $LASTEXITCODE
 if ($unitTestExit -eq 0) {
     Write-Host '[SUCCESS] Unit tests passed'
 } else {
     Write-Host "[ERROR] Unit tests failed (exit code: $unitTestExit)"
-    Write-Host $unitTestOutput
     $Fail = 1
 }
 
