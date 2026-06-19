@@ -39,10 +39,16 @@ flowchart TB
         D2 -->|Skip| D4[Exit]
         D3 --> D5[Post-Fix Verification]
     end
-    subgraph Phase5[Phase 5: Independent Review & Test]
+    subgraph Phase5[Phase 5: Independent Review & PR]
         E1[Spawn Reviewer] --> E2[Apply Corrections]
         E2 --> E3[Full Test Suite]
-        E3 --> E4[Final Report]
+        E3 --> E4[Create PR]
+        E4 --> E5[Run Review on PR]
+        E5 --> E6{Fix PR Comments?}
+        E6 -->|User approves| E7[Push Fixes]
+        E7 --> E8[Re-test]
+        E6 -->|Skip| E8
+        E8 --> E9[Final Report]
     end
     Phase1 --> Phase2
     Phase2 --> Phase3
@@ -254,8 +260,8 @@ vs. effort across 3 phases.
 ### Phase 4: Fix Plan
 Generates structured fix tasks (T-001, T-002, ...) with effort estimates and dependencies. Presents the plan for your approval — apply specific tasks by ID, apply all, or skip. After fixes, runs post-fix verification (lint, type check, tests).
 
-### Phase 5: Independent Review & Test
-An independent agent audits all applied fixes, applies any necessary corrections, runs the full project test suite, and produces a final verification report. This ensures Phase 4 fixes didn't introduce regressions and the full test suite passes before you consider the review complete.
+### Phase 5: Independent Review & PR
+An independent agent audits all applied fixes, applies any necessary corrections, runs the full test suite, creates a pull request with the fixes, runs an automated review on the PR using the `review` skill, presents all AI bot review comments for your approval, then re-tests and delivers a final report. Requires [GitHub CLI (`gh`)](https://cli.github.com) for PR creation and review posting.
 
 ---
 
@@ -329,8 +335,9 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 
 | Suite | Command | Coverage |
 |-------|---------|----------|
-| Python compliance | `python3 tests/test_compliance.py` | 130+ assertions across 57 test functions |
-| Bash integration | `./test.sh` | CLI and cross-platform behavior |
+| Python compliance | `python3 tests/test_compliance.py` | 157 assertions across 63 test functions |
+| Bash integration | `./test.sh` | CLI and cross-platform behavior (Unix only) |
+| Windows test | `powershell tests/Test-Windows.ps1` | Compliance + install tests for Windows devs |
 | Install tests | `python3 tests/test_install.py` | 49 unit tests across 9 classes |
 
 ---

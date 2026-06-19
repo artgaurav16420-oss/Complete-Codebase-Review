@@ -302,6 +302,32 @@ class TestFixPlan(_BaseComplianceTest):
         self.assertTrue(
             'full test suite' in self.content or 'test suite' in self.content)
 
+    def test_pr_creation_phase(self):
+        """Phase 5d creates a pull request with applied fixes."""
+        self.assertIn('Create Pull Request', self.content)
+
+    def test_review_on_pr_phase(self):
+        """Phase 5e runs the review skill against the created PR."""
+        self.assertTrue(
+            'Run Review on PR' in self.content or 'Run the review' in self.content)
+
+    def test_fix_pr_comments_phase(self):
+        """Phase 5f fetches all PR comments and presents them for fixing."""
+        self.assertTrue(
+            'Fix All PR Comments' in self.content or 'PR comments' in self.content)
+
+    def test_pr_requires_gh(self):
+        """Phase 5d checks gh CLI availability before creating PR."""
+        self.assertIn('gh auth status', self.content)
+
+    def test_review_skill_loaded_from_skill_dir(self):
+        """Phase 5e loads review skill from SKILL_DIR, not system path."""
+        self.assertIn('$SKILL_DIR/skills/review/SKILL.md', self.content)
+
+    def test_pr_comment_fixes_require_user_approval(self):
+        """Phase 5f waits for explicit user approval before applying comment fixes."""
+        self.assertIn('Wait for explicit user approval', self.content)
+
 
 class TestIntegration(_BaseComplianceTest):
     """Integration checks across all pipeline phases."""
