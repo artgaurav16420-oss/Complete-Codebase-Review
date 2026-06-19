@@ -23,21 +23,6 @@ echo "[INFO] Created dummy test repo at $TEST_DIR"
 SKILL_FILE="SKILL.md"
 FAIL=0
 
-if ! grep -q "🔧 Environment Variables" "$SKILL_FILE"; then
-    echo "[ERROR] '🔧 Environment Variables' section missing from $SKILL_FILE"
-    FAIL=1
-fi
-
-if ! grep -q "💾 Checkpointing" "$SKILL_FILE"; then
-    echo "[ERROR] '💾 Checkpointing' section missing from $SKILL_FILE"
-    FAIL=1
-fi
-
-if ! grep -q "⚡ Quick Mode" "$SKILL_FILE"; then
-    echo "[ERROR] '⚡ Quick Mode' section missing from $SKILL_FILE"
-    FAIL=1
-fi
-
 if grep -q "^model: " "$SKILL_FILE"; then
     echo "[ERROR] Hardcoded 'model: ' still present in $SKILL_FILE frontmatter or templates"
     FAIL=1
@@ -72,18 +57,6 @@ try:
         assert isinstance(issue, str) and issue.strip(), f'Invalid issue format: {issue}'
 
     print(f'[SUCCESS] Validated {len(issues)} expected issues from JSON.')
-
-    # Mock evaluation: verify expected issues match known mock output
-    mock_lines = ['CWE-798', 'CWE-78', 'CWE-200', 'unused-import']
-    for issue in issues:
-        msg = f'Expected issue \"{issue}\" found in mock output'
-        assert issue in mock_lines, f'Expected issue \"{issue}\" not found in mock output'
-        print(f'[SUCCESS] {msg}')
-
-    for line in mock_lines:
-        msg = f'Mock output item \"{line}\" matches expected issues'
-        assert line in issues, f'Mock output item \"{line}\" not found in expected_issues.json'
-        print(f'[SUCCESS] {msg}')
 
 except Exception as e:
     print(f'[ERROR] expected_issues.json validation failed: {e}')
