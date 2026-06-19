@@ -30,7 +30,7 @@ Customize the execution with these environment variables:
 
 **READ-ONLY (Phases 1-3).** Produces a diagnostic report and fix plan. Phase 4 optionally writes a baseline snapshot for trend tracking. All code changes wait for user approval.
 
-Four-phase pattern for holistic codebase health assessment. Invoke with `/complete-codebase-review [path]`.
+Five-phase pipeline for codebase health. Invoke with `/complete-codebase-review [path]`.
 
 **Phase 1: Discovery** → Map structure, stack, modules, entry points
 **Phase 2: Parallel Analysis** → Spawn N specialist agents across health dimensions

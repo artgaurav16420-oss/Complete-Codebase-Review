@@ -4,7 +4,6 @@ Verifies that all env vars documented in the SKILL.md config table have
 corresponding references in the document body, and that no orphan
 env-var references exist outside the table.
 """
-import os
 import re
 import unittest
 from pathlib import Path
@@ -31,7 +30,6 @@ class TestEnvVarTable(unittest.TestCase):
         with open(SKILL_PATH, "r", encoding="utf-8") as f:
             cls.content = f.read()
         idx = cls.content.find("| `CODE_REVIEW_EFFORT`")
-        cls.table_start = idx
         if idx >= 0:
             cls.body = cls.content[idx:]
         else:

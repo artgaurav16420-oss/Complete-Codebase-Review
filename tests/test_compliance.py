@@ -13,6 +13,17 @@ import unittest
 from pathlib import Path
 
 
+_ALL_AGENTS = [
+    "Architecture Analyzer", "Code Quality Auditor",
+    "Security Posture", "Tech Debt Tracker",
+    "Test Health Auditor", "Dependency Auditor",
+    "Documentation Auditor", "Build & CI Auditor",
+    "Performance Baseline", "Database & Schema",
+    "UI/UX Auditor", "DevOps & Infra",
+    "Standards Compliance", "Process Quality (Karpathy Compliance)",
+]
+
+
 def _has_changelog():
     path = os.path.join(os.path.dirname(__file__), "..", "CHANGELOG.md")
     if os.path.exists(path):
@@ -114,16 +125,7 @@ class TestContentQuality(_BaseComplianceTest):
         self.assertIn('Security Posture', self.content)
 
     def test_at_least_12_agents(self):
-        agents = [
-            "Architecture Analyzer", "Code Quality Auditor",
-            "Security Posture", "Tech Debt Tracker",
-            "Test Health Auditor", "Dependency Auditor",
-            "Documentation Auditor", "Build & CI Auditor",
-            "Performance Baseline", "Database & Schema",
-            "UI/UX Auditor", "DevOps & Infra",
-            "Standards Compliance", "Process Quality (Karpathy Compliance)",
-        ]
-        matched = sum(1 for a in agents if a in self.content)
+        matched = sum(1 for a in _ALL_AGENTS if a in self.content)
         self.assertGreaterEqual(matched, 12)
 
     def test_skill_loading_per_agent(self):
@@ -359,16 +361,7 @@ class TestIntegration(_BaseComplianceTest):
         self.assertIn('Critical?', self.content)
 
     def test_parallel_analysis_all_14_agents(self):
-        agents = [
-            "Architecture Analyzer", "Code Quality Auditor",
-            "Security Posture", "Tech Debt Tracker",
-            "Test Health Auditor", "Dependency Auditor",
-            "Documentation Auditor", "Build & CI Auditor",
-            "Performance Baseline", "Database & Schema",
-            "UI/UX Auditor", "DevOps & Infra",
-            "Standards Compliance", "Process Quality (Karpathy Compliance)",
-        ]
-        matched = sum(1 for a in agents if a in self.content)
+        matched = sum(1 for a in _ALL_AGENTS if a in self.content)
         self.assertGreaterEqual(matched, 14)
         self.assertIn('Methodology', self.content)
         self.assertIn('Quantify findings', self.content)

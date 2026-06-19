@@ -3,7 +3,8 @@
 ## v2.1.0 (2026-06-17)
 - **Phase 5**: Independent Review & Test — fresh agent audits all Phase 4 fixes,
   applies corrections, runs full test suite, produces final report
-- **SKILL.md**: Added 5a–5d (spawn reviewer, apply corrections, full test suite, final report)
+- **SKILL.md**: Added 5a–5h (spawn reviewer, apply corrections, full test suite,
+  create PR, run review on PR, fix PR comments, re-test, final report)
 
 ## v2.0.1 (2026-05-24)
 - **Environment Check**: Added Step 1a to Phase 1 Discovery
