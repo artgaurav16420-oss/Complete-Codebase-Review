@@ -15,21 +15,8 @@ cd "$SCRIPT_DIR"
 echo "[INFO] Starting Mock Validation Test Suite"
 
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ccr-dummy-repo.XXXXXX")"
-cat << 'CODE' > "$TEST_DIR/app.py"
-import os
-import subprocess
-import sys
-
-def login(user, password):
-    expected = os.environ["TEST_CREDENTIAL"]
-    if password == expected:
-        return True
-    return False
-
-def ping_host(host):
-    # Intentional vulnerable fixture for integration tests: CWE-78.
-    subprocess.run(["ping", "-c", "1", host], check=False)
-CODE
+trap 'rm -rf "$TEST_DIR"' EXIT
+cp "$SCRIPT_DIR/tests/dummy_repo/app.py" "$TEST_DIR/app.py"
 
 echo "[INFO] Created dummy test repo at $TEST_DIR"
 
@@ -85,6 +72,18 @@ try:
         assert isinstance(issue, str) and issue.strip(), f'Invalid issue format: {issue}'
 
     print(f'[SUCCESS] Validated {len(issues)} expected issues from JSON.')
+
+    # Mock evaluation: verify expected issues match known mock output
+    mock_lines = ['CWE-798', 'CWE-78', 'CWE-200', 'unused-import']
+    for issue in issues:
+        msg = f'Expected issue \"{issue}\" found in mock output'
+        assert issue in mock_lines, f'Expected issue \"{issue}\" not found in mock output'
+        print(f'[SUCCESS] {msg}')
+
+    for line in mock_lines:
+        msg = f'Mock output item \"{line}\" matches expected issues'
+        assert line in issues, f'Mock output item \"{line}\" not found in expected_issues.json'
+        print(f'[SUCCESS] {msg}')
 
 except Exception as e:
     print(f'[ERROR] expected_issues.json validation failed: {e}')

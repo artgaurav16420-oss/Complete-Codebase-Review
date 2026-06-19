@@ -98,6 +98,16 @@ foreach ($issue in $expectedIssues) {
     }
 }
 
+# --- Reverse check: every mock line must be in expected_issues ---
+foreach ($line in $mockLines) {
+    if ($line -in $expectedIssues) {
+        Write-Host "[SUCCESS] Mock output item '$line' matches expected issues"
+    } else {
+        Write-Host "[ERROR] Mock output item '$line' not found in expected_issues.json"
+        $Fail = 1
+    }
+}
+
 # --- Check 6: Run compliance tests ---
 Write-Host '[INFO] Running compliance tests...'
 python (Join-Path $ScriptDir 'test_compliance.py')
