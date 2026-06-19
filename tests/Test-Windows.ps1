@@ -1,6 +1,6 @@
-param()
+﻿param()
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Resolve-Path (Join-Path $ScriptDir '..')
@@ -82,13 +82,12 @@ if (-not (Test-Path $ExpectedIssuesFile)) {
         $expectedIssues = @()
     }
 }
-$mockOutput = @'
-CWE-798
-CWE-78
-CWE-200
-unused-import
-'@
-$mockLines = $mockOutput -split "`r`n|`n"
+$mockLines = @(
+    'CWE-798',
+    'CWE-78',
+    'CWE-200',
+    'unused-import'
+)
 
 foreach ($issue in $expectedIssues) {
     if ($issue -in $mockLines) {

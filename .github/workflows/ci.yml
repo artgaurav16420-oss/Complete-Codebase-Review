@@ -51,3 +51,8 @@ jobs:
         if: runner.os != 'Windows'
         run: ./test.sh
         shell: bash
+
+      - name: Run Windows PowerShell test suite
+        if: runner.os == 'Windows'
+        run: powershell -ExecutionPolicy Bypass -File tests/Test-Windows.ps1
+        shell: powershell

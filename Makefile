@@ -17,4 +17,7 @@ clean:
 	rm -rf .code-review-cache/ __pycache__/
 	find . -name "*.pyc" -delete
 
-clean-windows: clean
+clean-windows:
+	if exist .code-review-cache rmdir /s /q .code-review-cache
+	if exist __pycache__ rmdir /s /q __pycache__
+	del /s /q *.pyc 2>nul
