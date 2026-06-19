@@ -18,9 +18,11 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 | `make test` | test_compliance.py + test.sh |
 | `make test-py` | test_compliance.py only |
 | `make test-bash` | test.sh only |
-| `make test-windows` | **Windows devs**: test-py only (skips bash suite) |
+| `make test-windows` | **Windows devs**: test-py + `tests/Test-Windows.ps1` (skips bash suite) |
 | `make clean` / `make clean-windows` | Remove `.code-review-cache/`, `__pycache__/`, `*.pyc` |
 | `python install.py [--help \| --target DIR \| --dry-run \| --version]` | Installer CLI (`--dry-run` safe first step) |
+| `review [commit\|branch\|pr]` | Code review of changes — severity-graded, approve/block decision. Defaults to uncommitted. Used in Phase 5e |
+| `gh pr create` | Create PR from Phase 4+5 fix commits. Used in Phase 5d |
 
 ## Architecture
 
@@ -30,7 +32,7 @@ Phase 1: Discovery      → map codebase, env check, health dimensions, manifest
 Phase 2: Parallel       → 14 specialist agents (Task sub-agents)
 Phase 3: Synthesis+DA   → dedup, normalize, Devil's Advocate (CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED)
 Phase 4: Fix Plan       → user-approved tasks → apply fixes → verify (lint → typecheck → test)
-Phase 5: Independent    → reviewer audits fixes, corrects regressions, runs full test suite
+Phase 5: Independent    → reviewer audits fixes → corrections → test suite → PR → review → fix comments → re-test → report
 ```
 
 Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or "all"). No auto-retry on post-fix verification.
@@ -52,8 +54,10 @@ Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIM
 | `ADRs/` | Architecture Decision Records (3: 14-agent split, DA workflow, plain-Python test framework) |
 | `tests/BASELINE-EXPECTATIONS.md` | Describes expected mock review output for test.sh |
 | `tests/expected_issues.json` | Mock output (4 issues: CWE-798, CWE-78, CWE-200, unused-import). Brittle — adding issues requires syncing both |
+| `tests/Test-Windows.ps1` | Windows counterpart of test.sh — compliance + unittest + mock checks |
 | `.skills-index.json` | Skills index for agent-discovery systems. Regenerate via `skill-matcher.js --index` |
 | `.gitmessage` | Commit message template (Conventional Commits) |
+| `skills/review/SKILL.md` | Portable code review skill. Loaded in Phase 5e to post severity-graded review on PR |
 
 ## Gotchas
 
@@ -70,5 +74,7 @@ Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIM
 - **.gitignore**: Excludes `.skills`, `.code-review-cache/`, `__pycache__/`, `*.pyc`, `.DS_Store`, `*.egg-info/`, `.env`, `.secret`, `.credentials`, `ccr-baseline.json`.
 - **.gitattributes**: `* text=auto eol=lf`.
 - **PRs**: Conventional Commits. Checklist: `make test` passing.
+- **Phase 5d-5f requires `gh` CLI**: PR creation, review posting, and comment fetching depend on `gh` CLI authenticated with push access. If `gh` is unavailable or remote is not GitHub, Phase 5d-5f skip gracefully and 5h reports the gap.
+- **`skills/review/SKILL.md`**: Loaded in Phase 5e from `$SKILL_DIR/skills/review/` — not from a system-installed `/review` command. This keeps it platform-independent.
 - **Badges** in `README.md` point to `artgaurav16420-oss/Complete-Codebase-Review` fork.
 - **Phased roadmap** in SKILL.md: Phase 1 = now (critical + quick wins), Phase 2 = next quarter, Phase 3 = backlog.

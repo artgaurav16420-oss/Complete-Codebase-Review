@@ -302,6 +302,26 @@ class TestFixPlan(_BaseComplianceTest):
         self.assertTrue(
             'full test suite' in self.content or 'test suite' in self.content)
 
+    def test_pr_creation_phase(self):
+        self.assertIn('Create Pull Request', self.content)
+
+    def test_review_on_pr_phase(self):
+        self.assertTrue(
+            'Run Review on PR' in self.content or 'Run the review' in self.content)
+
+    def test_fix_pr_comments_phase(self):
+        self.assertTrue(
+            'Fix All PR Comments' in self.content or 'PR comments' in self.content)
+
+    def test_pr_requires_gh(self):
+        self.assertIn('gh auth status', self.content)
+
+    def test_review_skill_loaded_from_skill_dir(self):
+        self.assertIn('SKILL_DIR/skills/review/SKILL.md', self.content)
+
+    def test_pr_comment_fixes_require_user_approval(self):
+        self.assertIn('Wait for explicit user approval', self.content)
+
 
 class TestIntegration(_BaseComplianceTest):
     """Integration checks across all pipeline phases."""
