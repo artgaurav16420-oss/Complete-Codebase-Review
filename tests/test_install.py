@@ -17,7 +17,9 @@ def _import_install():
     p = str(Path(__file__).resolve().parent.parent)
     if p not in sys.path:
         sys.path.insert(0, p)
-    return importlib.import_module("install")
+    module = importlib.import_module("install")
+    importlib.reload(module)
+    return module
 
 
 _ARGV_PATCH = ["install.py"]

@@ -15,6 +15,7 @@ cd "$SCRIPT_DIR"
 echo "[INFO] Starting Mock Validation Test Suite"
 
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ccr-dummy-repo.XXXXXX")"
+trap 'rm -rf "$TEST_DIR"' EXIT
 cp "$SCRIPT_DIR/tests/dummy_repo/app.py" "$TEST_DIR/app.py"
 
 echo "[INFO] Created dummy test repo at $TEST_DIR"

@@ -28,7 +28,7 @@ _SKILL_EXCLUDED = {
     "tests", ".github", "ADRs", ".gitignore",
     ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
     "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
-    "AGENTS.md", "help.md", "pyproject.toml",
+    "AGENTS.md", "SECURITY.md", "help.md", "pyproject.toml",
 }
 
 
@@ -141,7 +141,10 @@ def copy_skill(src_dir, dest_dir):
             if skill_dest.is_symlink():
                 skill_dest.unlink()
             elif skill_dest.is_dir():
-                shutil.rmtree(skill_dest)
+                def _onerror(func, path, exc_info):
+                    os.chmod(path, stat.S_IWRITE)
+                    func(path)
+                shutil.rmtree(skill_dest, onerror=_onerror)
             else:
                 skill_dest.unlink()
 
