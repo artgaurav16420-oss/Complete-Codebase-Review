@@ -463,7 +463,7 @@ Spawn a fresh Task agent (not the original fixers). Give it:
     does not crash the process or leave it in an inconsistent state
   - **Cross-platform**: Windows vs Unix — execution policies, path separators,
     signal handling, `os.rmdir` vs `os.unlink` for directory symlinks
-  - **CI gates**: verify the CI checks the project would run (see 5g step 3)
+  - **CI gates**: verify the CI checks the project would run (see 5c step 3)
 - Load the `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines
 - **File-type checklist** — apply relevant checks per changed file extension:
   - `.ps1`: `$ErrorActionPreference`, `Test-Path` guards, `-ExecutionPolicy Bypass`

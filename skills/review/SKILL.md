@@ -165,8 +165,6 @@ gh pr review "$PR_NUMBER" --comment --body "<findings summary>"
 
 # Inline comments for specific lines if applicable
 gh api repos/:owner/:repo/pulls/"$PR_NUMBER"/reviews \
-  -f event="COMMENT" \
-  -f body="<summary>" \
   --input comments.json
 ```
 
