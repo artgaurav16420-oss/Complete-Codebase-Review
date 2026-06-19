@@ -125,7 +125,7 @@ Run project-appropriate commands to verify:
 
 | Detected | Commands |
 |----------|----------|
-| Node/TS | `npm run typecheck 2>/dev/null || npx tsc --noEmit 2>/dev/null`, `npm run lint 2>/dev/null`, `npm test 2>/dev/null`, `npm run build 2>/dev/null` |
+| Node/TS | `npm run typecheck 2>/dev/null` \|\| `npx tsc --noEmit 2>/dev/null`, `npm run lint 2>/dev/null`, `npm test 2>/dev/null`, `npm run build 2>/dev/null` |
 | Rust | `cargo clippy -- -D warnings 2>/dev/null`, `cargo test 2>/dev/null`, `cargo build 2>/dev/null` |
 | Go | `go vet ./... 2>/dev/null`, `go test ./... 2>/dev/null`, `go build ./... 2>/dev/null` |
 | Python | `python -m pytest 2>/dev/null` or `python -m unittest discover 2>/dev/null` |
@@ -161,10 +161,10 @@ If `gh` CLI is available and in PR mode, post review to GitHub:
 
 ```bash
 # COMMENT (non-blocking — use when already reviewed by Phase 5a)
-gh pr review <NUMBER> --comment --body "<findings summary>"
+gh pr review "$PR_NUMBER" --comment --body "<findings summary>"
 
 # Inline comments for specific lines if applicable
-gh api repos/{owner}/{repo}/pulls/<NUMBER>/reviews \
+gh api repos/:owner/:repo/pulls/"$PR_NUMBER"/reviews \
   -f event="COMMENT" \
   -f body="<summary>" \
   --input comments.json
@@ -178,10 +178,8 @@ If `gh` is not available, print the report to stdout and note "gh not available 
 
 Produce a structured report:
 
-```
+```markdown
 # Code Review Report
-
-**Target**: <commit/branch/PR # / uncommitted>
 **Decision**: APPROVE | REQUEST CHANGES | BLOCK
 
 ## Summary
