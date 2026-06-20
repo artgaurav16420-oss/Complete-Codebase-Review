@@ -206,6 +206,69 @@ def validate_tech_debt_summary(md):
     return errors
 
 
+def validate_tech_debt_reconciliation(md):
+    """Reconcile Roadmap phase totals, Tech Debt Summary total, and domain
+    breakdown sum. All three must agree. Returns list of error strings."""
+    errors = []
+    roadmap_text = _section_text(md, "## Improvement Roadmap")
+    debt_text = _section_text(md, "## Tech Debt Summary")
+    if not roadmap_text or not debt_text:
+        return errors  # individual validators cover missing sections
+
+    # Extract sum of roadmap phase estimates
+    roadmap_total = 0.0
+    for m in re.finditer(
+        r'(?mi)^#+\s+Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text
+    ):
+        roadmap_total += float(m.group(1))
+
+    # Extract Tech Debt Summary total
+    total_m = re.search(
+        r'(?i)\*\*Total estimated\*\*:\s*(\d+(?:\.\d+)?)\s*hours?', debt_text
+    )
+    summary_total = float(total_m.group(1)) if total_m else None
+
+    # Extract and sum domain breakdown (handles single-line, multi-line, and table formats)
+    domain_m = re.search(
+        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s{0,1}[-*+]\s+|\n\s*#|\n\s*\d+\.\s+|\Z)', debt_text
+    )
+    domain_total = None
+    if domain_m:
+        values = re.findall(r'(?i)\b(\d+(?:\.\d+)?)h\b', domain_m.group(1))
+        if values:
+            domain_total = round(sum(float(h) for h in values), 2)
+        else:
+            domain_total = 0.0
+
+    roadmap_total = round(roadmap_total, 2)
+    if summary_total is not None:
+        summary_total = round(summary_total, 2)
+
+    if summary_total is None:
+        errors.append(
+            "Tech Debt Summary total field not found or unparseable"
+        )
+    if domain_total is None:
+        errors.append(
+            "Domain breakdown field not found or unparseable"
+        )
+    if summary_total is not None and roadmap_total != summary_total:
+        errors.append(
+            f"Roadmap phase total ({roadmap_total}h) != "
+            f"Tech Debt Summary total ({summary_total}h)"
+        )
+    if (
+        domain_total is not None
+        and summary_total is not None
+        and domain_total != summary_total
+    ):
+        errors.append(
+            f"Domain breakdown sum ({domain_total}h) != "
+            f"Tech Debt Summary total ({summary_total}h)"
+        )
+    return errors
+
+
 def validate_agent_status(md):
     """Validate Agent Status section. Returns list of error strings."""
     errors = []
@@ -229,6 +292,7 @@ def validate_markdown_output(md):
     errors.extend(validate_detailed_findings(md))
     errors.extend(validate_improvement_roadmap(md, _extract_findings_from_md(md)))
     errors.extend(validate_tech_debt_summary(md))
+    errors.extend(validate_tech_debt_reconciliation(md))
     errors.extend(validate_agent_status(md))
     return errors
 
@@ -241,7 +305,7 @@ SAMPLE_VALID_OUTPUT = r"""# Codebase Health Report — my-web-app (src/)
 - **Overall Health**: YELLOW
 - **Codebase Size**: 47,320 LOC, 312 files, 8 modules
 - **Critical Issues**: 3
-- **Tech Debt**: 214 engineering hours
+- **Tech Debt**: 200 engineering hours
 - **Priority Areas**: Security (hardcoded secrets), Architecture (circular deps), Process Quality (Karpathy compliance)
 
 ## Per-Domain Scores
@@ -291,7 +355,7 @@ SAMPLE_VALID_OUTPUT = r"""# Codebase Health Report — my-web-app (src/)
 - T-010: Migrate from Moment.js to date-fns -> 8h
 - T-011: Add E2E tests for critical paths -> 6h
 
-### Phase 3 — Backlog (estimated: 136 hours)
+### Phase 3 — Backlog (estimated: 118 hours)
 - T-012: Implement design system component library -> 40h
 - T-013: Add performance benchmarking pipeline -> 16h
 - T-014: Full OWASP Top 10 hardening audit -> 24h
@@ -482,6 +546,18 @@ class TestSampleOutputValidation(unittest.TestCase):
                 any(title == item.strip().casefold() for item in roadmap_items),
                 f"REJECTED finding '{f['finding']}' found in roadmap",
             )
+
+    def test_sample_tech_debt_reconciliation_passes(self):
+        errors = validate_tech_debt_reconciliation(SAMPLE_VALID_OUTPUT)
+        self.assertEqual(errors, [],
+                         f"Sample tech debt reconciliation failed: {errors}")
+
+    def test_sample_roadmap_phase_totals_match(self):
+        text = _section_text(SAMPLE_VALID_OUTPUT, "## Improvement Roadmap")
+        totals = [float(m.group(1)) for m in
+                  re.finditer(r'(?mi)^#+\s+Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', text)]
+        self.assertEqual(sum(totals), 200,
+                         f"Roadmap phases {totals} sum to {sum(totals)}h, expected 200h")
 
     def test_actual_health_report_passes_validation(self):
         import os

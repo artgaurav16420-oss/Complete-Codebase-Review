@@ -52,7 +52,10 @@ Outputs from specialist agents and synthesis are cached in `$RESOLVED_CACHE_DIR`
 To run a fast, surface-level assessment, set `CODE_REVIEW_EFFORT=min`. In this mode:
 - Timeouts drop to 120 seconds (`CODE_REVIEW_TIMEOUT_SEC=120`).
 - Only a core subset of 3 agents will run (e.g., Security, Code Quality, Architecture).
-- The codebase is sampled (approximately 10% sampling limit).
+- The codebase is sampled (approximately 10% limit). Selection order: entry points
+  (main files, CLI entry points, API routes), then highest-churn files (by git
+  history), then largest files, then random distribution across remaining modules.
+  Document which modules were excluded.
 
 ## When to Use
 
@@ -102,6 +105,7 @@ Verify required tools are accessible before spawning specialist agents:
 | Read | Yes | Abort — required for file inspection |
 | Bash | Yes | Abort — required for cross-platform shell commands |
 | Task | Yes | Abort — required for spawning sub-agents |
+| SKILL_DIR resolution | Yes | Abort — required for loading karpathy-guidelines.md. Resolve via runtime mechanism (e.g. `skill_path`, install-dir lookup) and confirm path contains this SKILL.md. |
 | WebSearch | No | Mark findings UNVERIFIED |
 | WebFetch | No | Use WebSearch as fallback |
 
@@ -140,6 +144,30 @@ Include:
 - Selected health dimensions
 
 ## Phase 2: Parallel Analysis
+
+### Canonical Domain IDs
+
+All trend tracking, LOW-ACTIVITY classification, and `per_domain_open_findings`
+JSON keys use the canonical domain ID (first column). Display names vary by
+context (e.g. "Process Quality (Karpathy Compliance)" in the agent table below,
+"Process Quality" in reports). Mappers convert between form and canonical key.
+
+| Canonical ID | Agent Name | Report Name |
+|-------------|------------|-------------|
+| `architecture` | Architecture Analyzer | Architecture |
+| `code_quality` | Code Quality Auditor | Code Quality |
+| `security` | Security Posture | Security |
+| `tech_debt` | Tech Debt Tracker | Tech Debt |
+| `test_health` | Test Health Auditor | Test Health |
+| `dependencies` | Dependency Auditor | Dependencies |
+| `documentation` | Documentation Auditor | Documentation |
+| `build_ci` | Build & CI Auditor | Build & CI |
+| `performance` | Performance Baseline | Performance |
+| `database` | Database & Schema | Database |
+| `ui_ux` | UI/UX Auditor | UI/UX |
+| `devops` | DevOps & Infra | DevOps |
+| `standards` | Standards Compliance | Standards |
+| `process_quality` | Process Quality (Karpathy Compliance) | Process Quality |
 
 ### Specialist Agents
 
@@ -309,6 +337,7 @@ Actions:
 - Web-verify each claim
 - Independently read code to confirm
 - Assign: CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED
+- **Tradeoff:** DA is a single generalist agent verifying all 14 domains — see ADR-002 for rationale. DA-ESCALATION mitigates missed-domain discovery.
 - DA may escalate severity of existing findings, add confirming evidence, or emit a `DA-ESCALATION` finding if it independently discovers something material the specialists missed. `DA-ESCALATION` findings must fall within an already-active domain (one of the 14 standard dimensions). DA must not open a new domain category that was excluded by Phase 1 dimension selection. All `DA-ESCALATION` findings are included in roadmap prioritization.
 - All DA additions are tagged `DA-ESCALATION` and reviewed separately in the synthesis report
 
@@ -395,11 +424,13 @@ After the fix plan is generated, save a baseline snapshot to `$RESOLVED_CACHE_DI
   "per_domain_open_findings": {
     "<domain>": { "critical": 0, "high": 0 }
   },
-  "task_count": 12
+  "task_count": 12,
+  "re_review_count": 0
 }
 ```
 
 `per_domain_open_findings` stores confirmed + plausible CRITICAL and HIGH finding counts per domain after DA verification. Phase 4f uses this field to classify domains as `[LOW-ACTIVITY]` on re-review.
+`re_review_count` tracks how many re-reviews have been performed; Phase 4f triggers a full re-scan every 3rd re-review to catch silent regressions.
 
 If a previous baseline exists, diff current vs previous and report trend in the executive summary:
 
@@ -415,10 +446,27 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
-1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
-2. Re-run Phase 2 (parallel analysis) for active domains only. Domains where `per_domain_open_findings[domain].critical == 0` AND `per_domain_open_findings[domain].high == 0` in the loaded baseline are marked `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend table. All other domains receive full re-analysis. The 75%/66% completion threshold (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY domains excluded from denominator.
+1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`.
+   Verify resolved absolute path of `baseline["target"]` matches resolved absolute path of
+   `$TARGET_DIR` (use `realpath` or equivalent). If mismatch, warn and fall back
+   to full re-scan (do not use stale baseline).
+2. Re-run Phase 2 (parallel analysis) for active domains only. Domains where
+   `per_domain_open_findings[domain].critical == 0` AND
+   `per_domain_open_findings[domain].high == 0` in the loaded baseline are marked
+   `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend
+   table. All other domains receive full re-analysis. The 75%/66% completion threshold
+   (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY
+   domains excluded from denominator.
+    **Exception — periodic full re-scan:** Every 3rd re-review (tracked via
+    `re_review_count` in the baseline snapshot — full re-scan when
+    `(re_review_count + 1) % 3 == 0`, i.e., on the 3rd, 6th, 9th, ... re-review),
+    ALL domains are rescanned regardless of LOW-ACTIVITY status, to detect silent
+    regressions in previously clean areas.
+   **Precedence:** When `CODE_REVIEW_AGENTS` is explicitly set on a re-review, it
+   overrides LOW-ACTIVITY exclusion — all requested agents run regardless of
+   LOW-ACTIVITY status.
 3. Re-synthesize with previous baseline in context
-4. Update baseline snapshot
+4. Update baseline snapshot (incrementing `re_review_count` by 1)
 5. Report progress: remaining vs original
 
 This enables iterative improvement tracking across multiple sessions.
@@ -496,6 +544,7 @@ If the reviewer finds bugs, edge cases missed, or regressions introduced:
    - **No over-engineering (YAGNI)**: no new abstractions or patterns beyond the fix
    - **Surface assumptions**: document any design decisions in comments/ADRs
 5. Log each approved correction in the final report
+6. Increment `$TOTAL_FIXES_APPLIED += <number of corrections applied>`
 
 ### 5c. Full Test Suite Run
 
@@ -590,10 +639,13 @@ manual PR creation.
 After the PR is created, enter a **review → autofix → re-review** loop until the PR passes quality gates or max iterations are reached.
 
 Initialize once before entering the loop:
+- `$PREVIOUS_FINDING_HASH = ""` (empty — first iteration always proceeds)
 - `$REVIEW_ITERATION = 1`
 - `$REVIEW_MAX_ITERATIONS` (from env var or default 3)
 - `$LOOP_SHOULD_CONTINUE = true`
 - `$PHASE_5_ABORTED = false`
+- `$TOTAL_FIXES_APPLIED = ${TOTAL_FIXES_APPLIED:-0}` (preserve any 5b corrections, default 0 if unset)
+- `$LOOP_FIXES_APPLIED = 0` (tracks only loop-specific fixes for 5f pre-check)
 
 On re-iteration, skip the init block and continue from 5e1.
 
@@ -616,9 +668,9 @@ Load the `review` skill and run it against the PR with structured JSON output:
    - Grade findings as CRITICAL/HIGH/MEDIUM/LOW
    - Run project validation commands
    - Post a COMMENT review to the PR via `gh pr review $PR_NUMBER --comment`
-    - Emit structured JSON findings to stdout (separated from markdown report by `---JSON---`)
-4. Parse the JSON from after the **last** occurrence of `---JSON---` as `$REVIEW_JSON`.
-   Store the markdown report as `$REVIEW_REPORT_MD`.
+     - Emit structured JSON findings to stdout (separated from markdown report by `---REVIEW_JSON---`)
+4. Parse the JSON from after the **last** occurrence of `---REVIEW_JSON---` (split on the delimiter and take the final segment) as `$REVIEW_JSON`.
+   Store the markdown report as `$REVIEW_REPORT_MD` (everything before the delimiter).
 5. If the `review` skill cannot be loaded, log a warning and proceed to 5g.
    Do not block.
 
@@ -654,6 +706,7 @@ If `$REVIEW_JSON` contains fixable findings:
    ```
 
 4. **If "review"**: For each issue where `action == "Fix"` (in CRITICAL → HIGH → MEDIUM order):
+   Initialize `$FIXED_ISSUE_COUNT = 0` before processing issues.
    a. Read the relevant file(s) from the PR head branch
    b. Independently validate: is the issue real from local code context? Determine the minimal safe fix
    c. Show proposed fix to user:
@@ -674,7 +727,7 @@ If `$REVIEW_JSON` contains fixable findings:
       ```
 
    d. AskUserQuestion: ✅ Apply fix | ⏭️ Defer
-   e. If Apply: apply via Edit tool, append file to `$FIXED_FILES` array
+   e. If Apply: apply via Edit tool, append file to `$FIXED_FILES` array, increment `$FIXED_ISSUE_COUNT` by 1
    f. If Defer: record reason, move to next
 
 5. **If "cancel"**:
@@ -693,7 +746,7 @@ If `$REVIEW_JSON` contains fixable findings:
    c. Run validation on changed files (lint/typecheck — detect project type, run appropriate commands)
    d. If validation passes → ask user: "Push fixes to PR branch?" → If yes: `git push origin $BRANCH`
    e. If validation fails → report failures, offer to investigate and fix, or push with failures noted
-   e. Post summary comment on PR:
+   f. Post summary comment on PR (regardless of validation outcome):
       ```bash
       gh pr comment "$PR_NUMBER" --body "## Fixes Applied (Iteration $REVIEW_ITERATION)
       Fixed ${#FIXED_FILES[@]} file(s) based on $FIXED_ISSUE_COUNT finding(s).
@@ -703,7 +756,9 @@ If `$REVIEW_JSON` contains fixable findings:
 
       **Commit:** $FIX_COMMIT_SHA"
       ```
-   f. Set `$LOOP_SHOULD_CONTINUE = true`
+   g. Set `$TOTAL_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
+   h. Set `$LOOP_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
+   i. Set `$LOOP_SHOULD_CONTINUE = true`
 
 7. **If no fixes were applied** (user skipped or zero fixable findings):
    - Set `$LOOP_SHOULD_CONTINUE = false`
@@ -731,14 +786,17 @@ If `$REVIEW_JSON` contains fixable findings:
 
 ### 5f. Re-run Test Suite
 
-After the review loop exits (whether cleanly or after max iterations), re-verify the codebase:
+After the review loop exits, re-verify the codebase:
 
 If `$PHASE_5_ABORTED == true` → skip 5f and proceed to 5g with abort note.
 
-1. Run the full test suite using the same detection logic as 5c step 1.
-2. Run CI gates using the same detection logic as 5c step 3.
-3. If all pass → proceed to 5g.
-4. If any fail:
+1. **Pre-check**: if `$LOOP_FIXES_APPLIED == 0`:
+   - Emit "No loop fixes applied — test results unchanged from Phase 5c baseline. Skipping 5f."
+   - Proceed to 5g.
+2. Run the full test suite using the same detection logic as 5c step 1.
+3. Run CI gates using the same detection logic as 5c step 3.
+4. If all pass → proceed to 5g.
+5. If any fail:
    - Report failures to the user
    - List which tests failed and their error messages
    - Ask: "Tests failed after review fixes. Reply with Task IDs to fix or 'skip' to proceed with failures noted."
@@ -909,7 +967,7 @@ Below is a realistic example of what a completed health report looks like for a 
 - **Overall Health**: YELLOW
 - **Codebase Size**: 47,320 LOC, 312 files, 8 modules
 - **Critical Issues**: 3
-- **Tech Debt**: 214 engineering hours
+- **Tech Debt**: 200 engineering hours
 - **Priority Areas**: Security (hardcoded secrets), Architecture (circular deps), Process Quality (Karpathy compliance)
 
 ## Per-Domain Scores
@@ -959,7 +1017,7 @@ Below is a realistic example of what a completed health report looks like for a 
 - T-010: Migrate from Moment.js to date-fns → 8h
 - T-011: Add E2E tests for critical paths → 6h
 
-### Phase 3 — Backlog (estimated: 136 hours)
+### Phase 3 — Backlog (estimated: 118 hours)
 - T-012: Implement design system component library → 40h
 - T-013: Add performance benchmarking pipeline → 16h
 - T-014: Full OWASP Top 10 hardening audit → 24h

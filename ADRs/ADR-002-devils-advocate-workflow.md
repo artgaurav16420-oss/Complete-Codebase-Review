@@ -28,3 +28,27 @@ Findings tagged DA-ESCALATION are flagged separately for explicit user attention
 - **Negative:** Adds ~30% to Phase 3 execution time.
 - **Negative:** Requires DA to have code-read access (already read-only).
 - **Mitigation:** DA runs as a single Task sub-agent, not 14×.
+
+## Accepted Risk — Single-Agent Coverage Gap
+
+DA is one generalist agent re-verifying findings across all 14 domains.
+This is structurally equivalent to the single-pass review the pipeline
+exists to prevent (see ADR-001 and SKILL.md Anti-Rationalization table).
+
+Accepted because:
+1. **Different mandate:** DA challenges specific claims from specialist
+   agents — it does not discover new domains. The 14 specialists already
+   ran their analysis; DA is a verification pass, not a discovery pass.
+2. **DA-ESCALATION mechanism:** If DA independently discovers a material
+   issue within an active domain, it tags it `DA-ESCALATION` for explicit
+   inclusion in roadmap prioritization. This catches cross-domain blind
+   spots without full re-analysis.
+3. **Cost proportionality:** 14× DA agents would double total Phase 2+3
+   token cost while producing diminishing returns — each DA would verify
+   findings from a single domain, which is already the output of the
+   specialist agent for that domain.
+
+This tradeoff is documented, not silent. If coverage gaps from single-agent
+DA become a recurring concern, the fix is to cluster DA per domain-group
+(e.g., Security+Dependencies, Architecture+Performance) rather than per
+individual domain.

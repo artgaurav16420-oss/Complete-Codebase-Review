@@ -259,7 +259,7 @@ The orchestrator should stop looping when:
 ## Phase 4 — Report
 
 Produce a structured report. If `--json` was passed in `$REVIEW_SCOPE`, also emit
-JSON to stdout after the markdown report (separated by `---JSON---`).
+JSON to stdout after the markdown report (separated by `---REVIEW_JSON---`).
 
 ### Markdown Report
 
@@ -299,7 +299,7 @@ JSON to stdout after the markdown report (separated by `---JSON---`).
 
 ### JSON Output (when `--json` flag is set)
 
-Emit after the markdown report, separated by `---JSON---`:
+Emit after the markdown report, separated by `---REVIEW_JSON---`:
 
 ```json
 {
