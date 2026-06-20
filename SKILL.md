@@ -457,10 +457,11 @@ When the user applies only a subset of tasks and wants a follow-up scan:
    table. All other domains receive full re-analysis. The 75%/66% completion threshold
    (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY
    domains excluded from denominator.
-   **Exception — periodic full re-scan:** Every 3rd re-review (tracked via an
-   incrementing `re_review_count` field in the baseline snapshot), ALL domains are
-   rescanned regardless of LOW-ACTIVITY status, to detect silent regressions in
-   previously clean areas.
+    **Exception — periodic full re-scan:** Every 3rd re-review (tracked via
+    `re_review_count` in the baseline snapshot — full re-scan when
+    `(re_review_count + 1) % 3 == 0`, i.e., on the 3rd, 6th, 9th, ... re-review),
+    ALL domains are rescanned regardless of LOW-ACTIVITY status, to detect silent
+    regressions in previously clean areas.
    **Precedence:** When `CODE_REVIEW_AGENTS` is explicitly set on a re-review, it
    overrides LOW-ACTIVITY exclusion — all requested agents run regardless of
    LOW-ACTIVITY status.
@@ -668,8 +669,8 @@ Load the `review` skill and run it against the PR with structured JSON output:
    - Run project validation commands
    - Post a COMMENT review to the PR via `gh pr review $PR_NUMBER --comment`
      - Emit structured JSON findings to stdout (separated from markdown report by `---REVIEW_JSON---`)
-4. Parse the JSON from after `---REVIEW_JSON---` as `$REVIEW_JSON`.
-   Store the markdown report as `$REVIEW_REPORT_MD`.
+4. Parse the JSON from after the **last** occurrence of `---REVIEW_JSON---` (split on the delimiter and take the final segment) as `$REVIEW_JSON`.
+   Store the markdown report as `$REVIEW_REPORT_MD` (everything before the delimiter).
 5. If the `review` skill cannot be loaded, log a warning and proceed to 5g.
    Do not block.
 
