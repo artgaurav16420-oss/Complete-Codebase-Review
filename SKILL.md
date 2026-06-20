@@ -643,7 +643,7 @@ Initialize once before entering the loop:
 - `$REVIEW_MAX_ITERATIONS` (from env var or default 3)
 - `$LOOP_SHOULD_CONTINUE = true`
 - `$PHASE_5_ABORTED = false`
-- `$TOTAL_FIXES_APPLIED = $TOTAL_FIXES_APPLIED` (preserve any 5b corrections)
+- `$TOTAL_FIXES_APPLIED = ${TOTAL_FIXES_APPLIED:-0}` (preserve any 5b corrections, default 0 if unset)
 
 On re-iteration, skip the init block and continue from 5e1.
 
