@@ -311,12 +311,13 @@ class TestFixPlan(_BaseComplianceTest):
     def test_review_on_pr_phase(self):
         """Phase 5e runs the review skill against the created PR."""
         self.assertTrue(
-            'Run Review on PR' in self.content or 'Run the review' in self.content)
+            'Run Code Review on PR' in self.content
+            or '$SKILL_DIR/skills/review/SKILL.md' in self.content)
 
-    def test_fix_pr_comments_phase(self):
-        """Phase 5f fetches all PR comments and presents them for fixing."""
+    def test_autofix_loop_phase(self):
+        """Phase 5e2 implements the autofix loop with per-issue approval."""
         self.assertTrue(
-            'Fix All PR Comments' in self.content or 'PR comments' in self.content)
+            'Autofix Loop' in self.content or 'AskUserQuestion' in self.content)
 
     def test_pr_requires_gh(self):
         """Phase 5d checks gh CLI availability before creating PR."""
@@ -326,9 +327,11 @@ class TestFixPlan(_BaseComplianceTest):
         """Phase 5e loads review skill from SKILL_DIR, not system path."""
         self.assertIn('$SKILL_DIR/skills/review/SKILL.md', self.content)
 
-    def test_pr_comment_fixes_require_user_approval(self):
-        """Phase 5f waits for explicit user approval before applying comment fixes."""
-        self.assertIn('Wait for explicit user approval', self.content)
+    def test_autofix_requires_user_approval(self):
+        """Phase 5e2 waits for per-issue user approval before applying fixes."""
+        self.assertTrue(
+            'AskUserQuestion' in self.content
+            or 'Wait for explicit user approval' in self.content)
 
 
 class TestIntegration(_BaseComplianceTest):

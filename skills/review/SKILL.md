@@ -1,9 +1,9 @@
 ---
 name: review
 description: Review local changes, commits, branches, or PRs — severity-graded findings with approve/block decision. Portable across runtimes (Claude Code, OpenCode, Codex, etc.).
-version: 1.0.0
+version: 2.0.0
 allowed-tools: "Read, Grep, Glob, Bash, WebSearch, Task"
-argument-hint: "[commit-hash | branch | pr-number | pr-url | (default: uncommitted changes)]"
+argument-hint: "[commit-hash | branch | pr-number | pr-url | --json | -t (all|staged|committed|uncommitted) | --base <branch> | --base-commit <sha> | --dir <path>] (default: uncommitted changes)"
 ---
 
 # Code Review
@@ -80,6 +80,26 @@ Detect project type from root config files:
 | `CMakeLists.txt` | C/C++ |
 
 Check for conventions files: `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `.editorconfig`.
+
+---
+
+## Phase 1.5 — Scope Flags
+
+Parse `$ARGUMENTS` for scope flags that control which changes to review:
+
+| Flag | Meaning |
+|------|---------|
+| `-t all` | All changes (default) |
+| `-t staged` | Staged changes only |
+| `-t committed` | Committed changes only |
+| `-t uncommitted` | Unstaged changes only |
+| `--base <branch>` | Compare against a specific branch |
+| `--base-commit <sha>` | Compare against a specific commit |
+| `--dir <path>` | Review a specific directory (must be a git repo) |
+| `--json` | Output findings as JSON for programmatic consumption |
+| `--max-iterations <n>` | Max review-fix cycles (default: 3) |
+
+Store parsed flags as `$REVIEW_SCOPE`. When `--json` is set, emit structured JSON in Phase 4 instead of (or in addition to) the markdown report. When `--dir` is set, scope git operations to that directory.
 
 ---
 
@@ -172,9 +192,72 @@ If `gh` is not available, print the report to stdout and note "gh not available 
 
 ---
 
+## Phase 3.5 — Fix-Review Cycle
+
+This skill supports iterative fix-review cycles for automated PR quality gates.
+
+### When to Loop
+
+After Phase 3 produces findings and the invoking orchestrator has applied fixes, the orchestrator may re-invoke this skill to re-review the updated diff. This creates a review → fix → re-review loop.
+
+### Loop Control
+
+The loop is controlled by the orchestrator, not by this skill. This skill provides the findings; the orchestrator decides whether to re-invoke.
+
+On each re-invocation:
+1. The diff has changed (fixes were applied)
+2. Phase 1 re-gathers the updated changes
+3. Phase 2 re-checks against the full checklist
+4. Phase 3 re-grades
+5. Results are emitted again
+
+### Structured JSON Output for Loop
+
+When invoked with `--json`, emit findings as a JSON object to stdout after the markdown report:
+
+```json
+{
+  "findings": [
+    {
+      "id": 1,
+      "severity": "CRITICAL",
+      "title": "Hardcoded credential",
+      "file": "src/config.py",
+      "line": 42,
+      "description": "DB password hardcoded in source",
+      "suggested_fix": "Move to env var"
+    }
+  ],
+  "validation_results": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "tests": "FAIL"
+  },
+  "decision": "REQUEST_CHANGES",
+  "total_findings": 5,
+  "critical_count": 1,
+  "high_count": 2,
+  "medium_count": 1,
+  "low_count": 1
+}
+```
+
+The orchestrator uses `findings` array for the autofix loop and `decision` to determine whether to re-invoke.
+
+### Termination Signals
+
+The orchestrator should stop looping when:
+- `decision == "APPROVE"` (zero CRITICAL/HIGH, validation passes)
+- No new findings vs previous iteration (stalled)
+- Max iterations reached (set by `REVIEW_MAX_ITERATIONS`, default 3)
+
+---
+
 ## Phase 4 — Report
 
-Produce a structured report:
+Produce a structured report. If `--json` was passed in `$REVIEW_SCOPE`, also emit JSON to stdout after the markdown report (separated by `---JSON---`).
+
+### Markdown Report
 
 ```markdown
 # Code Review Report
@@ -210,6 +293,39 @@ Produce a structured report:
 <file list>
 ```
 
+### JSON Output (when `--json` flag is set)
+
+Emit after the markdown report, separated by `---JSON---`:
+
+```json
+{
+  "findings": [
+    {
+      "id": 1,
+      "severity": "CRITICAL",
+      "title": "Finding title",
+      "file": "path/to/file.ext",
+      "line": 42,
+      "description": "Full description of the finding",
+      "suggested_fix": "Suggested fix description"
+    }
+  ],
+  "validation_results": {
+    "typecheck": "PASS",
+    "lint": "SKIPPED",
+    "tests": "FAIL",
+    "build": "PASS"
+  },
+  "decision": "APPROVE | REQUEST CHANGES | BLOCK",
+  "total_findings": 5,
+  "critical_count": 1,
+  "high_count": 2,
+  "medium_count": 1,
+  "low_count": 1,
+  "files_reviewed": ["path/to/file1.ext", "path/to/file2.ext"]
+}
+```
+
 ---
 
 ## Edge Cases & Fallbacks
@@ -220,6 +336,7 @@ Produce a structured report:
 - **PR not found**: Error and exit.
 - **Validation commands not found**: Report "Skipped" for each, proceed with review.
 - **Large PR (>50 files)**: Warn about review scope. Focus on source changes first.
+- **Max iterations**: Controlled by `REVIEW_MAX_ITERATIONS` env var or `--max-iterations <n>` flag (default 3).
 
 ## Cleanup
 

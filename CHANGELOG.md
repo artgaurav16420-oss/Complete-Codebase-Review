@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.2.0 (2026-06-20)
+- **Phase 5 rewrite**: Replaced linear 5e→5f with CodeRabbit-inspired review→autofix→re-review loop
+- **skills/review/SKILL.md v2.0.0**: Added Phase 1.5 scope flags (`--json`, `-t`, `--base`, etc.),
+  Phase 3.5 fix-review cycle, detailed JSON output schema, max-iteration loop control
+- **Loop control**: 5e1 (run review) → 5e2 (autofix loop, per-issue AskUserQuestion) → 5e3 (loop control,
+  exit on APPROVE/stall/max-iterations)
+- **Env vars**: Added `REVIEW_MAX_ITERATIONS` (Phase 5 loop cap)
+- **Tests**: Updated Phase 5 tests to match new section names (Autofix Loop, Run Code Review on PR)
+
 ## v2.1.0 (2026-06-17)
 - **Phase 5**: Independent Review & Test — fresh agent audits all Phase 4 fixes,
   applies corrections, runs full test suite, produces final report
