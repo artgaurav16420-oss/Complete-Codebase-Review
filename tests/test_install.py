@@ -6,6 +6,7 @@ significant refactoring to reduce mock coupling — deferred.
 import importlib
 import io
 import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -171,6 +172,22 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue(skill_dest.exists())
             self.assertTrue((skill_dest / "SKILL.md").exists())
             self.assertFalse((skill_dest / "old.txt").exists())
+
+    def test_removes_readonly_skill_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            skill_dest = dest / "complete-codebase-review"
+            skill_dest.mkdir(parents=True)
+            ro_file = skill_dest / "readonly.txt"
+            ro_file.write_text("read-only")
+            os.chmod(str(ro_file), stat.S_IRUSR | stat.S_IXUSR)
+            try:
+                result = self.install.copy_skill(src, dest)
+            except NameError:
+                self.fail("copy_skill raised NameError (missing 'import stat')")
+            self.assertTrue(result.exists())
+            self.assertTrue((result / "SKILL.md").exists())
 
     def test_removes_existing_skill_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:

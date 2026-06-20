@@ -201,7 +201,7 @@ class TestContentQuality(_BaseComplianceTest):
     def test_anti_rationalization_table(self):
         anti_rat_lines = [
             l for l in self.content.split('\n')
-            if re.match(r'^\| ".+ | ".+', l)
+            if re.match(r'^\| "[^"]*" \| .+', l)
         ]
         self.assertGreaterEqual(len(anti_rat_lines), 6)
         self.assertIn('Web verification takes too long', self.content)

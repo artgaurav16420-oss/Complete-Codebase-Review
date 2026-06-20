@@ -17,6 +17,7 @@ import argparse
 import os
 import re
 import shutil
+import stat
 import sys
 import platform
 from pathlib import Path
