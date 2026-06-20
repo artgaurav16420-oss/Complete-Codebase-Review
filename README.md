@@ -131,7 +131,7 @@ Here's a real health report excerpt for a medium-sized web application:
 - **Overall Health**: YELLOW
 - **Codebase Size**: 47,320 LOC, 312 files, 8 modules
 - **Critical Issues**: 3
-- **Tech Debt**: 214 engineering hours
+- **Tech Debt**: 200 engineering hours
 - **Priority Areas**: Security, Architecture, Test Health
 
 ## Per-Domain Scores

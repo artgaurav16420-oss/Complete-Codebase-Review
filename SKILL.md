@@ -464,7 +464,9 @@ When the user applies only a subset of tasks and wants a follow-up scan:
     regressions in previously clean areas.
    **Precedence:** When `CODE_REVIEW_AGENTS` is explicitly set on a re-review, it
    overrides LOW-ACTIVITY exclusion — all requested agents run regardless of
-   LOW-ACTIVITY status.
+   LOW-ACTIVITY status. If a periodic full re-scan also triggers on the same
+   re-review, the periodic full re-scan takes precedence — all domains are
+   scanned regardless of `CODE_REVIEW_AGENTS`.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot (incrementing `re_review_count` by 1)
 5. Report progress: remaining vs original
@@ -494,6 +496,9 @@ After fixes are applied, verify they didn't introduce regressions:
 6. If any check fails, report the failure to the user and suggest remediation. Do not auto-retry.
 
 ## Phase 5: Independent Review & PR
+
+Initialize counters before sub-phases:
+- `$TOTAL_FIXES_APPLIED = 0`
 
 After Phase 4 fixes are applied, an independent agent reviews all changes,
 corrects any regressions, runs the full test suite, creates a pull request,
@@ -748,11 +753,14 @@ If `$REVIEW_JSON` contains fixable findings:
    e. If validation fails → report failures, offer to investigate and fix, or push with failures noted
    f. Post summary comment on PR (regardless of validation outcome):
       ```bash
+      VALIDATION_STATUS=$(if [ $VALIDATION_PASSED = true ]; then echo "PASS"; else echo "FAIL"; fi)
       gh pr comment "$PR_NUMBER" --body "## Fixes Applied (Iteration $REVIEW_ITERATION)
       Fixed ${#FIXED_FILES[@]} file(s) based on $FIXED_ISSUE_COUNT finding(s).
 
       **Files modified:**
       $(printf '%s\n' "${FIXED_FILES[@]}" | sed 's/^/- `/;s/$/`/')
+
+      **Validation:** $VALIDATION_STATUS
 
       **Commit:** $FIX_COMMIT_SHA"
       ```

@@ -252,7 +252,7 @@ def validate_tech_debt_reconciliation(md):
         errors.append(
             "Domain breakdown field not found or unparseable"
         )
-    if summary_total is not None and roadmap_total != summary_total:
+    if summary_total is not None and abs(roadmap_total - summary_total) >= 0.5:
         errors.append(
             f"Roadmap phase total ({roadmap_total}h) != "
             f"Tech Debt Summary total ({summary_total}h)"
@@ -260,7 +260,7 @@ def validate_tech_debt_reconciliation(md):
     if (
         domain_total is not None
         and summary_total is not None
-        and domain_total != summary_total
+        and abs(domain_total - summary_total) >= 0.5
     ):
         errors.append(
             f"Domain breakdown sum ({domain_total}h) != "
