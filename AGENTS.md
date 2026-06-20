@@ -2,7 +2,8 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 
 # AGENTS.md — Complete Codebase Review
 
-**Skill repo.** `SKILL.md` (5-phase pipeline). Not a library/app. Not on PyPI. Zero deps, stdlib only, Python >= 3.9.
+**Skill repo.** `SKILL.md` (5-phase pipeline). Not a library/app. Not on PyPI.
+Zero deps, stdlib only, Python >= 3.9.
 
 ## Commands
 
@@ -33,11 +34,16 @@ Phase 5: Independent    → reviewer audits → corrections → test → PR → 
 ```
 Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or "all"). No auto-retry on post-fix verification.
 
-Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIMEOUT_SEC` (default 900), `CODE_REVIEW_FILTER` (all/critical-high), `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_STATUS_INTERVAL`.
+Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`,
+`CODE_REVIEW_TIMEOUT_SEC` (default 900), `CODE_REVIEW_FILTER`
+(all/critical-high), `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`,
+`CODE_REVIEW_BASELINE`, `CODE_REVIEW_STATUS_INTERVAL`.
 
 ## CI
 
-`.github/workflows/ci.yml`: 3 OS × 5 Python (3.9-3.13). Syntax check → compliance → `coverage run -m unittest discover` → coverage report (≥85%) → test.sh (non-Windows) / Test-Windows.ps1 (Windows). Only dep: `coverage`.
+`.github/workflows/ci.yml`: 3 OS × 5 Python (3.9-3.13). Syntax check →
+compliance → `coverage run -m unittest discover` → coverage report (≥85%) →
+test.sh (non-Windows) / Test-Windows.ps1 (Windows). Only dep: `coverage`.
 
 ## Code Conventions (from CONTRIBUTING.md)
 

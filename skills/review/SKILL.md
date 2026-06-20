@@ -3,7 +3,7 @@ name: review
 description: Review local changes, commits, branches, or PRs — severity-graded findings with approve/block decision. Portable across runtimes (Claude Code, OpenCode, Codex, etc.).
 version: 2.0.0
 allowed-tools: "Read, Grep, Glob, Bash, WebSearch, Task"
-argument-hint: "[hash | branch | pr | --json | -t scope | --base <b> | --base-commit <sha> | --dir <path>]"
+argument-hint: "[hash|branch|pr|--json|-t scope|--base <b>|--base-commit <sha>|--dir <path>]"
 ---
 
 # Code Review
