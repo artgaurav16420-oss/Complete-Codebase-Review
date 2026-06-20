@@ -3,7 +3,7 @@ name: review
 description: Review local changes, commits, branches, or PRs — severity-graded findings with approve/block decision. Portable across runtimes (Claude Code, OpenCode, Codex, etc.).
 version: 2.0.0
 allowed-tools: "Read, Grep, Glob, Bash, WebSearch, Task"
-argument-hint: "[commit-hash | branch | pr-number | pr-url | --json | -t (all|staged|committed|uncommitted) | --base <branch> | --base-commit <sha> | --dir <path>] (default: uncommitted changes)"
+argument-hint: "[hash | branch | pr | --json | -t scope | --base <b> | --base-commit <sha> | --dir <path>]"
 ---
 
 # Code Review
@@ -99,7 +99,9 @@ Parse `$ARGUMENTS` for scope flags that control which changes to review:
 | `--json` | Output findings as JSON for programmatic consumption |
 | `--max-iterations <n>` | Max review-fix cycles (default: 3) |
 
-Store parsed flags as `$REVIEW_SCOPE`. When `--json` is set, emit structured JSON in Phase 4 instead of (or in addition to) the markdown report. When `--dir` is set, scope git operations to that directory.
+Store parsed flags as `$REVIEW_SCOPE`. When `--json` is set, emit structured
+JSON in Phase 4 instead of (or in addition to) the markdown report. When `--dir`
+is set, scope git operations to that directory.
 
 ---
 
@@ -198,7 +200,9 @@ This skill supports iterative fix-review cycles for automated PR quality gates.
 
 ### When to Loop
 
-After Phase 3 produces findings and the invoking orchestrator has applied fixes, the orchestrator may re-invoke this skill to re-review the updated diff. This creates a review → fix → re-review loop.
+After Phase 3 produces findings and the invoking orchestrator has applied fixes,
+the orchestrator may re-invoke this skill to re-review the updated diff. This
+creates a review → fix → re-review loop.
 
 ### Loop Control
 
@@ -255,7 +259,8 @@ The orchestrator should stop looping when:
 
 ## Phase 4 — Report
 
-Produce a structured report. If `--json` was passed in `$REVIEW_SCOPE`, also emit JSON to stdout after the markdown report (separated by `---JSON---`).
+Produce a structured report. If `--json` was passed in `$REVIEW_SCOPE`, also emit
+JSON to stdout after the markdown report (separated by `---JSON---`).
 
 ### Markdown Report
 
@@ -336,7 +341,8 @@ Emit after the markdown report, separated by `---JSON---`:
 - **PR not found**: Error and exit.
 - **Validation commands not found**: Report "Skipped" for each, proceed with review.
 - **Large PR (>50 files)**: Warn about review scope. Focus on source changes first.
-- **Max iterations**: Controlled by `REVIEW_MAX_ITERATIONS` env var or `--max-iterations <n>` flag (default 3).
+- **Max iterations**: Controlled by `REVIEW_MAX_ITERATIONS` env var or
+  `--max-iterations <n>` flag (default 3).
 
 ## Cleanup
 

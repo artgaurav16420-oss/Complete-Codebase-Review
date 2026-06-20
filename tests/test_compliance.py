@@ -310,14 +310,12 @@ class TestFixPlan(_BaseComplianceTest):
 
     def test_review_on_pr_phase(self):
         """Phase 5e runs the review skill against the created PR."""
-        self.assertTrue(
-            'Run Code Review on PR' in self.content
-            or '$SKILL_DIR/skills/review/SKILL.md' in self.content)
+        self.assertIn('Run Code Review on PR', self.content)
 
     def test_autofix_loop_phase(self):
         """Phase 5e2 implements the autofix loop with per-issue approval."""
-        self.assertTrue(
-            'Autofix Loop' in self.content or 'AskUserQuestion' in self.content)
+        self.assertIn('Autofix Loop', self.content)
+        self.assertIn('REVIEW_MAX_ITERATIONS', self.content)
 
     def test_pr_requires_gh(self):
         """Phase 5d checks gh CLI availability before creating PR."""
@@ -329,9 +327,8 @@ class TestFixPlan(_BaseComplianceTest):
 
     def test_autofix_requires_user_approval(self):
         """Phase 5e2 waits for per-issue user approval before applying fixes."""
-        self.assertTrue(
-            'AskUserQuestion' in self.content
-            or 'Wait for explicit user approval' in self.content)
+        self.assertIn('AskUserQuestion', self.content)
+        self.assertIn('If Apply: apply', self.content)
 
 
 class TestIntegration(_BaseComplianceTest):

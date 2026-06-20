@@ -1,7 +1,8 @@
 # Changelog
 
 ## v2.2.0 (2026-06-20)
-- **Phase 5 rewrite**: Replaced linear 5e→5f with CodeRabbit-inspired review→autofix→re-review loop
+- **Phase 5 rewrite**: Replaced linear 5e→5f with CodeRabbit-inspired
+  review→autofix→re-review loop
 - **skills/review/SKILL.md v2.0.0**: Added Phase 1.5 scope flags (`--json`, `-t`, `--base`, etc.),
   Phase 3.5 fix-review cycle, detailed JSON output schema, max-iteration loop control
 - **Loop control**: 5e1 (run review) → 5e2 (autofix loop, per-issue AskUserQuestion) → 5e3 (loop control,

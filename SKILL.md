@@ -21,7 +21,7 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_MAX_FILES` | (unlimited) | Max files to scan. |
 | `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
-| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 14: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards, Process Quality. Filtered by project dimensions (see Step 2). |
+| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 14: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards, Process Quality. Filtered by project dimensions. |
 | `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer. |
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 | `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
@@ -447,7 +447,11 @@ After fixes are applied, verify they didn't introduce regressions:
 
 ## Phase 5: Independent Review & PR
 
-After Phase 4 fixes are applied, an independent agent reviews all changes, corrects any regressions, runs the full test suite, creates a pull request, then enters a **review → autofix → re-review** loop on the PR using the CodeRabbit-inspired workflow. After the loop exits cleanly, re-runs the test suite and delivers a final report.
+After Phase 4 fixes are applied, an independent agent reviews all changes,
+corrects any regressions, runs the full test suite, creates a pull request,
+then enters a **review → autofix → re-review** loop on the PR using the
+CodeRabbit-inspired workflow. After the loop exits cleanly, re-runs the test
+suite and delivers a final report.
 
 ### 5a. Spawn Independent Reviewer
 
@@ -526,7 +530,9 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
    gh auth status 2>/dev/null
    git remote get-url origin 2>/dev/null | grep -q github.com
    ```
-   If either fails, skip 5d-5h and proceed to 5h with a note: "PR creation skipped — `gh` CLI not available or remote is not GitHub. Branch with fixes exists locally."
+   If either fails, skip 5d-5g and proceed to 5g with a note:
+   "PR creation skipped — `gh` CLI not available or remote is not GitHub.
+   Branch with fixes exists locally."
 
 2. **Create branch**:
    ```bash
@@ -547,7 +553,8 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
    Ready to push branch '$BRANCH' and create a pull request against <target>.
    Reply 'push' to proceed, or 'skip' to stay local.
    ```
-   If user skips, proceed to 5h with a note: "PR creation skipped — user declined. Branch with fixes exists locally."
+   If user skips, proceed to 5g with a note:
+   "PR creation skipped — user declined. Branch with fixes exists locally."
 
    If user approves:
    ```bash
@@ -573,7 +580,10 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
 
 6. Store the PR number as `$PR_NUMBER` for use in 5e-5f.
 
-If this is the first time running Phase 5 on this repo and the remote is not GitHub or `gh` is unavailable, skip 5d-5h entirely. The branch with all fixes remains on disk for manual PR creation.
+If this is the first time running Phase 5 on this repo and `gh` is unavailable or
+remote is not GitHub, skip 5d-5g (PR creation and review steps) and proceed
+directly to final reporting. The branch with all fixes remains on disk for
+manual PR creation.
 
 ### 5e. Review Loop (CodeRabbit-Inspired)
 
@@ -605,7 +615,8 @@ Load the `review` skill and run it against the PR with structured JSON output:
    - Post a COMMENT review to the PR via `gh pr review $PR_NUMBER --comment`
    - Emit structured JSON findings to stdout (separated from markdown report by `---JSON---`)
 4. Parse the JSON output as `$REVIEW_JSON`. Store the markdown report as `$REVIEW_REPORT_MD`.
-5. If the `review` skill cannot be loaded, log a warning and proceed to 5h. Do not block.
+5. If the `review` skill cannot be loaded, log a warning and proceed to 5g.
+   Do not block.
 
 #### 5e2. Autofix Loop (CodeRabbit-Inspired)
 
@@ -659,13 +670,13 @@ If `$REVIEW_JSON` contains fixable findings:
       ```
 
    d. AskUserQuestion: ✅ Apply fix | ⏭️ Defer
-   e. If Apply: apply via Edit tool, track file in `$FIXED_FILES[]`
+   e. If Apply: apply via Edit tool, append file to `$FIXED_FILES` array
    f. If Defer: record reason, move to next
 
 5. **If any fixes were applied**:
    a. Stage all changed files and create a **single consolidated commit**:
       ```bash
-      git add <all-files-in-$FIXED_FILES>
+      git add "${FIXED_FILES[@]}"
       git commit -m "fix: apply review fixes (iteration $REVIEW_ITERATION)"
       ```
    b. Store commit SHA as `$FIX_COMMIT_SHA`
@@ -677,7 +688,7 @@ If `$REVIEW_JSON` contains fixable findings:
       Fixed ${#FIXED_FILES[@]} file(s) based on $FIXED_ISSUE_COUNT finding(s).
 
       **Files modified:**
-      - $(echo "$FIXED_FILES" | tr ' ' '\n' | sed 's/^/- `/;s/$/`/')
+      $(printf '%s\n' "${FIXED_FILES[@]}" | sed 's/^/- `/;s/$/`/')
 
       **Commit:** $FIX_COMMIT_SHA"
       ```
@@ -704,7 +715,7 @@ If `$REVIEW_JSON` contains fixable findings:
    - List remaining CRITICAL/HIGH findings from the last review
 
 4. If `$LOOP_SHOULD_CONTINUE == false` and loop exited with remaining findings:
-   - Note remaining issues in 5h report
+   - Note remaining issues in 5g report
 
 ### 5f. Re-run Test Suite
 
@@ -712,13 +723,13 @@ After the review loop exits (whether cleanly or after max iterations), re-verify
 
 1. Run the full test suite using the same detection logic as 5c step 1.
 2. Run CI gates using the same detection logic as 5c step 3.
-3. If all pass → proceed to 5h.
+3. If all pass → proceed to 5g.
 4. If any fail:
    - Report failures to the user
    - List which tests failed and their error messages
    - Ask: "Tests failed after review fixes. Reply with Task IDs to fix or 'skip' to proceed with failures noted."
    - If user chooses to fix → create corrective tasks, apply, commit, push, re-run.
-   - If user chooses to skip → note failures in 5h report.
+   - If user chooses to skip → note failures in 5g report.
 
 ### 5g. Final Report
 

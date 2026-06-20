@@ -24,7 +24,7 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 ## Architecture
 
 5-phase pipeline defined in `SKILL.md`:
-```
+```text
 Phase 1: Discovery      → map codebase, env check, health dimensions
 Phase 2: Parallel       → 14 specialist agents (Task sub-agents)
 Phase 3: Synthesis+DA   → dedup, normalize, Devil's Advocate
@@ -42,7 +42,7 @@ Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIM
 ## Code Conventions (from CONTRIBUTING.md)
 
 - **Zero deps** — stdlib only. No `requirements.txt`, no `pip install`.
-- **No type hints** — targets 3.9+ but zero-dep means no `typing` imports.
+- **No type hints** — targets 3.9+ but zero-dep means no external typing deps (stdlib `typing` is fine).
 - **100-char line limit**, no complex f-string expressions.
 - **Conventional Commits** (`.gitmessage` template): `feat|fix|test|docs|refactor|ci|chore`.
 - New tests use `unittest.TestCase`.
@@ -52,7 +52,7 @@ Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIM
 
 | Path | Notes |
 |------|-------|
-| `SKILL.md` | Source of truth for phases, env vars, tech debt table (943 lines) |
+| `SKILL.md` | Source of truth for phases, env vars, and the tech debt table |
 | `install.py` | User-facing installer. Version from `pyproject.toml` via `_read_version()` — raises if missing |
 | `karpathy-guidelines.md` | Behavioral ruleset. Injected into sub-agents via SKILL_DIR |
 | `help.md` | Env var reference, quick mode, exit codes, usage |
@@ -72,5 +72,7 @@ Env vars: `CODE_REVIEW_EFFORT` (max/min), `CODE_REVIEW_AGENTS`, `CODE_REVIEW_TIM
 - **Cross-platform**: SKILL.md has separate command tables for Windows (`Get-ChildItem`) and Unix (`find`).
 - **`CHANGELOG.md`** is extracted from SKILL.md (v2.1.0 added Phase 5). Avoid hardcoded line-count claims.
 - **`test.sh` mock evaluation**: Hardcoded mock output matching `tests/expected_issues.json` (4 issues). Adding an issue requires updating both.
-- **Phase 5d-5f requires `gh` CLI**: PR creation, review posting, comment fetching depend on `gh` authenticated with push access. If `gh` unavailable or remote not GitHub, steps skip gracefully (reported in 5h).
+- **Phase 5d-5g requires `gh` CLI**: PR creation, review loop, and comment
+  posting depend on `gh` authenticated with push access. If `gh` unavailable or
+  remote not GitHub, steps skip gracefully (reported in 5g).
 - **PRs**: Conventional Commits. Checklist: `make test` passing.
