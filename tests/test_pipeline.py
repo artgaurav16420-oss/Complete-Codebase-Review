@@ -234,9 +234,11 @@ def validate_tech_debt_reconciliation(md):
     )
     domain_total = None
     if domain_m:
-        values = re.findall(r'(?i)(\d+(?:\.\d+)?)h\b', domain_m.group(1))
+        values = re.findall(r'(?i)\b(\d+(?:\.\d+)?)h\b', domain_m.group(1))
         if values:
             domain_total = round(sum(float(h) for h in values), 2)
+        else:
+            domain_total = 0.0
 
     roadmap_total = round(roadmap_total, 2)
     if summary_total is not None:

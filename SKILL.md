@@ -465,7 +465,7 @@ When the user applies only a subset of tasks and wants a follow-up scan:
    overrides LOW-ACTIVITY exclusion — all requested agents run regardless of
    LOW-ACTIVITY status.
 3. Re-synthesize with previous baseline in context
-4. Update baseline snapshot
+4. Update baseline snapshot (incrementing `re_review_count` by 1)
 5. Report progress: remaining vs original
 
 This enables iterative improvement tracking across multiple sessions.
@@ -705,6 +705,7 @@ If `$REVIEW_JSON` contains fixable findings:
    ```
 
 4. **If "review"**: For each issue where `action == "Fix"` (in CRITICAL → HIGH → MEDIUM order):
+   Initialize `$FIXED_ISSUE_COUNT = 0` before processing issues.
    a. Read the relevant file(s) from the PR head branch
    b. Independently validate: is the issue real from local code context? Determine the minimal safe fix
    c. Show proposed fix to user:
@@ -725,7 +726,7 @@ If `$REVIEW_JSON` contains fixable findings:
       ```
 
    d. AskUserQuestion: ✅ Apply fix | ⏭️ Defer
-   e. If Apply: apply via Edit tool, append file to `$FIXED_FILES` array
+   e. If Apply: apply via Edit tool, append file to `$FIXED_FILES` array, increment `$FIXED_ISSUE_COUNT` by 1
    f. If Defer: record reason, move to next
 
 5. **If "cancel"**:
