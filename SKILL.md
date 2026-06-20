@@ -752,8 +752,8 @@ If `$REVIEW_JSON` contains fixable findings:
 
       **Commit:** $FIX_COMMIT_SHA"
       ```
-    g. Set `$TOTAL_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
-    h. Set `$LOOP_SHOULD_CONTINUE = true`
+   g. Set `$TOTAL_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
+   h. Set `$LOOP_SHOULD_CONTINUE = true`
 
 7. **If no fixes were applied** (user skipped or zero fixable findings):
    - Set `$LOOP_SHOULD_CONTINUE = false`
