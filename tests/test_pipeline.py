@@ -215,9 +215,11 @@ def validate_tech_debt_reconciliation(md):
     if not roadmap_text or not debt_text:
         return errors  # individual validators cover missing sections
 
-    # Extract sum of roadmap phase estimates
+    # Extract sum of roadmap phase estimates (anchored to line start)
     roadmap_total = 0.0
-    for m in re.finditer(r'estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text):
+    for m in re.finditer(
+        r'(?m)^.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text
+    ):
         roadmap_total += float(m.group(1))
 
     # Extract Tech Debt Summary total
@@ -232,7 +234,11 @@ def validate_tech_debt_reconciliation(md):
     if domain_m:
         values = re.findall(r'(\d+(?:\.\d+)?)h\b', domain_m.group(1))
         if values:
-            domain_total = sum(float(h) for h in values)
+            domain_total = round(sum(float(h) for h in values), 2)
+
+    roadmap_total = round(roadmap_total, 2)
+    if summary_total is not None:
+        summary_total = round(summary_total, 2)
 
     if summary_total is None:
         errors.append(
@@ -540,8 +546,8 @@ class TestSampleOutputValidation(unittest.TestCase):
 
     def test_sample_roadmap_phase_totals_match(self):
         text = _section_text(SAMPLE_VALID_OUTPUT, "## Improvement Roadmap")
-        totals = [int(m.group(1)) for m in
-                  re.finditer(r'estimated:\s*(\d+)\s*hours?', text)]
+        totals = [float(m.group(1)) for m in
+                  re.finditer(r'(?m)^.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', text)]
         self.assertEqual(sum(totals), 200,
                          f"Roadmap phases {totals} sum to {sum(totals)}h, expected 200h")
 
