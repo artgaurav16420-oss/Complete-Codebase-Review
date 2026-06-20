@@ -230,7 +230,7 @@ def validate_tech_debt_reconciliation(md):
 
     # Extract and sum domain breakdown (handles single-line, multi-line, and table formats)
     domain_m = re.search(
-        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s*[-*+]\s+|\n\s*\d+\.\s+|\Z)', debt_text
+        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s*[-*+]\s+\*\*|\n\s*\d+\.\s+|\Z)', debt_text
     )
     domain_total = None
     if domain_m:
@@ -257,7 +257,11 @@ def validate_tech_debt_reconciliation(md):
             f"Roadmap phase total ({roadmap_total}h) != "
             f"Tech Debt Summary total ({summary_total}h)"
         )
-    if domain_total is not None and summary_total is not None and domain_total != summary_total:
+    if (
+        domain_total is not None
+        and summary_total is not None
+        and domain_total != summary_total
+    ):
         errors.append(
             f"Domain breakdown sum ({domain_total}h) != "
             f"Tech Debt Summary total ({summary_total}h)"
