@@ -230,7 +230,7 @@ def validate_tech_debt_reconciliation(md):
 
     # Extract and sum domain breakdown (handles single-line, multi-line, and table formats)
     domain_m = re.search(
-        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s*[-*+]\s+\*\*|\n\s*\d+\.\s+|\Z)', debt_text
+        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s{0,1}[-*+]\s+|\n\s*#|\n\s*\d+\.\s+|\Z)', debt_text
     )
     domain_total = None
     if domain_m:
