@@ -530,7 +530,7 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
    gh auth status 2>/dev/null
    git remote get-url origin 2>/dev/null | grep -q github.com
    ```
-   If either fails, skip 5d-5g and proceed to 5g with a note:
+   If either fails, skip 5d-5f and proceed to 5g with a note:
    "PR creation skipped — `gh` CLI not available or remote is not GitHub.
    Branch with fixes exists locally."
 
@@ -581,7 +581,7 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
 6. Store the PR number as `$PR_NUMBER` for use in 5e-5f.
 
 If this is the first time running Phase 5 on this repo and `gh` is unavailable or
-remote is not GitHub, skip 5d-5g (PR creation and review steps) and proceed
+remote is not GitHub, skip 5d-5f (PR creation and review steps) and proceed
 directly to final reporting. The branch with all fixes remains on disk for
 manual PR creation.
 
