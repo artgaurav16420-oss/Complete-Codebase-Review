@@ -228,9 +228,9 @@ def validate_tech_debt_reconciliation(md):
     )
     summary_total = float(total_m.group(1)) if total_m else None
 
-    # Extract and sum domain breakdown (handles both single-line and multi-line formats)
+    # Extract and sum domain breakdown (handles single-line, multi-line, and table formats)
     domain_m = re.search(
-        r'(?im)^.*\*\*By domain\*\*:\s*(.*(?:\n\s+.*)*)', debt_text
+        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s*-\s*\*\*|\Z)', debt_text
     )
     domain_total = None
     if domain_m:
