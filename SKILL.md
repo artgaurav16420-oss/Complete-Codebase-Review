@@ -644,6 +644,7 @@ Initialize once before entering the loop:
 - `$LOOP_SHOULD_CONTINUE = true`
 - `$PHASE_5_ABORTED = false`
 - `$TOTAL_FIXES_APPLIED = ${TOTAL_FIXES_APPLIED:-0}` (preserve any 5b corrections, default 0 if unset)
+- `$LOOP_FIXES_APPLIED = 0` (tracks only loop-specific fixes for 5f pre-check)
 
 On re-iteration, skip the init block and continue from 5e1.
 
@@ -754,7 +755,8 @@ If `$REVIEW_JSON` contains fixable findings:
       **Commit:** $FIX_COMMIT_SHA"
       ```
    g. Set `$TOTAL_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
-   h. Set `$LOOP_SHOULD_CONTINUE = true`
+   h. Set `$LOOP_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
+   i. Set `$LOOP_SHOULD_CONTINUE = true`
 
 7. **If no fixes were applied** (user skipped or zero fixable findings):
    - Set `$LOOP_SHOULD_CONTINUE = false`
@@ -786,8 +788,8 @@ After the review loop exits, re-verify the codebase:
 
 If `$PHASE_5_ABORTED == true` → skip 5f and proceed to 5g with abort note.
 
-1. **Pre-check**: if `$TOTAL_FIXES_APPLIED == 0`:
-   - Emit "No fixes applied — test results unchanged from Phase 5c baseline. Skipping 5f."
+1. **Pre-check**: if `$LOOP_FIXES_APPLIED == 0`:
+   - Emit "No loop fixes applied — test results unchanged from Phase 5c baseline. Skipping 5f."
    - Proceed to 5g.
 2. Run the full test suite using the same detection logic as 5c step 1.
 3. Run CI gates using the same detection logic as 5c step 3.
