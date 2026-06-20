@@ -424,11 +424,13 @@ After the fix plan is generated, save a baseline snapshot to `$RESOLVED_CACHE_DI
   "per_domain_open_findings": {
     "<domain>": { "critical": 0, "high": 0 }
   },
-  "task_count": 12
+  "task_count": 12,
+  "re_review_count": 0
 }
 ```
 
 `per_domain_open_findings` stores confirmed + plausible CRITICAL and HIGH finding counts per domain after DA verification. Phase 4f uses this field to classify domains as `[LOW-ACTIVITY]` on re-review.
+`re_review_count` tracks how many re-reviews have been performed; Phase 4f triggers a full re-scan every 3rd re-review to catch silent regressions.
 
 If a previous baseline exists, diff current vs previous and report trend in the executive summary:
 
@@ -540,6 +542,7 @@ If the reviewer finds bugs, edge cases missed, or regressions introduced:
    - **No over-engineering (YAGNI)**: no new abstractions or patterns beyond the fix
    - **Surface assumptions**: document any design decisions in comments/ADRs
 5. Log each approved correction in the final report
+6. Increment `$TOTAL_FIXES_APPLIED += <number of corrections applied>`
 
 ### 5c. Full Test Suite Run
 
@@ -639,6 +642,7 @@ Initialize once before entering the loop:
 - `$REVIEW_MAX_ITERATIONS` (from env var or default 3)
 - `$LOOP_SHOULD_CONTINUE = true`
 - `$PHASE_5_ABORTED = false`
+- `$TOTAL_FIXES_APPLIED = 0`
 
 On re-iteration, skip the init block and continue from 5e1.
 
@@ -748,7 +752,8 @@ If `$REVIEW_JSON` contains fixable findings:
 
       **Commit:** $FIX_COMMIT_SHA"
       ```
-   g. Set `$LOOP_SHOULD_CONTINUE = true`
+    g. Set `$TOTAL_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
+    h. Set `$LOOP_SHOULD_CONTINUE = true`
 
 7. **If no fixes were applied** (user skipped or zero fixable findings):
    - Set `$LOOP_SHOULD_CONTINUE = false`
@@ -776,14 +781,17 @@ If `$REVIEW_JSON` contains fixable findings:
 
 ### 5f. Re-run Test Suite
 
-After the review loop exits (whether cleanly or after max iterations), re-verify the codebase:
+After the review loop exits, re-verify the codebase:
 
 If `$PHASE_5_ABORTED == true` → skip 5f and proceed to 5g with abort note.
 
-1. Run the full test suite using the same detection logic as 5c step 1.
-2. Run CI gates using the same detection logic as 5c step 3.
-3. If all pass → proceed to 5g.
-4. If any fail:
+1. **Pre-check**: if `$TOTAL_FIXES_APPLIED == 0`:
+   - Emit "No fixes applied — test results unchanged from Phase 5c baseline. Skipping 5f."
+   - Proceed to 5g.
+2. Run the full test suite using the same detection logic as 5c step 1.
+3. Run CI gates using the same detection logic as 5c step 3.
+4. If all pass → proceed to 5g.
+5. If any fail:
    - Report failures to the user
    - List which tests failed and their error messages
    - Ask: "Tests failed after review fixes. Reply with Task IDs to fix or 'skip' to proceed with failures noted."

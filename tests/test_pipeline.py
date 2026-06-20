@@ -216,22 +216,32 @@ def validate_tech_debt_reconciliation(md):
         return errors  # individual validators cover missing sections
 
     # Extract sum of roadmap phase estimates
-    roadmap_total = 0
-    for m in re.finditer(r'estimated:\s*(\d+)\s*hours?', roadmap_text):
-        roadmap_total += int(m.group(1))
+    roadmap_total = 0.0
+    for m in re.finditer(r'estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text):
+        roadmap_total += float(m.group(1))
 
     # Extract Tech Debt Summary total
-    total_m = re.search(r'\*\*Total estimated\*\*:\s*(\d+)\s*hours?', debt_text)
-    summary_total = int(total_m.group(1)) if total_m else None
+    total_m = re.search(
+        r'\*\*Total estimated\*\*:\s*(\d+(?:\.\d+)?)\s*hours?', debt_text
+    )
+    summary_total = float(total_m.group(1)) if total_m else None
 
     # Extract and sum domain breakdown
     domain_m = re.search(r'\*\*By domain\*\*:\s*(.+)', debt_text)
     domain_total = None
     if domain_m:
-        domain_total = sum(
-            int(h) for h in re.findall(r'(\d+)h\b', domain_m.group(1))
-        )
+        values = re.findall(r'(\d+(?:\.\d+)?)h\b', domain_m.group(1))
+        if values:
+            domain_total = sum(float(h) for h in values)
 
+    if summary_total is None:
+        errors.append(
+            "Tech Debt Summary total field not found or unparseable"
+        )
+    if domain_total is None:
+        errors.append(
+            "Domain breakdown field not found or unparseable"
+        )
     if summary_total is not None and roadmap_total != summary_total:
         errors.append(
             f"Roadmap phase total ({roadmap_total}h) != "
