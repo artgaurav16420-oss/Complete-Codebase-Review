@@ -447,7 +447,8 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
 1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`.
-   Verify `baseline["target"]` matches `$TARGET_DIR`. If mismatch, warn and fall back
+   Verify resolved absolute path of `baseline["target"]` matches resolved absolute path of
+   `$TARGET_DIR` (use `realpath` or equivalent). If mismatch, warn and fall back
    to full re-scan (do not use stale baseline).
 2. Re-run Phase 2 (parallel analysis) for active domains only. Domains where
    `per_domain_open_findings[domain].critical == 0` AND
@@ -642,7 +643,7 @@ Initialize once before entering the loop:
 - `$REVIEW_MAX_ITERATIONS` (from env var or default 3)
 - `$LOOP_SHOULD_CONTINUE = true`
 - `$PHASE_5_ABORTED = false`
-- `$TOTAL_FIXES_APPLIED = 0`
+- `$TOTAL_FIXES_APPLIED = $TOTAL_FIXES_APPLIED` (preserve any 5b corrections)
 
 On re-iteration, skip the init block and continue from 5e1.
 
