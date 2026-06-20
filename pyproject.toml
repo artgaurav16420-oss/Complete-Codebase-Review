@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "complete-codebase-review"
-version = "2.1.0"
+version = "2.2.0"
 description = "Holistic, read-only codebase audit for Claude Code / AI coding agents"
 dependencies = []
 readme = "README.md"
