@@ -30,7 +30,7 @@ Phase 1: Discovery      → map codebase, env check, health dimensions
 Phase 2: Parallel       → 14 specialist agents (Task sub-agents)
 Phase 3: Synthesis+DA   → dedup, normalize, Devil's Advocate
 Phase 4: Fix Plan       → user-approved tasks → apply fixes → verify
-Phase 5: Independent    → reviewer audits → corrections → test → PR → re-test → report
+Phase 5: Independent    → reviewer audits → corrections → test → PR → [review → autofix → re-review] → re-test → report
 ```
 Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or "all"). No auto-retry on post-fix verification.
 
