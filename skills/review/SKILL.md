@@ -97,7 +97,6 @@ Parse `$ARGUMENTS` for scope flags that control which changes to review:
 | `--base-commit <sha>` | Compare against a specific commit |
 | `--dir <path>` | Review a specific directory (must be a git repo) |
 | `--json` | Output findings as JSON for programmatic consumption |
-| `--max-iterations <n>` | Max review-fix cycles (default: 3) |
 
 Store parsed flags as `$REVIEW_SCOPE`. When `--json` is set, emit structured
 JSON in Phase 4 instead of (or in addition to) the markdown report. When `--dir`
@@ -341,8 +340,7 @@ Emit after the markdown report, separated by `---JSON---`:
 - **PR not found**: Error and exit.
 - **Validation commands not found**: Report "Skipped" for each, proceed with review.
 - **Large PR (>50 files)**: Warn about review scope. Focus on source changes first.
-- **Max iterations**: Controlled by `REVIEW_MAX_ITERATIONS` env var or
-  `--max-iterations <n>` flag (default 3).
+- **Max iterations**: Controlled by `REVIEW_MAX_ITERATIONS` env var (default 3).
 
 ## Cleanup
 

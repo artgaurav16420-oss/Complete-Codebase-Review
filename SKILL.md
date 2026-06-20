@@ -589,10 +589,13 @@ manual PR creation.
 
 After the PR is created, enter a **review → autofix → re-review** loop until the PR passes quality gates or max iterations are reached.
 
-Initialize:
+Initialize once before entering the loop:
 - `$REVIEW_ITERATION = 1`
 - `$REVIEW_MAX_ITERATIONS` (from env var or default 3)
 - `$LOOP_SHOULD_CONTINUE = true`
+- `$PHASE_5_ABORTED = false`
+
+On re-iteration, skip the init block and continue from 5e1.
 
 ---
 
@@ -613,8 +616,9 @@ Load the `review` skill and run it against the PR with structured JSON output:
    - Grade findings as CRITICAL/HIGH/MEDIUM/LOW
    - Run project validation commands
    - Post a COMMENT review to the PR via `gh pr review $PR_NUMBER --comment`
-   - Emit structured JSON findings to stdout (separated from markdown report by `---JSON---`)
-4. Parse the JSON output as `$REVIEW_JSON`. Store the markdown report as `$REVIEW_REPORT_MD`.
+    - Emit structured JSON findings to stdout (separated from markdown report by `---JSON---`)
+4. Parse the JSON from after the **last** occurrence of `---JSON---` as `$REVIEW_JSON`.
+   Store the markdown report as `$REVIEW_REPORT_MD`.
 5. If the `review` skill cannot be loaded, log a warning and proceed to 5g.
    Do not block.
 
@@ -645,8 +649,8 @@ If `$REVIEW_JSON` contains fixable findings:
    ```
    Options:
    - "review"   → Step through each Fix-rated issue individually for approval
-   - "skip"     → Skip all fixes, exit loop
-   - "cancel"   → Abort Phase 5, leave PR open
+   - "skip"     → Skip all fixes, skip to loop control
+   - "cancel"   → Abort Phase 5 entirely, leave PR open
    ```
 
 4. **If "review"**: For each issue where `action == "Fix"` (in CRITICAL → HIGH → MEDIUM order):
@@ -673,7 +677,13 @@ If `$REVIEW_JSON` contains fixable findings:
    e. If Apply: apply via Edit tool, append file to `$FIXED_FILES` array
    f. If Defer: record reason, move to next
 
-5. **If any fixes were applied**:
+5. **If "cancel"**:
+   - Log: "Phase 5 cancelled by user. PR #$PR_NUMBER left open."
+   - Set `$LOOP_SHOULD_CONTINUE = false`
+   - Set `$PHASE_5_ABORTED = true`
+   - Skip remaining steps in 5e2.
+
+6. **If any fixes were applied**:
    a. Stage all changed files and create a **single consolidated commit**:
       ```bash
       git add "${FIXED_FILES[@]}"
@@ -681,7 +691,8 @@ If `$REVIEW_JSON` contains fixable findings:
       ```
    b. Store commit SHA as `$FIX_COMMIT_SHA`
    c. Run validation on changed files (lint/typecheck — detect project type, run appropriate commands)
-   d. Ask user: "Push fixes to PR branch?" → If yes: `git push origin $BRANCH`
+   d. If validation passes → ask user: "Push fixes to PR branch?" → If yes: `git push origin $BRANCH`
+   e. If validation fails → report failures, offer to investigate and fix, or push with failures noted
    e. Post summary comment on PR:
       ```bash
       gh pr comment "$PR_NUMBER" --body "## Fixes Applied (Iteration $REVIEW_ITERATION)
@@ -694,7 +705,7 @@ If `$REVIEW_JSON` contains fixable findings:
       ```
    f. Set `$LOOP_SHOULD_CONTINUE = true`
 
-6. **If no fixes were applied** (user skipped all or zero fixable findings):
+7. **If no fixes were applied** (user skipped or zero fixable findings):
    - Set `$LOOP_SHOULD_CONTINUE = false`
 
 #### 5e3. Loop Control
@@ -703,6 +714,7 @@ If `$REVIEW_JSON` contains fixable findings:
    - **Clean exit**: `$REVIEW_JSON.decision == "APPROVE"` (zero CRITICAL/HIGH, validation passes) → `$LOOP_SHOULD_CONTINUE = false`
    - **Stalled exit**: No findings changed vs previous iteration (compare `$PREVIOUS_FINDING_HASH`) → `$LOOP_SHOULD_CONTINUE = false`
    - **User skip**: User chose "skip" in 5e2 step 3 → `$LOOP_SHOULD_CONTINUE = false`
+   - **User cancel**: User chose "cancel" in 5e2 step 3 → `$LOOP_SHOULD_CONTINUE = false`, `$PHASE_5_ABORTED = true`
 
 2. If `$LOOP_SHOULD_CONTINUE == true` AND `$REVIEW_ITERATION < $REVIEW_MAX_ITERATIONS`:
    - `$REVIEW_ITERATION++`
@@ -720,6 +732,8 @@ If `$REVIEW_JSON` contains fixable findings:
 ### 5f. Re-run Test Suite
 
 After the review loop exits (whether cleanly or after max iterations), re-verify the codebase:
+
+If `$PHASE_5_ABORTED == true` → skip 5f and proceed to 5g with abort note.
 
 1. Run the full test suite using the same detection logic as 5c step 1.
 2. Run CI gates using the same detection logic as 5c step 3.
@@ -746,10 +760,10 @@ Produce a Phase 5 summary with loop metrics:
 - **Review decision**: APPROVE / REQUEST CHANGES / MAX ITERATIONS
 - **Test suite after fixes (5f)**: [n/n PASS | FAILED]
 - **Remaining issues**: [n CRITICAL, n HIGH] (if any)
-- **Status**: PASS / TESTS FAILED / REVIEW_STALLED
+- **Status**: PASS / TESTS FAILED / REVIEW_STALLED / ABORTED
 ```
 
-If any test suite failed at any point, suggest the user investigate before considering the review complete. If max iterations were reached with remaining issues, recommend manual review of unresolved findings. Include the PR URL for direct access.
+If any test suite failed at any point, suggest the user investigate before considering the review complete. If max iterations were reached with remaining issues, recommend manual review of unresolved findings. If Phase 5 was aborted by the user, note the abort and reference the open PR. Include the PR URL for direct access.
 
 ## Web Verification
 
