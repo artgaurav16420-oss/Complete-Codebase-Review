@@ -52,7 +52,10 @@ Outputs from specialist agents and synthesis are cached in `$RESOLVED_CACHE_DIR`
 To run a fast, surface-level assessment, set `CODE_REVIEW_EFFORT=min`. In this mode:
 - Timeouts drop to 120 seconds (`CODE_REVIEW_TIMEOUT_SEC=120`).
 - Only a core subset of 3 agents will run (e.g., Security, Code Quality, Architecture).
-- The codebase is sampled (approximately 10% sampling limit).
+- The codebase is sampled (approximately 10% limit). Selection order: entry points
+  (main files, CLI entry points, API routes), then highest-churn files (by git
+  history), then largest files, then random distribution across remaining modules.
+  Document which modules were excluded.
 
 ## When to Use
 
@@ -102,6 +105,7 @@ Verify required tools are accessible before spawning specialist agents:
 | Read | Yes | Abort — required for file inspection |
 | Bash | Yes | Abort — required for cross-platform shell commands |
 | Task | Yes | Abort — required for spawning sub-agents |
+| SKILL_DIR resolution | Yes | Abort — required for loading karpathy-guidelines.md. Resolve via runtime mechanism (e.g. `skill_path`, install-dir lookup) and confirm path contains this SKILL.md. |
 | WebSearch | No | Mark findings UNVERIFIED |
 | WebFetch | No | Use WebSearch as fallback |
 
@@ -140,6 +144,30 @@ Include:
 - Selected health dimensions
 
 ## Phase 2: Parallel Analysis
+
+### Canonical Domain IDs
+
+All trend tracking, LOW-ACTIVITY classification, and `per_domain_open_findings`
+JSON keys use the canonical domain ID (first column). Display names vary by
+context (e.g. "Process Quality (Karpathy Compliance)" in the agent table below,
+"Process Quality" in reports). Mappers convert between form and canonical key.
+
+| Canonical ID | Agent Name | Report Name |
+|-------------|------------|-------------|
+| `architecture` | Architecture Analyzer | Architecture |
+| `code_quality` | Code Quality Auditor | Code Quality |
+| `security` | Security Posture | Security |
+| `tech_debt` | Tech Debt Tracker | Tech Debt |
+| `test_health` | Test Health Auditor | Test Health |
+| `dependencies` | Dependency Auditor | Dependencies |
+| `documentation` | Documentation Auditor | Documentation |
+| `build_ci` | Build & CI Auditor | Build & CI |
+| `performance` | Performance Baseline | Performance |
+| `database` | Database & Schema | Database |
+| `ui_ux` | UI/UX Auditor | UI/UX |
+| `devops` | DevOps & Infra | DevOps |
+| `standards` | Standards Compliance | Standards |
+| `process_quality` | Process Quality (Karpathy Compliance) | Process Quality |
 
 ### Specialist Agents
 
@@ -309,6 +337,7 @@ Actions:
 - Web-verify each claim
 - Independently read code to confirm
 - Assign: CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED
+- **Tradeoff:** DA is a single generalist agent verifying all 14 domains — see ADR-002 for rationale. DA-ESCALATION mitigates missed-domain discovery.
 - DA may escalate severity of existing findings, add confirming evidence, or emit a `DA-ESCALATION` finding if it independently discovers something material the specialists missed. `DA-ESCALATION` findings must fall within an already-active domain (one of the 14 standard dimensions). DA must not open a new domain category that was excluded by Phase 1 dimension selection. All `DA-ESCALATION` findings are included in roadmap prioritization.
 - All DA additions are tagged `DA-ESCALATION` and reviewed separately in the synthesis report
 
@@ -415,8 +444,23 @@ If a previous baseline exists, diff current vs previous and report trend in the 
 
 When the user applies only a subset of tasks and wants a follow-up scan:
 
-1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`
-2. Re-run Phase 2 (parallel analysis) for active domains only. Domains where `per_domain_open_findings[domain].critical == 0` AND `per_domain_open_findings[domain].high == 0` in the loaded baseline are marked `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend table. All other domains receive full re-analysis. The 75%/66% completion threshold (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY domains excluded from denominator.
+1. Load the previous baseline from `$RESOLVED_CACHE_DIR/${CODE_REVIEW_BASELINE:-ccr-baseline.json}`.
+   Verify `baseline["target"]` matches `$TARGET_DIR`. If mismatch, warn and fall back
+   to full re-scan (do not use stale baseline).
+2. Re-run Phase 2 (parallel analysis) for active domains only. Domains where
+   `per_domain_open_findings[domain].critical == 0` AND
+   `per_domain_open_findings[domain].high == 0` in the loaded baseline are marked
+   `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend
+   table. All other domains receive full re-analysis. The 75%/66% completion threshold
+   (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY
+   domains excluded from denominator.
+   **Exception — periodic full re-scan:** Every 3rd re-review (tracked via an
+   incrementing `re_review_count` field in the baseline snapshot), ALL domains are
+   rescanned regardless of LOW-ACTIVITY status, to detect silent regressions in
+   previously clean areas.
+   **Precedence:** When `CODE_REVIEW_AGENTS` is explicitly set on a re-review, it
+   overrides LOW-ACTIVITY exclusion — all requested agents run regardless of
+   LOW-ACTIVITY status.
 3. Re-synthesize with previous baseline in context
 4. Update baseline snapshot
 5. Report progress: remaining vs original
@@ -590,6 +634,7 @@ manual PR creation.
 After the PR is created, enter a **review → autofix → re-review** loop until the PR passes quality gates or max iterations are reached.
 
 Initialize once before entering the loop:
+- `$PREVIOUS_FINDING_HASH = ""` (empty — first iteration always proceeds)
 - `$REVIEW_ITERATION = 1`
 - `$REVIEW_MAX_ITERATIONS` (from env var or default 3)
 - `$LOOP_SHOULD_CONTINUE = true`
@@ -616,8 +661,8 @@ Load the `review` skill and run it against the PR with structured JSON output:
    - Grade findings as CRITICAL/HIGH/MEDIUM/LOW
    - Run project validation commands
    - Post a COMMENT review to the PR via `gh pr review $PR_NUMBER --comment`
-    - Emit structured JSON findings to stdout (separated from markdown report by `---JSON---`)
-4. Parse the JSON from after the **last** occurrence of `---JSON---` as `$REVIEW_JSON`.
+     - Emit structured JSON findings to stdout (separated from markdown report by `---REVIEW_JSON---`)
+4. Parse the JSON from after `---REVIEW_JSON---` as `$REVIEW_JSON`.
    Store the markdown report as `$REVIEW_REPORT_MD`.
 5. If the `review` skill cannot be loaded, log a warning and proceed to 5g.
    Do not block.
@@ -693,7 +738,7 @@ If `$REVIEW_JSON` contains fixable findings:
    c. Run validation on changed files (lint/typecheck — detect project type, run appropriate commands)
    d. If validation passes → ask user: "Push fixes to PR branch?" → If yes: `git push origin $BRANCH`
    e. If validation fails → report failures, offer to investigate and fix, or push with failures noted
-   e. Post summary comment on PR:
+   f. Post summary comment on PR (regardless of validation outcome):
       ```bash
       gh pr comment "$PR_NUMBER" --body "## Fixes Applied (Iteration $REVIEW_ITERATION)
       Fixed ${#FIXED_FILES[@]} file(s) based on $FIXED_ISSUE_COUNT finding(s).
@@ -703,7 +748,7 @@ If `$REVIEW_JSON` contains fixable findings:
 
       **Commit:** $FIX_COMMIT_SHA"
       ```
-   f. Set `$LOOP_SHOULD_CONTINUE = true`
+   g. Set `$LOOP_SHOULD_CONTINUE = true`
 
 7. **If no fixes were applied** (user skipped or zero fixable findings):
    - Set `$LOOP_SHOULD_CONTINUE = false`
@@ -909,7 +954,7 @@ Below is a realistic example of what a completed health report looks like for a 
 - **Overall Health**: YELLOW
 - **Codebase Size**: 47,320 LOC, 312 files, 8 modules
 - **Critical Issues**: 3
-- **Tech Debt**: 214 engineering hours
+- **Tech Debt**: 200 engineering hours
 - **Priority Areas**: Security (hardcoded secrets), Architecture (circular deps), Process Quality (Karpathy compliance)
 
 ## Per-Domain Scores
@@ -959,7 +1004,7 @@ Below is a realistic example of what a completed health report looks like for a 
 - T-010: Migrate from Moment.js to date-fns → 8h
 - T-011: Add E2E tests for critical paths → 6h
 
-### Phase 3 — Backlog (estimated: 136 hours)
+### Phase 3 — Backlog (estimated: 118 hours)
 - T-012: Implement design system component library → 40h
 - T-013: Add performance benchmarking pipeline → 16h
 - T-014: Full OWASP Top 10 hardening audit → 24h

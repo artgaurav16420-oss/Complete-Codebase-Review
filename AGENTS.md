@@ -59,7 +59,7 @@ Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or
 
 - **SKILL_DIR injection**: Orchestrator injects absolute skill dir path into sub-agent prompts. Never resolve `karpathy-guidelines.md` via `realpath` from target CWD.
 - **Phase 5d-5g requires `gh` CLI**: PR creation, review loop, and comment posting depend on `gh` authenticated with push access. If unavailable, steps skip gracefully (reported in 5g).
-- **`CHANGELOG.md`** is extracted from SKILL.md. Avoid hardcoded line-count claims.
+- **`CHANGELOG.md`** version must stay in sync with `pyproject.toml` and SKILL.md frontmatter (`test_version_sources_stay_in_sync` enforces this).
 - **`test.sh` mock**: Hardcoded to match `tests/expected_issues.json` (4 issues). Adding an issue requires syncing both.
 - **Compliance tests are brittle**: `test_compliance.py` has hardcoded env-var names and descriptions. Adding/renaming vars requires updating the test.
 - **DA verdicts**: REJECTED findings excluded from roadmap (enforced by `test_pipeline.py`).
@@ -67,3 +67,6 @@ Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or
 - **Cross-platform**: SKILL.md has separate command tables for Windows (`Get-ChildItem`) and Unix (`find`).
 - **Tech debt floor estimates**: Circular dep = 8h, hardcoded secret = 2h, missing coverage = 4h, etc. 2×/0.5× multipliers allowed.
 - **`install.py` version**: Reads from `pyproject.toml` via `_read_version()` — raises `RuntimeError` if missing.
+- **`install.py --dry-run`** before any actual install. The `--dry-run` flag previews paths without copying.
+- **`test.sh` is Unix-only; `Test-Windows.ps1` is Windows-only**. CI matrix uses `if: runner.os != 'Windows'` / `== 'Windows'`. Don't run `test.sh` on Windows.
+- **`skills/review/SKILL.md`** is a separate internal skill loaded in Phase 5e from SKILL_DIR. Not part of the main pipeline, but must be kept in sync.
