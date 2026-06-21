@@ -37,7 +37,7 @@ Five-phase pipeline for codebase health. Invoke with `/complete-codebase-review 
 **Phase 2: Parallel Analysis** → Spawn N specialist agents across health dimensions
 **Phase 3: Synthesis + Roadmap** → Synthesis, then DA verification, then prioritized roadmap
 **Phase 4: Fix Plan** → Generate per-agent code fix tasks, present for user review, wait for permission
-**Phase 5: Independent Review & PR** → Independent agent audits fixes → corrects → tests → creates PR → [review → autofix → re-review]×N → re-test → final report
+**Phase 5: Independent Review & PR** → Independent agent audits fixes → auto-correct → local review loop (review→fix→re-review) until clean → full test suite → create PR → external review loop (user pings → read AI comments → fix → push → repeat) → final report
 
 ### Argument Handling
 
@@ -360,10 +360,9 @@ Actions:
 
 ### 3d. Output + Cleanup
 
-1. Ask user: "Where should I write the health report? [file path | stdout]"
-2. On file path → write report to that path
-3. On stdout → print the report
-4. Cleanup:
+1. Print the full health report to stdout
+2. Proceed directly to Phase 4 — no user input needed
+3. Cleanup:
    - Delete `$RESOLVED_CACHE_DIR/ccr-manifest.md`, where `$RESOLVED_CACHE_DIR` is the cache directory confirmed writable in Phase 1 Step 3 (may be OS temp dir, not the default `.code-review-cache`).
    - Clean up any agent temp files if not checkpointing
 
@@ -499,12 +498,12 @@ After fixes are applied, verify they didn't introduce regressions:
 
 Initialize counters before sub-phases:
 - `$TOTAL_FIXES_APPLIED = 0`
+- `$EXTERNAL_FIX_ROUNDS = 0`
 
-After Phase 4 fixes are applied, an independent agent reviews all changes,
-corrects any regressions, runs the full test suite, creates a pull request,
-then enters a **review → autofix → re-review** loop on the PR using the
-CodeRabbit-inspired workflow. After the loop exits cleanly, re-runs the test
-suite and delivers a final report.
+After Phase 4 fixes are applied, Phase 5 runs autonomously in two stages:
+
+- **Local loop (5a-5d):** Review → auto-correct → re-review until clean → full test suite
+- **External loop (5e-5f):** Auto-create PR → user pings when AI bots reviewed → read comments → fix → push → repeat
 
 ### 5a. Spawn Independent Reviewer
 
@@ -521,7 +520,7 @@ Spawn a fresh Task agent (not the original fixers). Give it:
     does not crash the process or leave it in an inconsistent state
   - **Cross-platform**: Windows vs Unix — execution policies, path separators,
     signal handling, `os.rmdir` vs `os.unlink` for directory symlinks
-  - **CI gates**: verify the CI checks the project would run (see 5c step 3)
+  - **CI gates**: verify the CI checks the project would run (see 5d step 3)
 - Load the `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines
 - **File-type checklist** — apply relevant checks per changed file extension:
   - `.ps1`: `$ErrorActionPreference`, `Test-Path` guards, `-ExecutionPolicy Bypass`
@@ -541,19 +540,34 @@ The reviewer MUST NOT have been involved in Phase 4d execution to avoid confirma
 
 If the reviewer finds bugs, edge cases missed, or regressions introduced:
 1. For each issue, create a corrective task with the same structure as 4a (Task ID, Target files, Suggested change)
-2. Present the correction tasks to the user and wait for explicit approval by Task ID or "all" before applying them; Phase 4 approval covers only the originally approved fix tasks, not newly discovered corrections
-3. Do NOT apply Phase 5 corrections without explicit user approval
-4. **Correction agents load `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines:**
+2. Apply all correction tasks automatically — no user approval needed
+3. **Correction agents load `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines:**
    - **Surgical fixes only**: change exactly what's needed to fix the regression
    - **Verify before done**: run targeted tests for the corrected behavior
    - **No over-engineering (YAGNI)**: no new abstractions or patterns beyond the fix
    - **Surface assumptions**: document any design decisions in comments/ADRs
-5. Log each approved correction in the final report
-6. Increment `$TOTAL_FIXES_APPLIED += <number of corrections applied>`
+4. Log each applied correction for the final report
+5. Increment `$TOTAL_FIXES_APPLIED += <number of corrections applied>`
 
-### 5c. Full Test Suite Run
+### 5c. Local Review Loop
 
-After all corrections are applied:
+After corrections are applied, enter an automated local review loop:
+
+- Re-run the Independent Reviewer (5a) on the updated working tree
+- Apply any new findings via auto-correction (5b)
+- Repeat until either:
+  - Zero CRITICAL/HIGH/MEDIUM findings remain → clean exit, proceed to 5d
+  - `$REVIEW_MAX_ITERATIONS` is reached → exit with remaining issues noted
+- No user interaction required during this loop — all fixes apply automatically
+- Each iteration increments `$TOTAL_FIXES_APPLIED`
+
+Track iteration count as `$LOCAL_LOOP_ITERATIONS`. Log each iteration:
+`[LOCAL REVIEW LOOP] Iteration N: X findings remaining`
+
+### 5d. Full Test Suite Run
+
+After the local review loop exits cleanly, run the full test suite:
+
 1. Detect the project's test runner:
    - `python -m pytest` / `python -m unittest` for Python
    - `npm test` / `npx jest` for Node.js
@@ -574,17 +588,18 @@ After all corrections are applied:
    - Report failures to the user
    - Do NOT auto-retry or auto-fix
    - List which tests failed and their error messages
+5. If all pass → proceed to 5e
 
-### 5d. Create Pull Request
+### 5e. Create Pull Request
 
-If all checks pass in 5c, create a PR with the applied fixes. Before proceeding, verify prerequisites:
+If all checks pass in 5d, create a PR with the applied fixes. Before proceeding, verify prerequisites:
 
 1. **Check prerequisites**:
    ```bash
    gh auth status 2>/dev/null
    git remote get-url origin 2>/dev/null | grep -q github.com
    ```
-   If either fails, skip 5d-5f and proceed to 5g with a note:
+   If either fails, skip PR creation and proceed to 5g with a note:
    "PR creation skipped — `gh` CLI not available or remote is not GitHub.
    Branch with fixes exists locally."
 
@@ -602,21 +617,9 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
    $(cat $RESOLVED_CACHE_DIR/fix-plan-summary.md 2>/dev/null || echo 'Phase 4 fix plan tasks applied.')"
    ```
 
-4. **Confirm before pushing** — ask the user before pushing to remote and creating a PR:
-   ```text
-   Ready to push branch '$BRANCH' and create a pull request against <target>.
-   Reply 'push' to proceed, or 'skip' to stay local.
-   ```
-   If user skips, proceed to 5g with a note:
-   "PR creation skipped — user declined. Branch with fixes exists locally."
-
-   If user approves:
+4. **Push and create PR** — no user confirmation needed:
    ```bash
    git push origin "$BRANCH"
-   ```
-
-5. **Create PR**:
-   ```bash
    gh pr create \
      --title "fix(ccr): <n> issues resolved" \
      --body "## Changes
@@ -629,187 +632,69 @@ If all checks pass in 5c, create a PR with the applied fixes. Before proceeding,
    ### Verification
    - Phase 5a independent review: PASS
    - Phase 5b corrections applied: <n>
-   - Phase 5c test suite: PASS"
+   - Phase 5d test suite: PASS"
    ```
 
-6. Store the PR number as `$PR_NUMBER` for use in 5e-5f.
+5. Store the PR number as `$PR_NUMBER` for use in 5f-5g.
 
 If this is the first time running Phase 5 on this repo and `gh` is unavailable or
-remote is not GitHub, skip 5d-5f (PR creation and review steps) and proceed
-directly to final reporting. The branch with all fixes remains on disk for
-manual PR creation.
+remote is not GitHub, skip PR creation and proceed directly to final reporting.
+The branch with all fixes remains on disk for manual PR creation.
 
-### 5e. Review Loop (CodeRabbit-Inspired)
+### 5f. External Review Loop (AI Bot Reviews)
 
-After the PR is created, enter a **review → autofix → re-review** loop until the PR passes quality gates or max iterations are reached.
+After the PR is live on GitHub, enter a user-ping-driven external review loop:
 
-Initialize once before entering the loop:
-- `$PREVIOUS_FINDING_HASH = ""` (empty — first iteration always proceeds)
-- `$REVIEW_ITERATION = 1`
-- `$REVIEW_MAX_ITERATIONS` (from env var or default 3)
-- `$LOOP_SHOULD_CONTINUE = true`
-- `$PHASE_5_ABORTED = false`
-- `$TOTAL_FIXES_APPLIED = ${TOTAL_FIXES_APPLIED:-0}` (preserve any 5b corrections, default 0 if unset)
-- `$LOOP_FIXES_APPLIED = 0` (tracks only loop-specific fixes for 5f pre-check)
-
-On re-iteration, skip the init block and continue from 5e1.
-
----
-
-#### 5e1. Run Code Review on PR
-
-Load the `review` skill and run it against the PR with structured JSON output:
-
-1. **Load the `review` skill** from `$SKILL_DIR/skills/review/SKILL.md`.
-2. **Invoke the review** with the PR number and `--json` flag:
-   ```text
-   Load skills/review/SKILL.md from the skill directory.
-   Run with argument: $PR_NUMBER (PR mode) --json
+1. **Notify user**:
    ```
-3. The `review` skill will:
-   - Fetch the PR diff via `gh pr diff $PR_NUMBER`
-   - Read each changed file in full
-   - Run the review checklist (correctness, security, structure, edge cases, cross-platform, validation)
-   - Grade findings as CRITICAL/HIGH/MEDIUM/LOW
-   - Run project validation commands
-   - Post a COMMENT review to the PR via `gh pr review $PR_NUMBER --comment`
-     - Emit structured JSON findings to stdout (separated from markdown report by `---REVIEW_JSON---`)
-4. Parse the JSON from after the **last** occurrence of `---REVIEW_JSON---` (split on the delimiter and take the final segment) as `$REVIEW_JSON`.
-   Store the markdown report as `$REVIEW_REPORT_MD` (everything before the delimiter).
-5. If the `review` skill cannot be loaded, log a warning and proceed to 5g.
-   Do not block.
-
-#### 5e2. Autofix Loop (CodeRabbit-Inspired)
-
-If `$REVIEW_JSON` contains fixable findings:
-
-1. **Build issue table** — parse `findings[]` into structured issues. For each finding:
-   - `issue_id`: sequential (1, 2, 3...)
-   - `severity`: CRITICAL / HIGH / MEDIUM / LOW
-   - `action`: "Fix" for CRITICAL/HIGH/MEDIUM, "Review" for LOW
-   - Extract `title`, `file`, `line`, `description`, `suggested_fix`
-
-2. **Display severity-sorted table** to user:
-
-   ```
-   Review Iteration $REVIEW_ITERATION — Findings for PR #$PR_NUMBER
-
-   # | Severity    | Title                     | Location                     | Action
-   --|-------------|---------------------------|------------------------------|-------
-   1 | 🔴 CRITICAL | Insecure auth check       | src/auth/service.py:42       | Fix
-   2 | 🟠 HIGH     | Missing await on DB query | src/db/repository.py:89      | Fix
-   3 | 🟡 MEDIUM   | Unused import             | src/utils/helpers.py:15      | Fix
-   4 | 🟢 LOW      | Minor style nit           | src/app/page.tsx:200         | Review
+   PR #$PR_NUMBER is live at <PR URL>.
+   Reply "reviewed" once AI bots (CodeRabbit, gemini-code-assist, etc.) have posted their reviews.
    ```
 
-3. **Ask user** once for the batch:
+2. **Wait** for the user to reply `reviewed`. Do not poll or check — just wait.
+
+3. **Fetch AI bot comments** when user signals:
+   ```bash
+   gh pr view $PR_NUMBER --comments
+   gh api repos/:owner/:repo/pulls/$PR_NUMBER/comments
+   gh api repos/:owner/:repo/pulls/$PR_NUMBER/reviews
    ```
-   Options:
-   - "review"   → Step through each Fix-rated issue individually for approval
-   - "skip"     → Skip all fixes, skip to loop control
-   - "cancel"   → Abort Phase 5 entirely, leave PR open
+
+4. **Parse actionable findings** from bot comments:
+   - Filter to bot-authored comments only (CodeRabbit, gemini-code-assist, etc.)
+   - Extract file paths, line numbers, suggested changes
+   - Classify as CRITICAL/HIGH/MEDIUM/LOW
+
+5. **Apply fixes**: For each actionable finding:
+   - Read the affected file
+   - Apply the suggested fix (or minimal correction)
+   - Verify locally (lint/typecheck)
+
+6. **Run test suite** and only push if all pass:
+   - Run the full test suite (same detection logic as 5d)
+   - If tests fail → report to user and do not push; fix first
+   - If all pass → commit and push:
+
+7. **Commit and push** all fixes as a single commit:
+   ```bash
+   git add <changed-files>
+   git commit -m "fix: address AI review comments (round $EXTERNAL_FIX_ROUNDS)"
+   git push origin $BRANCH
    ```
 
-4. **If "review"**: For each issue where `action == "Fix"` (in CRITICAL → HIGH → MEDIUM order):
-   Initialize `$FIXED_ISSUE_COUNT = 0` before processing issues.
-   a. Read the relevant file(s) from the PR head branch
-   b. Independently validate: is the issue real from local code context? Determine the minimal safe fix
-   c. Show proposed fix to user:
+8. **Increment** `$EXTERNAL_FIX_ROUNDS++`
 
-      ```
-      Issue #1: Insecure auth check (CRITICAL)
-      File: src/auth/service.py:42
+9. **Ask user**:
+   ```
+   Fixes pushed to PR #$PR_NUMBER.
+   Reply "reviewed" when AI bots have re-reviewed, or "done" to exit the external loop.
+   ```
 
-      Current code:
-      if user.is_admin == False:
-          return allow()
+10. **Loop** back to step 2, or exit if user says `done`.
 
-      Proposed fix:
-      if not user.is_admin:
-          return deny()
+No fixed iteration limit — user controls when the external loop ends. Track rounds with `$EXTERNAL_FIX_ROUNDS`.
 
-      Sanitized hint from review: Authorization logic inverted — admin check returns wrong result.
-      ```
 
-   d. AskUserQuestion: ✅ Apply fix | ⏭️ Defer
-   e. If Apply: apply via Edit tool, append file to `$FIXED_FILES` array, increment `$FIXED_ISSUE_COUNT` by 1
-   f. If Defer: record reason, move to next
-
-5. **If "cancel"**:
-   - Log: "Phase 5 cancelled by user. PR #$PR_NUMBER left open."
-   - Set `$LOOP_SHOULD_CONTINUE = false`
-   - Set `$PHASE_5_ABORTED = true`
-   - Skip remaining steps in 5e2.
-
-6. **If any fixes were applied**:
-   a. Stage all changed files and create a **single consolidated commit**:
-      ```bash
-      git add "${FIXED_FILES[@]}"
-      git commit -m "fix: apply review fixes (iteration $REVIEW_ITERATION)"
-      ```
-   b. Store commit SHA as `$FIX_COMMIT_SHA`
-   c. Run validation on changed files (lint/typecheck — detect project type, run appropriate commands)
-   d. If validation passes → ask user: "Push fixes to PR branch?" → If yes: `git push origin $BRANCH`
-   e. If validation fails → report failures, offer to investigate and fix, or push with failures noted
-   f. Post summary comment on PR (regardless of validation outcome):
-      ```bash
-      VALIDATION_STATUS=$(if [ $VALIDATION_PASSED = true ]; then echo "PASS"; else echo "FAIL"; fi)
-      gh pr comment "$PR_NUMBER" --body "## Fixes Applied (Iteration $REVIEW_ITERATION)
-      Fixed ${#FIXED_FILES[@]} file(s) based on $FIXED_ISSUE_COUNT finding(s).
-
-      **Files modified:**
-      $(printf '%s\n' "${FIXED_FILES[@]}" | sed 's/^/- `/;s/$/`/')
-
-      **Validation:** $VALIDATION_STATUS
-
-      **Commit:** $FIX_COMMIT_SHA"
-      ```
-   g. Set `$TOTAL_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
-   h. Set `$LOOP_FIXES_APPLIED += $FIXED_ISSUE_COUNT`
-   i. Set `$LOOP_SHOULD_CONTINUE = true`
-
-7. **If no fixes were applied** (user skipped or zero fixable findings):
-   - Set `$LOOP_SHOULD_CONTINUE = false`
-
-#### 5e3. Loop Control
-
-1. Evaluate loop exit conditions after 5e2:
-   - **Clean exit**: `$REVIEW_JSON.decision == "APPROVE"` (zero CRITICAL/HIGH, validation passes) → `$LOOP_SHOULD_CONTINUE = false`
-   - **Stalled exit**: No findings changed vs previous iteration (compare `$PREVIOUS_FINDING_HASH`) → `$LOOP_SHOULD_CONTINUE = false`
-   - **User skip**: User chose "skip" in 5e2 step 3 → `$LOOP_SHOULD_CONTINUE = false`
-   - **User cancel**: User chose "cancel" in 5e2 step 3 → `$LOOP_SHOULD_CONTINUE = false`, `$PHASE_5_ABORTED = true`
-
-2. If `$LOOP_SHOULD_CONTINUE == true` AND `$REVIEW_ITERATION < $REVIEW_MAX_ITERATIONS`:
-   - `$REVIEW_ITERATION++`
-   - Store current finding IDs as `$PREVIOUS_FINDING_HASH`
-   - Inform user: "Re-reviewing PR after fixes (iteration $REVIEW_ITERATION)..."
-   - Go to **5e1** (run review again on the updated PR, which now includes the fix commit)
-
-3. If `$LOOP_SHOULD_CONTINUE == true` AND `$REVIEW_ITERATION >= $REVIEW_MAX_ITERATIONS`:
-   - Log: "⚠️ Max review-fix iterations ($REVIEW_MAX_ITERATIONS) reached. Remaining issues require manual attention."
-   - List remaining CRITICAL/HIGH findings from the last review
-
-4. If `$LOOP_SHOULD_CONTINUE == false` and loop exited with remaining findings:
-   - Note remaining issues in 5g report
-
-### 5f. Re-run Test Suite
-
-After the review loop exits, re-verify the codebase:
-
-If `$PHASE_5_ABORTED == true` → skip 5f and proceed to 5g with abort note.
-
-1. **Pre-check**: if `$LOOP_FIXES_APPLIED == 0`:
-   - Emit "No loop fixes applied — test results unchanged from Phase 5c baseline. Skipping 5f."
-   - Proceed to 5g.
-2. Run the full test suite using the same detection logic as 5c step 1.
-3. Run CI gates using the same detection logic as 5c step 3.
-4. If all pass → proceed to 5g.
-5. If any fail:
-   - Report failures to the user
-   - List which tests failed and their error messages
-   - Ask: "Tests failed after review fixes. Reply with Task IDs to fix or 'skip' to proceed with failures noted."
-   - If user chooses to fix → create corrective tasks, apply, commit, push, re-run.
-   - If user chooses to skip → note failures in 5g report.
 
 ### 5g. Final Report
 
@@ -819,17 +704,16 @@ Produce a Phase 5 summary with loop metrics:
 ### Independent Review & PR Results
 - **Files reviewed**: [n]
 - **Corrections applied (5b)**: [n]
-- **Test suite (5c)**: [n/n PASS | FAILED]
+- **Local review loop iterations**: [n]
+- **Test suite (5d)**: [n/n PASS | FAILED]
 - **Pull Request**: [#<N>](<PR URL>) | Skipped (no gh / not GitHub)
-- **Review cycles**: [N/$REVIEW_MAX_ITERATIONS]
-- **Autofix fixes applied**: [n]
-- **Review decision**: APPROVE / REQUEST CHANGES / MAX ITERATIONS
-- **Test suite after fixes (5f)**: [n/n PASS | FAILED]
+- **External review rounds**: [n]
+- **External fixes applied**: [n]
 - **Remaining issues**: [n CRITICAL, n HIGH] (if any)
-- **Status**: PASS / TESTS FAILED / REVIEW_STALLED / ABORTED
+- **Status**: PASS / TESTS FAILED / REVIEW_STALLED
 ```
 
-If any test suite failed at any point, suggest the user investigate before considering the review complete. If max iterations were reached with remaining issues, recommend manual review of unresolved findings. If Phase 5 was aborted by the user, note the abort and reference the open PR. Include the PR URL for direct access.
+If any test suite failed at any point, suggest the user investigate before considering the review complete. If the local loop hit max iterations with remaining issues, recommend manual review of unresolved findings before creating the PR. Include the PR URL for direct access.
 
 ## Web Verification
 
