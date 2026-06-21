@@ -261,7 +261,7 @@ vs. effort across 3 phases.
 Generates structured fix tasks (T-001, T-002, ...) with effort estimates and dependencies. Presents the plan for your approval — apply specific tasks by ID, apply all, or skip. After fixes, runs post-fix verification (lint, type check, tests).
 
 ### Phase 5: Independent Review & PR
-An independent agent audits all applied fixes, applies any necessary corrections, runs the full test suite, creates a pull request with the fixes, runs an automated review on the PR using the `review` skill, presents all AI bot review comments for your approval, then re-tests and delivers a final report. Requires [GitHub CLI (`gh`)](https://cli.github.com) for PR creation and review posting.
+An independent agent audits all applied fixes, applies corrections, then enters a local review loop (review → fix → re-review) until clean or max iterations reached. Runs the full test suite, creates a PR, then enters an external review loop where AI bot comments are fetched, fixes applied, and pushed — cycling until the user signals done. Requires [GitHub CLI (`gh`)](https://cli.github.com) for PR creation and review posting.
 
 ---
 
@@ -335,9 +335,9 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 
 | Suite | Command | Coverage |
 |-------|---------|----------|
-| Python compliance | `python3 tests/test_compliance.py` | 139 assertions across 63 test functions |
-| Python unit tests | `python3 -m unittest discover -s tests -p "test_*.py"` | Suites (157 tests) |
-| Install tests | `python3 tests/test_install.py` | 49 tests across 9 classes |
+| Python compliance | `python3 tests/test_compliance.py` | 140 assertions across 62 test functions |
+| Python unit tests | `python3 -m unittest discover -s tests -p "test_*.py"` | 6 suites (169 tests) |
+| Install tests | `python3 tests/test_install.py` | 57 tests across 10 classes |
 | Pipeline validation | `python3 tests/test_pipeline.py` | Review output schema validation |
 | Env-var config | `python3 tests/test_env_config.py` | Env-var table completeness checks |
 | Bash integration | `./test.sh` | CLI and cross-platform behavior (Unix only) |

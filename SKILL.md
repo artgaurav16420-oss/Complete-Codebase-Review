@@ -607,11 +607,7 @@ if `gh` is available:
      BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(cd "$TARGET_DIR" && pwd | git hash-object --stdin | cut -c1-8)"
    git checkout -b "$BRANCH"
    git add <all-changed-files>
-   git commit -F - <<EOF
-   fix: apply codebase review fix plan
-
-   $(cat $RESOLVED_CACHE_DIR/fix-plan-summary.md 2>/dev/null || echo 'Phase 4 fix plan tasks applied.')
-   EOF
+   { echo "fix: apply codebase review fix plan"; echo; cat "$RESOLVED_CACHE_DIR/fix-plan-summary.md" 2>/dev/null || echo 'Phase 4 fix plan tasks applied.'; } | git commit -F -
    ```
 
 2. **Check prerequisites**:
