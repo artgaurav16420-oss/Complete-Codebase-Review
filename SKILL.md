@@ -604,12 +604,14 @@ if `gh` is available:
 1. **Create branch and commit fixes** — collect files changed during
    Phase 4d and Phase 5b, stage and commit:
    ```bash
-    BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(echo "$TARGET_DIR" | git hash-object --stdin | cut -c1-8)"
+     BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(realpath "$TARGET_DIR" | git hash-object --stdin | cut -c1-8)"
    git checkout -b "$BRANCH"
    git add <all-changed-files>
-   git commit -m "fix: apply codebase review fix plan
+   git commit -F - <<EOF
+   fix: apply codebase review fix plan
 
-   $(cat $RESOLVED_CACHE_DIR/fix-plan-summary.md 2>/dev/null || echo 'Phase 4 fix plan tasks applied.')"
+   $(cat $RESOLVED_CACHE_DIR/fix-plan-summary.md 2>/dev/null || echo 'Phase 4 fix plan tasks applied.')
+   EOF
    ```
 
 2. **Check prerequisites**:
@@ -665,7 +667,8 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
    ```
 
 4. **Parse actionable findings** from bot comments:
-   - Filter to bot-authored comments only (CodeRabbit, gemini-code-assist, etc.)
+   - Filter to bot-authored comments only (where `user.type == "Bot"`,
+     e.g. CodeRabbit, gemini-code-assist, etc.)
    - Extract file paths, line numbers, suggested changes
    - Classify as CRITICAL/HIGH/MEDIUM/LOW
 
@@ -681,7 +684,8 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
      "Tests failed in external fix round $EXTERNAL_FIX_ROUNDS.
      Reply 'retry' to fix and try again, 'skip' to push anyway,
      or 'done' to exit the loop."
-     - If 'retry': go back to step 5
+     - If 'retry': diagnose the test failure, correct the fixes,
+       then re-run tests (loop back to step 6)
      - If 'skip': commit and push regardless
      - If 'done': exit to 5g
    - If all pass → commit and push:
