@@ -63,8 +63,6 @@ except Exception as e:
     sys.exit(1)
 " || FAIL=1
 
-rm -rf "$TEST_DIR"
-
 if [ "$FAIL" -eq 1 ]; then
     echo "[ERROR] Tests failed!"
     false
