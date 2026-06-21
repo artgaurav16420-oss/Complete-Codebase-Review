@@ -10,10 +10,10 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 |---------|---------|
 | `make test` | Compliance + bash integration (Unix) |
 | `make test-py` / `make test-windows` | Compliance-only on Windows |
-| `python -m unittest discover -s tests -p "test_*.py"` | All 5 suites (166 tests) |
-| `python tests/test_compliance.py` | 63 tests (SKILL.md compliance) |
+| `python -m unittest discover -s tests -p "test_*.py"` | All 6 suites (169 tests) |
+| `python tests/test_compliance.py` | 62 tests (SKILL.md compliance) |
 | `python install.py --dry-run` | Always dry-run first before installing |
-| `review [hash\|branch\|pr]` | Phase 5e — review skill (internal, not user-facing) |
+| `review [hash\|branch\|pr]` | Internal review skill (`skills/review/SKILL.md`), loaded in Phase 5a/5c. Also invocable as `/review` when installed. |
 | `python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" && python -m coverage report` | Full coverage run (threshold ≥85%) |
 
 ## Architecture
@@ -44,7 +44,7 @@ Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or
 
 - **SKILL_DIR injection**: Orchestrator injects absolute skill dir path into sub-agent prompts. Never resolve `karpathy-guidelines.md` via `realpath` from target CWD.
 - **Phase 5d-5g requires `gh` CLI**: PR creation, review loop, and comment posting depend on `gh` authenticated with push access. If unavailable, steps skip gracefully (reported in 5g).
-- **Phase 5e review is done by the orchestrator itself** — load `skills/review/SKILL.md` and execute its phases (Gather → Checklist → Grade → Emit JSON). Do not rely on external review bots. The `--json` flag in the review skill is a behavioral instruction to emit findings as structured JSON, not a script argument.
+- **Phase 5a/5c review is done by the orchestrator itself** — load `skills/review/SKILL.md` and execute its phases (Gather → Checklist → Grade → Emit JSON). Do not rely on external review bots. The `--json` flag in the review skill is a behavioral instruction to emit findings as structured JSON, not a script argument.
 - **`gh pr review --approve` fails on your own PR** — use `gh pr comment --body-file` or `gh api repos/:owner/:repo/issues/:number/comments` for self-review.
 - **Coverage must run from repo root**: `.coverage` file lives there. Running `coverage run` from another directory produces "No data to report".
 - **Windows Python PATH race**: Windows Store Python stub (`WindowsApps\python.exe`) resolves before Anaconda/system Python. If `python --version` shows unexpected version, `Get-Command python.exe` reveals which one wins.
@@ -58,7 +58,7 @@ Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or
 - **`install.py` version**: Reads from `pyproject.toml` via `_read_version()` — raises `RuntimeError` if missing.
 - **`install.py --dry-run`** before any actual install. The `--dry-run` flag previews paths without copying.
 - **`test.sh` is Unix-only; `Test-Windows.ps1` is Windows-only**. CI matrix uses `if: runner.os != 'Windows'` / `== 'Windows'`. Don't run `test.sh` on Windows.
-- **`skills/review/SKILL.md`** is a separate internal skill loaded in Phase 5e from SKILL_DIR. Not part of the main pipeline, but must be kept in sync.
+- **`skills/review/SKILL.md`** is a separate internal skill loaded by the orchestrator in Phase 5a (from SKILL_DIR). Not part of the main pipeline, but must be kept in sync.
 
 ## Source of Truth
 
