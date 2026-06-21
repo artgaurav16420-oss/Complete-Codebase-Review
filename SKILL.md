@@ -37,7 +37,10 @@ Five-phase pipeline for codebase health. Invoke with `/complete-codebase-review 
 **Phase 2: Parallel Analysis** → Spawn N specialist agents across health dimensions
 **Phase 3: Synthesis + Roadmap** → Synthesis, then DA verification, then prioritized roadmap
 **Phase 4: Fix Plan** → Generate per-agent code fix tasks, present for user review, wait for permission
-**Phase 5: Independent Review & PR** → Independent agent audits fixes → auto-correct → local review loop (review→fix→re-review) until clean → full test suite → create PR → external review loop (user pings → read AI comments → fix → push → repeat) → final report
+**Phase 5: Independent Review & PR** → Independent agent audits fixes →
+auto-correct → local review loop (review→fix→re-review) until clean →
+full test suite → create PR → external review loop (user pings →
+read AI comments → fix → push → repeat) → final report
 
 ### Argument Handling
 
@@ -499,11 +502,14 @@ After fixes are applied, verify they didn't introduce regressions:
 Initialize counters before sub-phases:
 - `$TOTAL_FIXES_APPLIED = 0`
 - `$EXTERNAL_FIX_ROUNDS = 0`
+- `$EXTERNAL_FIXES_APPLIED = 0`
 
 After Phase 4 fixes are applied, Phase 5 runs autonomously in two stages:
 
-- **Local loop (5a-5d):** Review → auto-correct → re-review until clean → full test suite
-- **External loop (5e-5f):** Auto-create PR → user pings when AI bots reviewed → read comments → fix → push → repeat
+- **Local loop (5a-5d):** Review → auto-correct → re-review until clean
+  → full test suite
+- **External loop (5e-5f):** Auto-create PR → user pings when AI bots
+  reviewed → read comments → fix → push → repeat
 
 ### 5a. Spawn Independent Reviewer
 
@@ -592,32 +598,30 @@ After the local review loop exits cleanly, run the full test suite:
 
 ### 5e. Create Pull Request
 
-If all checks pass in 5d, create a PR with the applied fixes. Before proceeding, verify prerequisites:
+Create a local branch and commit all fixes, then push to GitHub
+if `gh` is available:
 
-1. **Check prerequisites**:
-   ```bash
-   gh auth status 2>/dev/null
-   git remote get-url origin 2>/dev/null | grep -q github.com
-   ```
-   If either fails, skip PR creation and proceed to 5g with a note:
-   "PR creation skipped — `gh` CLI not available or remote is not GitHub.
-   Branch with fixes exists locally."
-
-2. **Create branch**:
+1. **Create branch and commit fixes** — collect files changed during
+   Phase 4d and Phase 5b, stage and commit:
    ```bash
     BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(echo "$TARGET_DIR" | git hash-object --stdin | cut -c1-8)"
    git checkout -b "$BRANCH"
-   ```
-
-3. **Commit all fixes** — collect the list of files changed during Phase 4d and Phase 5b, then stage and commit with a Conventional Commit message:
-   ```bash
    git add <all-changed-files>
    git commit -m "fix: apply codebase review fix plan
 
    $(cat $RESOLVED_CACHE_DIR/fix-plan-summary.md 2>/dev/null || echo 'Phase 4 fix plan tasks applied.')"
    ```
 
-4. **Push and create PR** — no user confirmation needed:
+2. **Check prerequisites**:
+   ```bash
+   gh auth status 2>/dev/null
+   git remote get-url origin 2>/dev/null | grep -q github.com
+   ```
+   If either fails, skip PR creation and proceed to 5g with a note:
+   "PR creation skipped — `gh` CLI not available or remote is not GitHub.
+   Branch with fixes exists locally at $BRANCH."
+
+3. **Push and create PR** — no user confirmation needed:
    ```bash
    git push origin "$BRANCH"
    gh pr create \
@@ -635,7 +639,7 @@ If all checks pass in 5d, create a PR with the applied fixes. Before proceeding,
    - Phase 5d test suite: PASS"
    ```
 
-5. Store the PR number as `$PR_NUMBER` for use in 5f-5g.
+4. Store the PR number as `$PR_NUMBER` for use in 5f-5g.
 
 If this is the first time running Phase 5 on this repo and `gh` is unavailable or
 remote is not GitHub, skip PR creation and proceed directly to final reporting.
@@ -669,10 +673,17 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
    - Read the affected file
    - Apply the suggested fix (or minimal correction)
    - Verify locally (lint/typecheck)
+   - Increment `$EXTERNAL_FIXES_APPLIED` by the number of fixes applied
 
-6. **Run test suite** and only push if all pass:
+6. **Run test suite** and handle failures:
    - Run the full test suite (same detection logic as 5d)
-   - If tests fail → report to user and do not push; fix first
+   - If tests fail → report to user and ask:
+     "Tests failed in external fix round $EXTERNAL_FIX_ROUNDS.
+     Reply 'retry' to fix and try again, 'skip' to push anyway,
+     or 'done' to exit the loop."
+     - If 'retry': go back to step 5
+     - If 'skip': commit and push regardless
+     - If 'done': exit to 5g
    - If all pass → commit and push:
 
 7. **Commit and push** all fixes as a single commit:
@@ -713,7 +724,10 @@ Produce a Phase 5 summary with loop metrics:
 - **Status**: PASS / TESTS FAILED / REVIEW_STALLED
 ```
 
-If any test suite failed at any point, suggest the user investigate before considering the review complete. If the local loop hit max iterations with remaining issues, recommend manual review of unresolved findings before creating the PR. Include the PR URL for direct access.
+If any test suite failed at any point, suggest the user investigate
+before considering the review complete. If the local loop hit max
+iterations with remaining issues, recommend manual review of unresolved
+findings before merging the PR. Include the PR URL for direct access.
 
 ## Web Verification
 
