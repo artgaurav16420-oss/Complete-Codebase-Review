@@ -33,6 +33,11 @@ _SKILL_EXCLUDED = {
 }
 
 
+def _onerror(func, path, exc_info):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
 def _ignore_skill_files(path, names):
     return [n for n in names if n in _SKILL_EXCLUDED or n.endswith(".pyc")]
 
@@ -139,17 +144,29 @@ def copy_skill(src_dir, dest_dir):
 
         if os.path.lexists(skill_dest):
             print_info(f"Updating existing installation in {skill_dest}")
-            if skill_dest.is_symlink():
+            resolved = skill_dest.resolve()
+            if os.path.islink(str(skill_dest)):
                 skill_dest.unlink()
-            elif skill_dest.is_dir():
-                def _onerror(func, path, exc_info):
-                    os.chmod(path, stat.S_IWRITE)
-                    func(path)
-                shutil.rmtree(skill_dest, onerror=_onerror)
+            elif resolved.is_dir():
+                shutil.rmtree(str(resolved), onerror=_onerror)
             else:
-                skill_dest.unlink()
+                resolved.unlink()
 
         shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
+
+        # Validate no copied symlinks escape the skill directory (T-002)
+        root_resolved = skill_dest.resolve()
+        for dirpath, dirnames, filenames in os.walk(skill_dest):
+            for name in dirnames + filenames:
+                full_path = Path(dirpath) / name
+                if full_path.is_symlink():
+                    target = full_path.resolve()
+                    if not target.is_relative_to(root_resolved):
+                        shutil.rmtree(str(skill_dest), onerror=_onerror)
+                        raise ValueError(
+                            f"Symlink {full_path} points outside skill dir: {target}"
+                        )
+
         copied = sum(len(files) for _, _, files in os.walk(skill_dest))
         print_info(f"Copied {copied} file(s) to {skill_dest}")
         return skill_dest
@@ -159,15 +176,16 @@ def copy_skill(src_dir, dest_dir):
     except OSError as e:
         print_error(f"Failed to copy skill: {e}")
         raise
+    except ValueError as e:
+        print_error(str(e))
+        raise
 
 
 def _validate_target_path(path):
     """Validate target path has no path traversal components.
 
     Checks for explicit '..' components which could allow writing outside the
-    intended directory. Symlink resolution is performed via Path.resolve()
-    but does not validate the symlink target — callers must ensure the resolved
-    path is appropriate.
+    intended directory.
 
     Args:
         path (Path): The target path to validate.
@@ -247,7 +265,6 @@ def _run_local_fallback(src_dir, dry_run):
         print_info(
             f"[DRY-RUN] Would install to local directory: {skill_dest}"
         )
-        print_success("Dry run complete.")
         return
     try:
         dest_path = copy_skill(src_dir, local_target)
@@ -260,15 +277,13 @@ def _run_local_fallback(src_dir, dry_run):
 def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
     installed_any = _run_auto_install(src_dir, target_dirs, dry_run)
 
-    if dry_run and installed_any:
-        print_success("Dry run complete.")
-        return
-
     if not installed_any:
         print_info("No existing global tool configurations")
         _run_local_fallback(src_dir, dry_run)
-        if dry_run:
-            return
+
+    if dry_run:
+        print_success("Dry run complete.")
+        return
 
     print_success("Installation complete!")
 

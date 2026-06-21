@@ -10,7 +10,9 @@ import re
 import unittest
 
 VALID_SEVERITIES = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}
-VALID_DA_VERDICTS = {"CONFIRMED", "PLAUSIBLE", "QUESTIONABLE", "REJECTED"}
+VALID_DA_VERDICTS = {
+    "CONFIRMED", "PLAUSIBLE", "QUESTIONABLE", "REJECTED", "DA-ESCALATION",
+}
 VALID_HEALTH = {"GREEN", "YELLOW", "RED"}
 
 REQUIRED_ES_FIELDS = [
@@ -554,8 +556,13 @@ class TestSampleOutputValidation(unittest.TestCase):
 
     def test_sample_roadmap_phase_totals_match(self):
         text = _section_text(SAMPLE_VALID_OUTPUT, "## Improvement Roadmap")
-        totals = [float(m.group(1)) for m in
-                  re.finditer(r'(?mi)^#+\s+Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', text)]
+        totals = [
+            float(m.group(1)) for m in
+            re.finditer(
+                r'(?mi)^#+\s+Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?',
+                text,
+            )
+        ]
         self.assertEqual(sum(totals), 200,
                          f"Roadmap phases {totals} sum to {sum(totals)}h, expected 200h")
 
@@ -565,7 +572,10 @@ class TestSampleOutputValidation(unittest.TestCase):
             os.path.dirname(__file__), os.pardir, ".code-review-cache", "health-report.md"
         )
         if not os.path.isfile(report_path):
-            self.skipTest(f"Health report not found at {report_path}")
+            self.skipTest(
+                f"Health report not found at {report_path}. "
+                "Run a full review first to generate it."
+            )
         with open(report_path, encoding="utf-8") as f:
             content = f.read()
         errors = validate_markdown_output(content)

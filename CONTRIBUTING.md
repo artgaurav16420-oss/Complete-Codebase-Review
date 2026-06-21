@@ -63,6 +63,16 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 Types: `feat`, `fix`, `test`, `docs`, `refactor`, `ci`, `chore`.
 
+### Commit Message Template
+
+A `.gitmessage` template is provided in the repo root. To use it:
+
+```bash
+git config commit.template .gitmessage
+```
+
+This pre-fills the conventional commit format when you run `git commit`.
+
 ## PR Checklist
 
 Before submitting:
