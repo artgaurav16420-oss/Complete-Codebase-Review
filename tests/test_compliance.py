@@ -314,26 +314,26 @@ class TestFixPlan(_BaseComplianceTest):
         self.assertIn('Create Pull Request', self.content)
 
     def test_review_on_pr_phase(self):
-        """Phase 5e runs the review skill against the created PR."""
-        self.assertIn('Run Code Review on PR', self.content)
+        """Phase 5f enters external review loop with AI bot comments."""
+        self.assertIn('External Review Loop', self.content)
 
     def test_autofix_loop_phase(self):
-        """Phase 5e2 implements the autofix loop with per-issue approval."""
-        self.assertIn('Autofix Loop', self.content)
+        """Phase 5c implements the local review loop with auto-correction."""
+        self.assertIn('Local Review Loop', self.content)
         self.assertIn('REVIEW_MAX_ITERATIONS', self.content)
 
     def test_pr_requires_gh(self):
-        """Phase 5d checks gh CLI availability before creating PR."""
+        """Phase 5e checks gh CLI availability before creating PR."""
         self.assertIn('gh auth status', self.content)
 
     def test_review_skill_loaded_from_skill_dir(self):
-        """Phase 5e loads review skill from SKILL_DIR, not system path."""
-        self.assertIn('$SKILL_DIR/skills/review/SKILL.md', self.content)
+        """Phase 5 agents load skills from SKILL_DIR, not system path."""
+        self.assertIn('$SKILL_DIR/karpathy-guidelines.md', self.content)
 
     def test_autofix_requires_user_approval(self):
-        """Phase 5e2 waits for per-issue user approval before applying fixes."""
-        self.assertIn('AskUserQuestion', self.content)
-        self.assertIn('If Apply: apply', self.content)
+        """Phase 5c auto-applies corrections in the local review loop."""
+        self.assertIn('no user approval needed', self.content)
+        self.assertIn('automatically', self.content)
 
 
 class TestIntegration(_BaseComplianceTest):
@@ -396,7 +396,7 @@ class TestIntegration(_BaseComplianceTest):
         self.assertIn('impact vs effort', self.content)
 
     def test_output_and_cleanup(self):
-        self.assertIn('Where should I write', self.content)
+        self.assertIn('Print the full health report to stdout', self.content)
         self.assertIn('Delete', self.content)
         self.assertIn('temp', self.content)
         self.assertIn('Executive Summary', self.content)
