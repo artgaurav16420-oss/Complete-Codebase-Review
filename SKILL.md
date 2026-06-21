@@ -565,8 +565,6 @@ After corrections are applied, enter an automated local review loop:
   - Zero CRITICAL/HIGH/MEDIUM findings remain → clean exit, proceed to 5d
   - `$REVIEW_MAX_ITERATIONS` is reached → exit with remaining issues noted
 - No user interaction required during this loop — all fixes apply automatically
-- Each iteration increments `$TOTAL_FIXES_APPLIED`
-
 Track iteration count as `$LOCAL_LOOP_ITERATIONS`. Log each iteration:
 `[LOCAL REVIEW LOOP] Iteration N: X findings remaining`
 
@@ -648,7 +646,7 @@ The branch with all fixes remains on disk for manual PR creation.
 After the PR is live on GitHub, enter a user-ping-driven external review loop:
 
 1. **Notify user**:
-   ```
+   ```text
    PR #$PR_NUMBER is live at <PR URL>.
    Reply "reviewed" once AI bots (CodeRabbit, gemini-code-assist, etc.) have posted their reviews.
    ```
@@ -657,9 +655,10 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
 
 3. **Fetch AI bot comments** when user signals:
    ```bash
+   OWNER_REPO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
    gh pr view $PR_NUMBER --comments
-   gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/comments
-   gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/reviews
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews
    ```
 
 4. **Parse actionable findings** from bot comments:
@@ -696,7 +695,7 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
 8. **Increment** `$EXTERNAL_FIX_ROUNDS++`
 
 9. **Ask user**:
-   ```
+   ```text
    Fixes pushed to PR #$PR_NUMBER.
    Reply "reviewed" when AI bots have re-reviewed, or "done" to exit the external loop.
    ```
