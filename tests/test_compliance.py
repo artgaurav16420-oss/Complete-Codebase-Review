@@ -322,7 +322,7 @@ class TestFixPlan(_BaseComplianceTest):
 
     def test_skills_loaded_from_skill_dir(self):
         """Phase 5 agents load skills from SKILL_DIR, not system path."""
-        self.assertIn('via SKILL_DIR', self.content)
+        self.assertIn('via `SKILL_DIR`', self.content)
 
     def test_autofix_auto_applies(self):
         """Phase 5c auto-applies corrections in the local review loop."""
