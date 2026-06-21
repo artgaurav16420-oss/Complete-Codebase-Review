@@ -326,11 +326,11 @@ class TestFixPlan(_BaseComplianceTest):
         """Phase 5e checks gh CLI availability before creating PR."""
         self.assertIn('gh auth status', self.content)
 
-    def test_review_skill_loaded_from_skill_dir(self):
+    def test_skills_loaded_from_skill_dir(self):
         """Phase 5 agents load skills from SKILL_DIR, not system path."""
         self.assertIn('$SKILL_DIR/karpathy-guidelines.md', self.content)
 
-    def test_autofix_requires_user_approval(self):
+    def test_autofix_auto_applies(self):
         """Phase 5c auto-applies corrections in the local review loop."""
         self.assertIn('no user approval needed', self.content)
         self.assertIn('automatically', self.content)

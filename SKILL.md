@@ -662,8 +662,8 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
 3. **Fetch AI bot comments** when user signals:
    ```bash
    gh pr view $PR_NUMBER --comments
-   gh api repos/:owner/:repo/pulls/$PR_NUMBER/comments
-   gh api repos/:owner/:repo/pulls/$PR_NUMBER/reviews
+   gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/comments
+   gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/reviews
    ```
 
 4. **Parse actionable findings** from bot comments:
