@@ -153,19 +153,7 @@ def copy_skill(src_dir, dest_dir):
                 resolved.unlink()
 
         shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
-
-        # Validate no copied symlinks escape the skill directory (T-002)
-        root_resolved = skill_dest.resolve()
-        for dirpath, dirnames, filenames in os.walk(skill_dest):
-            for name in dirnames + filenames:
-                full_path = Path(dirpath) / name
-                if full_path.is_symlink():
-                    target = full_path.resolve()
-                    if not target.is_relative_to(root_resolved):
-                        shutil.rmtree(str(skill_dest), onerror=_onerror)
-                        raise ValueError(
-                            f"Symlink {full_path} points outside skill dir: {target}"
-                        )
+        _validate_no_escaped_symlinks(skill_dest)
 
         copied = sum(len(files) for _, _, files in os.walk(skill_dest))
         print_info(f"Copied {copied} file(s) to {skill_dest}")
@@ -179,6 +167,21 @@ def copy_skill(src_dir, dest_dir):
     except ValueError as e:
         print_error(str(e))
         raise
+
+
+def _validate_no_escaped_symlinks(skill_dest):
+    """Validate no copied symlinks escape the skill directory (T-002)."""
+    root_resolved = skill_dest.resolve()
+    for dirpath, dirnames, filenames in os.walk(skill_dest):
+        for name in dirnames + filenames:
+            full_path = Path(dirpath) / name
+            if full_path.is_symlink():
+                target = full_path.resolve()
+                if not target.is_relative_to(root_resolved):
+                    shutil.rmtree(str(skill_dest), onerror=_onerror)
+                    raise ValueError(
+                        f"Symlink {full_path} points outside skill dir: {target}"
+                    )
 
 
 def _validate_target_path(path):
