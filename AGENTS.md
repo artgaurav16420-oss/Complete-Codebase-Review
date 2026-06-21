@@ -10,7 +10,7 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 |---------|---------|
 | `make test` | Compliance + bash integration (Unix) |
 | `make test-py` / `make test-windows` | Compliance-only on Windows |
-| `python -m unittest discover -s tests -p "test_*.py"` | All 5 suites (169 tests) |
+| `python -m unittest discover -s tests -p "test_*.py"` | All 6 suites (169 tests) |
 | `python tests/test_compliance.py` | 62 tests (SKILL.md compliance) |
 | `python install.py --dry-run` | Always dry-run first before installing |
 | `review [hash\|branch\|pr]` | Internal review skill (`skills/review/SKILL.md`), loaded in Phase 5a/5c. Also invocable as `/review` when installed. |

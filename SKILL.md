@@ -656,7 +656,7 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
 3. **Fetch AI bot comments** when user signals:
    ```bash
    OWNER_REPO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
-   gh pr view $PR_NUMBER --comments
+   gh pr view $PR_NUMBER
    gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments
    gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews
    ```
