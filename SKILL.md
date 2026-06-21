@@ -604,7 +604,7 @@ if `gh` is available:
 1. **Create branch and commit fixes** — collect files changed during
    Phase 4d and Phase 5b, stage and commit:
    ```bash
-     BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(realpath "$TARGET_DIR" | git hash-object --stdin | cut -c1-8)"
+     BRANCH="ccr-fix/$(date +%Y%m%d-%H%M%S)-$(cd "$TARGET_DIR" && pwd | git hash-object --stdin | cut -c1-8)"
    git checkout -b "$BRANCH"
    git add <all-changed-files>
    git commit -F - <<EOF

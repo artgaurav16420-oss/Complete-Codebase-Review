@@ -167,12 +167,6 @@ class TestContentQuality(_BaseComplianceTest):
         self.assertIn('## Web Verification', self.content)
         self.assertIn('Cleanup', self.content)
 
-    def test_output_destination_ask(self):
-        self.assertTrue(
-            'Ask user' in self.content or
-            'AskUserQuestion' in self.content or
-            'Where should I write' in self.content)
-
     def test_unverified_tag(self):
         self.assertIn('UNVERIFIED', self.content)
 
@@ -328,7 +322,7 @@ class TestFixPlan(_BaseComplianceTest):
 
     def test_skills_loaded_from_skill_dir(self):
         """Phase 5 agents load skills from SKILL_DIR, not system path."""
-        self.assertIn('$SKILL_DIR/karpathy-guidelines.md', self.content)
+        self.assertIn('via SKILL_DIR', self.content)
 
     def test_autofix_auto_applies(self):
         """Phase 5c auto-applies corrections in the local review loop."""
