@@ -15,8 +15,9 @@ from pathlib import Path
 
 # Reference list of all 14 specialist agents. Used to count how many distinct
 # agent names appear in SKILL.md (exact string match). Not all 14 names may
-# match if SKILL.md uses slightly different titles; the threshold test
-# (test_at_least_12_agents) allows for 2 mismatches.
+# match if SKILL.md uses slightly different titles. The 2-mismatch allowance
+# applies only to test_at_least_12_agents; other tests may enforce stricter
+# requirements for all 14 agents.
 _ALL_AGENTS = [
     "Architecture Analyzer", "Code Quality Auditor",
     "Security Posture", "Tech Debt Tracker",

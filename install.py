@@ -155,14 +155,14 @@ def copy_skill(src_dir, dest_dir):
         shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
 
         # Validate no copied symlinks escape the skill directory (T-002)
+        root_resolved = skill_dest.resolve()
         for dirpath, dirnames, filenames in os.walk(skill_dest):
             for name in dirnames + filenames:
                 full_path = Path(dirpath) / name
                 if full_path.is_symlink():
                     target = full_path.resolve()
-                    try:
-                        target.relative_to(skill_dest.resolve())
-                    except ValueError:
+                    if not target.is_relative_to(root_resolved):
+                        shutil.rmtree(str(skill_dest), onerror=_onerror)
                         raise ValueError(
                             f"Symlink {full_path} points outside skill dir: {target}"
                         )
@@ -176,36 +176,29 @@ def copy_skill(src_dir, dest_dir):
     except OSError as e:
         print_error(f"Failed to copy skill: {e}")
         raise
+    except ValueError as e:
+        print_error(str(e))
+        raise
 
 
-def _validate_target_path(path, allowed_root=None):
+def _validate_target_path(path):
     """Validate target path has no path traversal components.
 
-    Checks for explicit '..' components and optionally validates the resolved
-    path stays within an allowed root directory.
+    Checks for explicit '..' components which could allow writing outside the
+    intended directory.
 
     Args:
         path (Path): The target path to validate.
-        allowed_root (Path, optional): If set, validates resolved path is
-            within this root.
 
     Returns:
         Path: The resolved absolute path.
 
     Raises:
-        ValueError: If path traversal or boundary violation is detected.
+        ValueError: If path traversal is detected.
     """
     if ".." in path.parts:
         raise ValueError(f"Path traversal detected: {path}")
-    resolved = path.resolve()
-    if allowed_root is not None:
-        try:
-            resolved.relative_to(allowed_root)
-        except ValueError:
-            raise ValueError(
-                f"Path {resolved} is outside allowed root {allowed_root}"
-            )
-    return resolved
+    return path.resolve()
 
 
 def _run_target_install(src_dir, target, dry_run):

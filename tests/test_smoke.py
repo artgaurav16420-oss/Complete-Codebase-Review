@@ -39,6 +39,7 @@ class TestSmokeHelp(unittest.TestCase):
             [PYTHON, INSTALL_PY, "-h"],
             capture_output=True, text=True
         )
+        self.assertEqual(short_help.returncode, 0)
         self.assertEqual(self.help_result.stdout, short_help.stdout)
 
     def test_stderr_empty_on_help(self):
@@ -68,6 +69,7 @@ class TestSmokeVersion(unittest.TestCase):
             [PYTHON, INSTALL_PY, "-V"],
             capture_output=True, text=True
         )
+        self.assertEqual(short_v.returncode, 0)
         self.assertEqual(self.version_result.stdout, short_v.stdout)
 
     def test_stderr_empty_on_version(self):

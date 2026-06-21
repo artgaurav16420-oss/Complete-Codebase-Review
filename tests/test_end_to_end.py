@@ -23,28 +23,32 @@ class TestEndToEndCLI(unittest.TestCase):
     def test_help_exits_zero(self):
         result = subprocess.run(
             [PYTHON, INSTALL_PY, "--help"],
-            capture_output=True, text=True, cwd=REPO_ROOT
+            capture_output=True, text=True, cwd=REPO_ROOT,
+            timeout=30
         )
         self.assertEqual(result.returncode, 0)
 
     def test_version_exits_zero(self):
         result = subprocess.run(
             [PYTHON, INSTALL_PY, "--version"],
-            capture_output=True, text=True, cwd=REPO_ROOT
+            capture_output=True, text=True, cwd=REPO_ROOT,
+            timeout=30
         )
         self.assertEqual(result.returncode, 0)
 
     def test_dry_run_exits_zero(self):
         result = subprocess.run(
             [PYTHON, INSTALL_PY, "--dry-run"],
-            capture_output=True, text=True, cwd=REPO_ROOT
+            capture_output=True, text=True, cwd=REPO_ROOT,
+            timeout=30
         )
         self.assertEqual(result.returncode, 0)
 
     def test_dry_run_prints_info(self):
         result = subprocess.run(
             [PYTHON, INSTALL_PY, "--dry-run"],
-            capture_output=True, text=True, cwd=REPO_ROOT
+            capture_output=True, text=True, cwd=REPO_ROOT,
+            timeout=30
         )
         self.assertIn("Starting Universal Installer", result.stdout)
         self.assertIn("Dry run complete", result.stdout)
@@ -60,8 +64,12 @@ class TestEndToEndHealthReport(unittest.TestCase):
                 f"Health report not found at {report_path}. "
                 "Run a full review first."
             )
-        sys.path.insert(0, str(REPO_ROOT))
-        from tests.test_pipeline import validate_markdown_output
+        old_path = list(sys.path)
+        try:
+            sys.path.insert(0, str(REPO_ROOT))
+            from tests.test_pipeline import validate_markdown_output
+        finally:
+            sys.path[:] = old_path
         content = report_path.read_text(encoding="utf-8")
         errors = validate_markdown_output(content)
         self.assertEqual(
