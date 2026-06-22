@@ -9,24 +9,22 @@ This project uses **only Python stdlib**. No `requirements.txt`, no `pip install
 ### Running Tests
 
 ```bash
-# All compliance checks (139 assertions)
+# Compliance tests (62 tests)
 python tests/test_compliance.py
 
-# Installer unit tests (49 tests, unittest)
-python -m unittest tests.test_install -v
-
-# CLI smoke tests (18 tests, unittest)
-python -m unittest tests.test_smoke -v
-
-# All unittest suites
+# All 6 test suites (165 tests)
 python -m unittest discover -s tests -p "test_*.py" -v
+
+# With coverage
+python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" -v
+python -m coverage report
 ```
 
 ### Writing Tests
 
 | Suite | Framework | When to use |
 |-------|-----------|-------------|
-| `test_compliance.py` | `unittest.TestCase` | SKILL.md string-matching checks (139 assertions) |
+| `test_compliance.py` | `unittest.TestCase` | SKILL.md string-matching checks (62 tests) |
 | All other test files | `unittest.TestCase` | All new tests |
 
 **New test files must use `unittest.TestCase`.**
@@ -72,6 +70,18 @@ git config commit.template .gitmessage
 ```
 
 This pre-fills the conventional commit format when you run `git commit`.
+
+## Documentation Guidelines
+
+- **README changes**: Keep the README concise. Add new features to the
+  feature table, update configuration tables, and add FAQ entries for
+  common questions.
+- **Docstrings**: Use `"""triple double-quotes"""` on all public
+  functions. One-liners for simple accessors; multi-line with
+  Args/Returns for complex functions.
+- **ADRs**: Add an ADR for any significant architecture or design
+  decision (see existing ADRs/ for format).
+- **Inline comments**: Document WHY, not WHAT. Assume the reader knows the language.
 
 ## PR Checklist
 

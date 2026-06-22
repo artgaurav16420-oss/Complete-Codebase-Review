@@ -5,7 +5,6 @@ omit =
     .code-review-cache/*
     __pycache__/*
     ADRs/*
-    tests/*
 
 [report]
 fail_under = 85

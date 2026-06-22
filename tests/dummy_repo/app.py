@@ -1,3 +1,9 @@
+"""Vulnerable app fixture for integration tests.
+
+This file contains INTENTIONAL security vulnerabilities (CWE-78 OS injection,
+CWE-200 credential exposure via env var) used by integration tests to verify
+the review pipeline detects them. Do NOT use this code in production.
+"""
 import os
 import subprocess
 

@@ -1,6 +1,8 @@
 # Changelog
 
 ## v2.2.0 (2026-06-20)
+
+[#25](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/pull/25)
 - **Phase 5 rewrite**: Replaced linear 5e→5f with CodeRabbit-inspired
   review→autofix→re-review loop
 - **skills/review/SKILL.md v2.0.0**: Added Phase 1.5 scope flags (`--json`, `-t`, `--base`, etc.),
