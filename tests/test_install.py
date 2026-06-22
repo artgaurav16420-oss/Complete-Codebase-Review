@@ -74,6 +74,17 @@ class TestReadVersion(_BaseInstallTest):
                 with self.assertRaisesRegex(RuntimeError, "version missing"):
                     self.install._read_version()
 
+    def test_read_version_success(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            (project_dir / "install.py").write_text("", encoding="utf-8")
+            (project_dir / "pyproject.toml").write_text(
+                'version = "2.2.0"\n', encoding="utf-8"
+            )
+            with patch.object(self.install, "__file__", str(project_dir / "install.py")):
+                result = self.install._read_version()
+            self.assertEqual(result, "2.2.0")
+
 
 class TestGetTargetDirs(_BaseInstallTest):
     """Tests for get_target_dirs()."""
@@ -254,6 +265,7 @@ class TestCopySkill(_BaseInstallTest):
                 ".credentials": "",
                 ".code-review-cache": None,
                 "foo.pyc": "",
+                "orchestrator-rules.md": "",
                 "keep.py": "",
             })
             dest = Path(tmpdir) / "dest"
@@ -265,6 +277,7 @@ class TestCopySkill(_BaseInstallTest):
             self.assertFalse((result / "__pycache__").exists())
             self.assertFalse((result / "install.py").exists())
             self.assertFalse((result / "foo.pyc").exists())
+            self.assertFalse((result / "orchestrator-rules.md").exists())
 
     def test_permission_error_is_raised(self):
         with patch.object(self.install.shutil, "copytree",
@@ -388,6 +401,16 @@ class TestMainArgparse(_BaseInstallTest):
         output = mock_stdout.getvalue()
         self.assertIn("Dry run complete", output)
         self.assertNotIn("Installation complete", output)
+
+    def test_target_flag_dry_run(self):
+        with patch("sys.argv", ["install.py", "--target", "/custom/dir", "--dry-run"]), \
+             patch.object(self.install, "_validate_target_path",
+                          return_value=Path("/custom/dir")), \
+             patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.install.main()
+        output = mock_stdout.getvalue()
+        self.assertIn("[DRY-RUN] Would install to", output)
+        self.assertIn("Dry run complete", output)
 
 
 class TestMainFunction(_BaseInstallTestWithArgv):
@@ -626,16 +649,27 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
         with patch.object(self.install, "_validate_target_path",
                           return_value=Path("/resolved")), \
              patch.object(self.install, "copy_skill",
-                          side_effect=PermissionError("denied")) \
+                           side_effect=PermissionError("denied")) \
              as mock_copy, \
              patch.object(self.install.sys, "stdout",
-                          new_callable=io.StringIO) as mock_stdout:
+                           new_callable=io.StringIO) as mock_stdout:
             with patch("sys.argv", ["install.py", "--target", "/custom/dir"]):
                 with self.assertRaises(SystemExit) as ctx:
                     self.install.main()
         self.assertEqual(ctx.exception.code, 1)
         output = mock_stdout.getvalue()
         self.assertIn("Install failed", output)
+
+    def test_version_flag(self):
+        with patch("sys.argv", ["install.py", "--version"]), \
+             patch.object(self.install, "get_version",
+                          return_value="9.9.9"), \
+             patch.object(self.install, "copy_skill") as mock_copy, \
+             patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            self.install.main()
+        mock_copy.assert_not_called()
+        output = mock_stdout.getvalue()
+        self.assertIn("complete-codebase-review v9.9.9", output)
 
     def test_empty_target_dirs_uses_local_fallback(self):
         with patch.object(self.install, "get_target_dirs",
@@ -651,6 +685,31 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
         mock_copy.assert_called_once()
         args, _ = mock_copy.call_args
         self.assertEqual(args[1], Path.cwd() / ".skills")
+
+    def test_empty_target_dirs_dry_run(self):
+        with patch.object(self.install, "get_target_dirs",
+                          return_value={}), \
+             patch.object(self.install, "copy_skill") as mock_copy, \
+             patch.object(self.install.sys, "stdout",
+                          new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=True), \
+                 patch.object(Path, "read_text", return_value=""):
+                with patch("sys.argv", ["install.py", "--dry-run"]):
+                    self.install.main()
+        mock_copy.assert_not_called()
+        output = mock_stdout.getvalue()
+        self.assertIn("[DRY-RUN] Would install to local directory", output)
+
+    def test_auto_install_invalid_path(self):
+        fake_dirs = {"Claude Code": Path("/home/user/../.claude/skills")}
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", return_value=True):
+                result = self.install._run_auto_install(
+                    Path("/src"), fake_dirs, dry_run=False
+                )
+        self.assertFalse(result)
+        output = mock_stdout.getvalue()
+        self.assertIn("Invalid target path", output)
 
     def test_one_agent_exists_one_missing_installs_partial(self):
         fake_dirs = {
@@ -743,6 +802,20 @@ class TestInternalFunctions(_BaseInstallTest):
         self.assertEqual(version1, version2)
         self.assertEqual(call_count, 1)
         self.install._VERSION_CACHE = None
+
+
+class TestMainEntryPoint(unittest.TestCase):
+    """Tests for the if __name__ == '__main__' guard."""
+
+    def test_main_entry_point(self):
+        import subprocess
+        script = str(Path(__file__).resolve().parent.parent / "install.py")
+        result = subprocess.run(
+            [sys.executable, script, "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("complete-codebase-review v", result.stdout)
 
 
 if __name__ == "__main__":

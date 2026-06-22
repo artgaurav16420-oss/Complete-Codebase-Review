@@ -15,7 +15,7 @@ Test suites use only Python stdlib:
 | Suite | Framework | Reason |
 |-------|-----------|--------|
 | `test_compliance.py` | `unittest.TestCase` | String-matching checks against SKILL.md (139 assertions across 63 tests) |
-| `test_install.py` | `unittest.TestCase` | Standard unittest — 9 classes, complex mocking |
+| `test_install.py` | `unittest.TestCase` | Standard unittest — 10 classes, complex mocking |
 | `test_smoke.py` | `unittest.TestCase` | CLI smoke tests via subprocess |
 | `test_pipeline.py` | `unittest.TestCase` | Schema-contract validation for review output |
 | `test_env_config.py` | `unittest.TestCase` | Env-var table completeness checks |

@@ -455,8 +455,10 @@ When the user applies only a subset of tasks and wants a follow-up scan:
 2. Re-run Phase 2 (parallel analysis) for active domains only. Domains where
    `per_domain_open_findings[domain].critical == 0` AND
    `per_domain_open_findings[domain].high == 0` in the loaded baseline are marked
-   `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend
-   table. All other domains receive full re-analysis. The 75%/66% completion threshold
+    `[LOW-ACTIVITY]` — no agent spawned, previous scores carry forward in the trend
+    table. **Domains with no entry in `per_domain_open_findings` (never assessed) are
+    NOT treated as LOW-ACTIVITY** — they force a full re-scan to establish a baseline.
+    All other domains receive full re-analysis. The 75%/66% completion threshold
    (see Non-Negotiable Rules Rule 1) applies to active agents only — LOW-ACTIVITY
    domains excluded from denominator.
     **Exception — periodic full re-scan:** Every 3rd re-review (tracked via
@@ -503,6 +505,7 @@ Initialize counters before sub-phases:
 - `$TOTAL_FIXES_APPLIED = 0`
 - `$EXTERNAL_FIX_ROUNDS = 0`
 - `$EXTERNAL_FIXES_APPLIED = 0`
+- `$LOCAL_LOOP_ITERATIONS = 0`
 
 After Phase 4 fixes are applied, Phase 5 runs autonomously in two stages:
 
@@ -546,7 +549,10 @@ The reviewer MUST NOT have been involved in Phase 4d execution to avoid confirma
 
 If the reviewer finds bugs, edge cases missed, or regressions introduced:
 1. For each issue, create a corrective task with the same structure as 4a (Task ID, Target files, Suggested change)
-2. Apply all correction tasks automatically — no user approval needed
+2. Apply all correction tasks automatically — no user approval needed.
+   **EXCEPTION**: Any task touching ND2/ND6 triggers (db schema, auth, secrets, file_deletion,
+   destructive ops per karpathy-guidelines.md RULE_7) MUST route to explicit user consent
+   before auto-apply, matching Phase 4d approval protocol.
 3. **Correction agents load `karpathy-guidelines` skill (via `SKILL_DIR`) and follow Karpathy Guidelines:**
    - **Surgical fixes only**: change exactly what's needed to fix the regression
    - **Verify before done**: run targeted tests for the corrected behavior
@@ -630,9 +636,10 @@ if `gh` is available:
    $(cat $RESOLVED_CACHE_DIR/fix-plan-summary.md 2>/dev/null || echo 'See individual commits for details.')
 
    ### Verification
-   - Phase 5a independent review: PASS
-   - Phase 5b corrections applied: <n>
-   - Phase 5d test suite: PASS"
+    - Phase 5a independent review: PASS
+    - Phase 5b corrections applied: <n>
+    - Phase 5c local review loop: <iterations> iterations, <clean|max-reached>
+    - Phase 5d test suite: PASS"
    ```
 
 4. Store the PR number as `$PR_NUMBER` for use in 5f-5g.
@@ -703,6 +710,9 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
 10. **Loop** back to step 2, or exit if user says `done`.
 
 No fixed iteration limit — user controls when the external loop ends. Track rounds with `$EXTERNAL_FIX_ROUNDS`.
+**STRIKE_RULE (karpathy-guidelines.md):** If the same error is raised 2 rounds in a row
+(i.e., fix did not resolve it), STOP looping and flag to user as unresolved. Do not
+auto-retry a third time — user must decide `done` or `skip`.
 
 
 
@@ -809,6 +819,8 @@ When quantifying tech debt, use the following table as a floor estimate per find
 ## Output Format
 
 When `CODE_REVIEW_FILTER=critical-high`, omit MEDIUM and LOW findings from all report sections (Detailed Findings, Improvement Roadmap, Tech Debt Summary). The Executive Summary and Per-Domain Scores still include full counts for context — only the itemized lists are trimmed.
+
+**IMPORTANT**: `CODE_REVIEW_FILTER` is display-only. The baseline snapshot (4e) always stores unfiltered totals. Baseline `tech_debt_hours` reflects ALL findings (CRITICAL through LOW), regardless of filter setting. This ensures trend comparisons between filtered and unfiltered runs remain valid.
 
 ### Health Report Structure
 
