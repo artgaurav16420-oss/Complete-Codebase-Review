@@ -44,8 +44,11 @@ def _onerror(func, path, exc_info):
     """
     try:
         os.chmod(path, stat.S_IWRITE, follow_symlinks=False)
-    except (OSError, NotImplementedError):
-        os.chmod(path, stat.S_IWRITE)
+    except NotImplementedError:
+        if not os.path.islink(path):
+            os.chmod(path, stat.S_IWRITE)
+    except OSError:
+        pass
     func(path)
 
 
@@ -198,12 +201,12 @@ def _validate_no_escaped_symlinks(skill_dest):
                 continue
             if is_link:
                 try:
-                    target = full_path.resolve(strict=False)
-                except (OSError, RuntimeError):
+                    target = full_path.resolve(strict=True)
+                except (OSError, RuntimeError) as err:
                     shutil.rmtree(str(skill_dest), onerror=_onerror)
                     raise ValueError(
                         f"Broken symlink {full_path} in skill directory"
-                    )
+                    ) from err
                 if not target.is_relative_to(root_resolved):
                     shutil.rmtree(str(skill_dest), onerror=_onerror)
                     raise ValueError(

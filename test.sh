@@ -43,7 +43,7 @@ fi
 
 echo "[INFO] Validating expected issues JSON..."
 
-python3 -c "
+python -c "
 import json
 import sys
 

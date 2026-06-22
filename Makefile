@@ -1,6 +1,6 @@
 .PHONY: test test-py test-bash test-windows coverage clean clean-windows lint
 
-test: test-py coverage
+test: test-py test-bash
 	@echo "[SUCCESS] All tests passed!"
 
 test-windows:
@@ -18,11 +18,18 @@ coverage:
 	python -m coverage report
 
 lint:
-	python -c "import glob, py_compile; [py_compile.compile(f, doraise=True) for f in glob.glob('**/*.py', recursive=True) if 'site-packages' not in f and '__pycache__' not in f and '.skills' not in f and '.code-review-cache' not in f]"
+	python -c "import glob, py_compile; \
+		[py_compile.compile(f, doraise=True) \
+		for f in glob.glob('**/*.py', recursive=True) \
+		if 'site-packages' not in f and '__pycache__' not in f \
+		and '.skills' not in f and '.code-review-cache' not in f]"
 
 clean:
 	rm -rf .code-review-cache/ __pycache__/
 	find . -name "*.pyc" -delete
 
 clean-windows:
-	powershell -Command "Remove-Item -Recurse -Force '.code-review-cache', '__pycache__' -ErrorAction SilentlyContinue; Get-ChildItem -Recurse -Filter '*.pyc' | Remove-Item -Force"
+	powershell -Command " \
+		Remove-Item -Recurse -Force \
+		'.code-review-cache', '__pycache__' -ErrorAction SilentlyContinue; \
+		Get-ChildItem -Recurse -Filter '*.pyc' | Remove-Item -Force"

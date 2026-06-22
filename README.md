@@ -268,7 +268,10 @@ An independent agent audits all applied fixes, applies corrections, then enters 
 
 ## ⚠️ Known Limitations
 
-- **Phase 2 agents are not testable in isolation** — the pipeline's agent spawning logic is a behavioral instruction to an AI orchestrator, not executable code. Integration tests validate output schema but cannot execute Phase 2 programmatically.
+- **Phase 2 agents are not testable in isolation** — the pipeline's
+  agent spawning logic is a behavioral instruction to an AI orchestrator,
+  not executable code. Integration tests validate output schema but
+  cannot execute Phase 2 programmatically.
 - **Windows Python PATH resolution** — the Windows Store Python stub (WindowsApps\python.exe) can resolve before Anaconda/system Python. If `python --version` shows an unexpected version, use `Get-Command python.exe` to diagnose.
 - **Self-review is meta** — running this skill on its own codebase is a recursive audit. Findings about the pipeline itself are accurate but the review time is higher than for a typical project.
 

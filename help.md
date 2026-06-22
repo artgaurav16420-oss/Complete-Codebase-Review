@@ -110,7 +110,9 @@ set CODE_REVIEW_TIMEOUT_SEC=120
 **Installation fails:**
 - Use `--dry-run` first to verify paths: `python install.py --dry-run`.
 - On Linux, check `XDG_CONFIG_HOME` if agent configs are in a non-standard location.
-- **Windows Python PATH race**: If `python --version` shows an unexpected version (e.g. Windows Store stub), run `Get-Command python.exe` to see which Python resolves first. Use the full path or adjust `$env:PATH`.
+- **Windows Python PATH race**: If `python --version` shows an unexpected
+  version (e.g. Windows Store stub), run `Get-Command python.exe` to see
+  which Python resolves first. Use the full path or adjust `$env:PATH`.
 
 **Cache corruption or stale reports:**
 - Delete `.code-review-cache/` and re-run: `rm -rf .code-review-cache/`

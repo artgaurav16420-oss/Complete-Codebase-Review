@@ -73,9 +73,14 @@ This pre-fills the conventional commit format when you run `git commit`.
 
 ## Documentation Guidelines
 
-- **README changes**: Keep the README concise. Add new features to the feature table, update configuration tables, and add FAQ entries for common questions.
-- **Docstrings**: Use `"""triple double-quotes"""` on all public functions. One-liners for simple accessors; multi-line with Args/Returns for complex functions.
-- **ADRs**: Add an ADR for any significant architecture or design decision (see existing ADRs/ for format).
+- **README changes**: Keep the README concise. Add new features to the
+  feature table, update configuration tables, and add FAQ entries for
+  common questions.
+- **Docstrings**: Use `"""triple double-quotes"""` on all public
+  functions. One-liners for simple accessors; multi-line with
+  Args/Returns for complex functions.
+- **ADRs**: Add an ADR for any significant architecture or design
+  decision (see existing ADRs/ for format).
 - **Inline comments**: Document WHY, not WHAT. Assume the reader knows the language.
 
 ## PR Checklist
