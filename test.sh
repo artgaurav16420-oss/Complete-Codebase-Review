@@ -64,9 +64,11 @@ except Exception as e:
     sys.exit(1)
 " || FAIL=1
 
-echo "[INFO] Running all unit tests with coverage..."
-if python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py"; then
+echo "[INFO] Running all unit tests..."
+if python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" 2>/dev/null; then
     python -m coverage report
+elif python -m unittest discover -s tests -p "test_*.py"; then
+    echo "[INFO] coverage not available — ran without coverage"
 else
     echo "[ERROR] Unit tests failed!"
     FAIL=1

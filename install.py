@@ -159,18 +159,19 @@ def copy_skill(src_dir, dest_dir):
 
         if os.path.lexists(skill_dest):
             print_info(f"Updating existing installation in {skill_dest}")
-            resolved = skill_dest.resolve(strict=False)
-            root = dest_dir.resolve(strict=False)
-            if not resolved.is_relative_to(root):
-                raise ValueError(
-                    f"Resolved path {resolved} is outside target {root}"
-                )
             if os.path.islink(str(skill_dest)):
                 skill_dest.unlink()
-            elif resolved.is_dir():
-                shutil.rmtree(str(resolved), onerror=_onerror)
             else:
-                resolved.unlink()
+                resolved = skill_dest.resolve(strict=False)
+                root = dest_dir.resolve(strict=False)
+                if not resolved.is_relative_to(root):
+                    raise ValueError(
+                        f"Resolved path {resolved} is outside target {root}"
+                    )
+                if resolved.is_dir():
+                    shutil.rmtree(str(resolved), onerror=_onerror)
+                else:
+                    resolved.unlink()
 
         shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
         _validate_no_escaped_symlinks(skill_dest)
@@ -190,8 +191,13 @@ def copy_skill(src_dir, dest_dir):
 
 
 def _validate_no_escaped_symlinks(skill_dest):
-    """Validate no copied symlinks escape the skill directory (T-002)."""
+    """Validate no copied symlinks escape the skill directory (T-002).
+
+    Collects violations during the walk to avoid calling rmtree
+    while os.walk holds directory handles (Windows PermissionError).
+    """
     root_resolved = skill_dest.resolve(strict=False)
+    errors = []
     for dirpath, dirnames, filenames in os.walk(skill_dest):
         for name in dirnames + filenames:
             full_path = Path(dirpath) / name
@@ -203,15 +209,23 @@ def _validate_no_escaped_symlinks(skill_dest):
                 try:
                     target = full_path.resolve(strict=True)
                 except (OSError, RuntimeError) as err:
-                    shutil.rmtree(str(skill_dest), onerror=_onerror)
-                    raise ValueError(
-                        f"Broken symlink {full_path} in skill directory"
-                    ) from err
+                    errors.append((
+                        f"Broken symlink {full_path} in skill directory",
+                        err
+                    ))
+                    continue
                 if not target.is_relative_to(root_resolved):
-                    shutil.rmtree(str(skill_dest), onerror=_onerror)
-                    raise ValueError(
-                        f"Symlink {full_path} points outside skill dir: {target}"
-                    )
+                    errors.append((
+                        f"Symlink {full_path} points outside skill dir: "
+                        f"{target}",
+                        None
+                    ))
+    if errors:
+        shutil.rmtree(str(skill_dest), onerror=_onerror)
+        msg, cause = errors[0]
+        if cause:
+            raise ValueError(msg) from cause
+        raise ValueError(msg)
 
 
 def _validate_target_path(path):
