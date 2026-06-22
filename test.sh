@@ -65,13 +65,14 @@ except Exception as e:
 " || FAIL=1
 
 echo "[INFO] Running all unit tests..."
-if python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" 2>/dev/null; then
-    python -m coverage report
-elif python -m unittest discover -s tests -p "test_*.py"; then
-    echo "[INFO] coverage not available — ran without coverage"
+if python -c "import coverage" >/dev/null 2>&1; then
+    python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" || FAIL=1
+    if [ "$FAIL" -eq 0 ]; then
+        python -m coverage report
+    fi
 else
-    echo "[ERROR] Unit tests failed!"
-    FAIL=1
+    echo "[INFO] coverage not available — running without coverage"
+    python -m unittest discover -s tests -p "test_*.py" || FAIL=1
 fi
 
 if [ "$FAIL" -eq 1 ]; then

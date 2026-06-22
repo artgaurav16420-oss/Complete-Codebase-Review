@@ -43,10 +43,11 @@ def _onerror(func, path, exc_info):
     outside the expected directory tree.
     """
     try:
-        os.chmod(path, stat.S_IWRITE, follow_symlinks=False)
-    except NotImplementedError:
-        if not os.path.islink(path):
-            os.chmod(path, stat.S_IWRITE)
+        try:
+            os.chmod(path, stat.S_IWRITE, follow_symlinks=False)
+        except NotImplementedError:
+            if not os.path.islink(path):
+                os.chmod(path, stat.S_IWRITE)
     except OSError:
         pass
     func(path)
