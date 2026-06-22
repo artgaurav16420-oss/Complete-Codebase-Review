@@ -19,7 +19,9 @@ TABLE_VARS = [
     "CODE_REVIEW_AGENTS",
     "CODE_REVIEW_STATUS_INTERVAL",
     "CODE_REVIEW_FILTER",
+    "REVIEW_MAX_ITERATIONS",
 ]
+_VAR_PATTERN = r"CODE_REVIEW_\w+|REVIEW_MAX_ITERATIONS"
 
 
 class TestEnvVarTable(unittest.TestCase):
@@ -45,7 +47,7 @@ class TestEnvVarTable(unittest.TestCase):
 
     def test_unknown_vars_absent(self):
         """No CODE_REVIEW_* outside the known set appears in body."""
-        body_refs = set(re.findall(r"CODE_REVIEW_\w+", self.body))
+        body_refs = set(re.findall(_VAR_PATTERN, self.body))
         unknown = body_refs - set(TABLE_VARS)
         self.assertEqual(unknown, set(), f"Unknown env vars referenced: {unknown}")
 
@@ -79,7 +81,7 @@ class TestEnvVarExtraFiles(unittest.TestCase):
         if not path.exists():
             self.skipTest(f"{rel_path} not found")
         text = path.read_text(encoding="utf-8")
-        refs = set(re.findall(r"CODE_REVIEW_\w+", text))
+        refs = set(re.findall(_VAR_PATTERN, text))
         unknown = refs - set(TABLE_VARS)
         self.assertEqual(
             unknown, set(),

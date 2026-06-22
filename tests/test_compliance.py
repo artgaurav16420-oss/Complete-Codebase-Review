@@ -88,7 +88,7 @@ class TestStructural(_BaseComplianceTest):
         desc_match = re.search(r'description: (.*?)(?:\n|$)', self.content)
         self.assertIsNotNone(desc_match)
         self.assertFalse(
-            re.search(r'(spawn|synthes|phase|agent|parallel)', desc_match.group(1)))
+            re.search(r'(spawn|synthes|phase|agent|parallel)', desc_match.group(1), re.IGNORECASE))
 
     def test_command_frontmatter_fields(self):
         self.assertIn('user-invocable: true', self.content)

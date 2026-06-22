@@ -30,6 +30,7 @@ _SKILL_EXCLUDED = {
     ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
     "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
     "AGENTS.md", "SECURITY.md", "help.md", "pyproject.toml",
+    "orchestrator-rules.md",
     # orchestrator-rules.md deliberately excluded — it's an internal
     # protocol document consumed by the orchestrator at repo root,
     # not a runtime requirement for installed skill consumers.

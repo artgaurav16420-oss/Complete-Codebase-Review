@@ -220,7 +220,7 @@ def validate_tech_debt_reconciliation(md):
     # Extract sum of roadmap phase estimates
     roadmap_total = 0.0
     for m in re.finditer(
-        r'(?mi)^#+\s+Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text
+        r'(?mi)^(?:\#+\s+|\*\*)?Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text
     ):
         roadmap_total += float(m.group(1))
 
