@@ -5,6 +5,7 @@
 ### AI-powered holistic codebase audit — 14 specialist agents, zero false positives, no code changes without your approval.
 
 [![CI](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions/workflows/ci.yml/badge.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions)
+[![Security](https://img.shields.io/badge/Security-Policy-purple)](SECURITY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org)
 [![Windows](https://img.shields.io/badge/Windows-supported-success)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review)
@@ -264,6 +265,12 @@ Generates structured fix tasks (T-001, T-002, ...) with effort estimates and dep
 An independent agent audits all applied fixes, applies corrections, then enters a local review loop (review → fix → re-review) until clean or max iterations reached. Runs the full test suite, creates a PR, then enters an external review loop where AI bot comments are fetched, fixes applied, and pushed — cycling until the user signals done. Requires [GitHub CLI (`gh`)](https://cli.github.com) for PR creation and review posting.
 
 ---
+
+## ⚠️ Known Limitations
+
+- **Phase 2 agents are not testable in isolation** — the pipeline's agent spawning logic is a behavioral instruction to an AI orchestrator, not executable code. Integration tests validate output schema but cannot execute Phase 2 programmatically.
+- **Windows Python PATH resolution** — the Windows Store Python stub (WindowsApps\python.exe) can resolve before Anaconda/system Python. If `python --version` shows an unexpected version, use `Get-Command python.exe` to diagnose.
+- **Self-review is meta** — running this skill on its own codebase is a recursive audit. Findings about the pipeline itself are accurate but the review time is higher than for a typical project.
 
 ## ❓ FAQ
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Mock Validation Test Suite
 #
-# Validates SKILL.md against expected content requirements and runs
-# a mock skill evaluation against expected_issues.json.
+# Validates SKILL.md against expected content requirements, runs
+# a mock skill evaluation against expected_issues.json, and
+# runs all Python unit tests.
 #
 # Usage: ./test.sh
 #
@@ -62,6 +63,14 @@ except Exception as e:
     print(f'[ERROR] expected_issues.json validation failed: {e}')
     sys.exit(1)
 " || FAIL=1
+
+echo "[INFO] Running all unit tests with coverage..."
+if python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py"; then
+    python -m coverage report
+else
+    echo "[ERROR] Unit tests failed!"
+    FAIL=1
+fi
 
 if [ "$FAIL" -eq 1 ]; then
     echo "[ERROR] Tests failed!"

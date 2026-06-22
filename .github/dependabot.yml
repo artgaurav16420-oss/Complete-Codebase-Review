@@ -4,7 +4,16 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    labels:
+      - "ci"
+      - "dependencies"
+    reviewers:
+      - "artgaurav16420-oss"
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
+    reviewers:
+      - "artgaurav16420-oss"
