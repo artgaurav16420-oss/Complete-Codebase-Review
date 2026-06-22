@@ -60,10 +60,13 @@ Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or
 - **`test.sh` is Unix-only; `Test-Windows.ps1` is Windows-only**. CI matrix uses `if: runner.os != 'Windows'` / `== 'Windows'`. Don't run `test.sh` on Windows.
 - **`skills/review/SKILL.md`** is a separate internal skill loaded by the orchestrator in Phase 5a (from SKILL_DIR). Not part of the main pipeline, but must be kept in sync.
 
-## Source of Truth
+## Key References
 
-- Pipeline specification: `SKILL.md`
-- Env var docs: `SKILL.md` lines 17-27
-- Review checklist: `skills/review/SKILL.md`
+- Pipeline spec + env var docs: `SKILL.md`
+- Internal review skill: `skills/review/SKILL.md`
+- Quick reference + troubleshooting + CI examples: `help.md`
+- install.py API docs: `docs/api/install.md`
 - CI config: `.github/workflows/ci.yml`
+- Design decisions: `ADRs/` (4 records: agent split, DA workflow, plain-Python tests, 5-phase pipeline)
 - Test suites: `tests/test_*.py`
+- Orchestrator execution rules: `orchestrator-rules.md`

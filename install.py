@@ -30,6 +30,7 @@ _SKILL_EXCLUDED = {
     ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
     "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
     "AGENTS.md", "SECURITY.md", "help.md", "pyproject.toml",
+    "orchestrator-rules.md",
 }
 
 
