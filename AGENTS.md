@@ -10,7 +10,7 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 |---------|---------|
 | `make test` | Compliance + bash integration (Unix) |
 | `make test-py` / `make test-windows` | Compliance-only on Windows |
-| `python -m unittest discover -s tests -p "test_*.py"` | 7 suites (171 tests) |
+| `python -m unittest discover -s tests -p "test_*.py"` | 6 suites (171 tests) |
 | `make lint` | Python syntax check via `py_compile` |
 | `python tests/test_compliance.py` | 62 tests (SKILL.md compliance) |
 | `python install.py --dry-run` | Always dry-run first before installing |
