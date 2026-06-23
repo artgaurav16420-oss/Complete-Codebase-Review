@@ -346,7 +346,7 @@ budget_exhausted → STOP + summarize_remaining + request_extension_from_operato
 
 ### 10.2 Escalation Counters
 per_session: BLOCK(max=2) → STOP+summarize; STOP(max=1) → wait_for_operator (30s timeout, then escalate per STOP_LIMIT_RESOLUTION); any STOP overflow → escalate(state_dump) THEN halt_silently.
-**Precedence:** STOP_LIMIT_RESOLUTION takes precedence over overflow_both — escalate before halt; do not silent-halt without escalation.
+**Precedence:** STOP_LIMIT_RESOLUTION takes precedence over any STOP overflow — escalate before halt; do not silent-halt without escalation.
 NOTE: Deviation-triggered STOP (from DEVIATION header) shares this STOP pool — combined max 1 per session.
 
 STRIKE_RULE: same_error_twice → STOP
