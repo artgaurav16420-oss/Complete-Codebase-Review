@@ -10,7 +10,8 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 |---------|---------|
 | `make test` | Compliance + bash integration (Unix) |
 | `make test-py` / `make test-windows` | Compliance-only on Windows |
-| `python -m unittest discover -s tests -p "test_*.py"` | All 6 suites (165 tests) |
+| `python -m unittest discover -s tests -p "test_*.py"` | 7 suites (171 tests) |
+| `make lint` | Python syntax check via `py_compile` |
 | `python tests/test_compliance.py` | 62 tests (SKILL.md compliance) |
 | `python install.py --dry-run` | Always dry-run first before installing |
 | `review [hash\|branch\|pr]` | Internal review skill (`skills/review/SKILL.md`), loaded in Phase 5a/5c. Also invocable as `/review` when installed. |
@@ -69,4 +70,4 @@ Read-only (Phases 1-3). Phase 4/5 wait for explicit user approval (by task ID or
 - CI config: `.github/workflows/ci.yml`
 - Design decisions: `ADRs/` (4 records: agent split, DA workflow, plain-Python tests, 5-phase pipeline)
 - Test suites: `tests/test_*.py`
-- Orchestrator execution rules: `orchestrator-rules.md`
+- Orchestrator execution rules (binding protocol, state persistence, phase gates): `orchestrator-rules.md`
