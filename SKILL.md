@@ -256,13 +256,17 @@ Data sources (if available):
 - .github/workflows/* (CI configs)
 - Test files and their naming patterns
 
-Evaluation criteria (map to Karpathy rules):
-| Karpathy Rule | What to check |
-|---------------|---------------|
-| 1. Surface assumptions | Are there docstrings, comments, or ADRs that document design decisions and unknowns? |
-| 2. Simplicity / YAGNI | Are there unused abstractions, unnecessary dependencies, or over‑engineered patterns? |
-| 3. Surgical changes | From git log: are commits focused on single concerns? Do any commits mix refactoring, feature, and formatting? |
-| 4. Verify before done | Do tests explicitly verify behavior (e.g., test for bug reproduction, invalid inputs)? Or are they only happy‑path? |
+Evaluation criteria (map to karpathy-guidelines.md v3.7-FABLE-STRUCTURE):
+| Section | Rule | What to check |
+|---------|------|---------------|
+| §4 Trust & Security | RULE_0 / RULE_2.5 | Trust boundary respected? Untrusted content not executed? Dangerous primitives near user input flagged? Safe wrapper exemption valid? |
+| §5.1 Clarification | RULE_1 | Assumptions surfaced as [uncertain]? Ambiguities flagged before acting? Hallucination guard respected (no invented APIs/paths)? |
+| §5.2 Simplicity | RULE_2 | Unused abstractions, unnecessary deps, over-engineering? Stdlib preferred? Would senior engineer call this overcomplicated? |
+| §6.1 Surgical | RULE_3 | Commits focused on single concern? Adjacent code untouched? Dead code handled per PATH A/B? Scope escalation triggered appropriately? |
+| §7.1 Verification | RULE_4 | Red-before-green? Checkpoint + revert protocol evidence? Bug fixes have reproduction? Generated code reviewed line-by-line? |
+| §7.2 Observable Deltas | RULE_5 | Performance/failure/API impacts documented before implementation? DATA_SAFETY_GUARD respected (no secrets/PII in logs)? |
+| §8 Design Discipline | RULE_6 | ROI check before refactors? Bugfix priority (smallest safe fix, no combined cleanup)? New persistence justified? Duplication tolerated or refactored with evidence? |
+| §9 Non-developer Overrides | RULE_7 | ND1-6 followed: user-verify mode, external state approval, verification requirement met, explain-before-risk, production guard? |
 
 Output format:
 - Score: X/10 (deduct 1 point per moderate violation, 2 per severe violation)
