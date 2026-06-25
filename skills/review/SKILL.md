@@ -115,7 +115,7 @@ is set, scope git operations to that directory.
 When the diff exceeds 50 changed files or an estimated 30,000 tokens, apply
 chunking to keep review quality high:
 
-1. **Detect**: Count changed files via `git diff --name-only`. Estimate tokens
+1. **Detect**: Count changed files using the appropriate `git diff` command for the active `$REVIEW_MODE`. Estimate tokens
    from total diff size (rough heuristic: ~4 tokens per line of diff).
 2. **Chunk**: If over threshold, split by module or directory. Use `--chunk
    <module>` if provided; otherwise auto-chunk by top-level directory.
@@ -176,7 +176,7 @@ Run project-appropriate commands to verify:
 | Node/TS | `npm run typecheck 2>&1` \|\| `npx tsc --noEmit 2>&1`, `npm run lint 2>&1`, `npm test 2>&1`, `npm run build 2>&1` |
 | Rust | `cargo clippy -- -D warnings 2>&1`, `cargo test 2>&1`, `cargo build 2>&1` |
 | Go | `go vet ./... 2>&1`, `go test ./... 2>&1`, `go build ./... 2>&1` |
-| Python | `python -m pytest 2>&1 || python -m unittest discover 2>&1` |
+| Python | `if python -c "import pytest" >/dev/null 2>&1; then python -m pytest 2>&1; else python -m unittest discover 2>&1; fi` |
 | Fallback | Try `make test`, `npm test`, `pytest` in order |
 
 Record pass/fail for each command run. Capture both stdout and stderr for
@@ -273,7 +273,7 @@ To avoid re-reviewing unchanged sections, maintain incremental state in
 - `base_hash`: The git commit SHA used as the diff base for the last review
 - `head_hash`: The git commit SHA of the last reviewed HEAD
 - `reviewed_files`: Map of file path → hash of content at last review
-- `findings_by_file`: Map of file path → array of finding IDs for that file
+- `findings_by_file`: Map of file path → array of full finding objects (ID, severity, title, line, description, suggested_fix) for that file
 - `last_decision`: The decision from the last review (`APPROVE`, `REQUEST_CHANGES`, `BLOCK`)
 
 **Hash computation**: Use `git rev-parse HEAD` for commit hashes and
@@ -292,9 +292,9 @@ To avoid re-reviewing unchanged sections, maintain incremental state in
 3. If incremental: `git diff <old_head>..HEAD --name-only` to get changed files
 4. Run Phase 2 checklist only on changed files
 5. Merge new findings with preserved findings for unchanged files
-   NOTE: When merging, re-index finding IDs from preserved findings to avoid
-   collisions with new finding IDs. Assign new IDs sequentially starting after
-   the highest new finding ID.
+   NOTE: When merging, preserve the finding IDs from the unchanged files to maintain
+   stability. Assign new IDs to the new findings sequentially, starting after the
+   highest existing finding ID.
 6. Update `ccr-state.json` with new hashes and findings
 7. If `--force-full`, skip steps 2-4 and review everything
 
@@ -382,7 +382,7 @@ and JSON separated by `---REVIEW_JSON---`.
 <file list>
 ```
 
-### JSON Output (when `--json` or `--format json|both` flag is set)
+### JSON Output (when `--json` or `--format json` or `--format both` flag is set)
 
 Emit after the markdown report (if `--format both`), separated by `---REVIEW_JSON---`:
 
