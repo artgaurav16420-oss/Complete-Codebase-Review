@@ -1,9 +1,9 @@
 ---
 name: review
-description: Review local changes, commits, branches, or PRs GÇö severity-graded findings with approve/block decision. Portable across runtimes (Claude Code, OpenCode, Codex, etc.).
+description: Review local changes, commits, branches, or PRs â€” severity-graded findings with approve/block decision. Portable across runtimes (Claude Code, OpenCode, Codex, etc.).
 version: 2.0.0
 allowed-tools: "Read, Grep, Glob, Bash, WebSearch, Task"
-argument-hint: "[hash|branch|pr|--json|--format <markdown|json|both>|-t scope|--base <b>|--base-commit <sha>|--dir <path>]"
+argument-hint: "[hash|branch|pr|--json|-t scope|--base <branch>|--base-commit <sha>|--dir <path>|--format <markdown|json|both>|--chunk <module>|--force-full]"
 ---
 
 # Code Review
@@ -18,18 +18,18 @@ Examine `$ARGUMENTS` to determine mode:
 
 | Input | Mode |
 |-------|------|
-| (empty) | **Local** GÇö review unstaged + staged uncommitted changes |
-| 40-char SHA or short hash | **Commit** GÇö review that specific commit |
-| Looks like branch name (no `/`, not a hash, not a URL) | **Branch compare** GÇö diff current branch vs specified branch |
-| Number (e.g. `42`) | **PR mode** GÇö GitHub PR number |
-| URL containing `github.com/.../pull/` | **PR mode** GÇö extract PR number from URL |
-| `--pr <n>` | **PR mode** GÇö explicit PR flag |
+| (empty) | **Local** â€” review unstaged + staged uncommitted changes |
+| 40-char SHA or short hash | **Commit** â€” review that specific commit |
+| Looks like branch name (no `/`, not a hash, not a URL) | **Branch compare** â€” diff current branch vs specified branch |
+| Number (e.g. `42`) | **PR mode** â€” GitHub PR number |
+| URL containing `github.com/.../pull/` | **PR mode** â€” extract PR number from URL |
+| `--pr <n>` | **PR mode** â€” explicit PR flag |
 
 Store result as `$REVIEW_MODE` and `$REVIEW_TARGET`.
 
 ---
 
-## Phase 1 GÇö Gather
+## Phase 1 â€” Gather
 
 ### Local / Commit / Branch Mode
 
@@ -48,7 +48,7 @@ git diff --stat <branch>...HEAD
 git diff <branch>...HEAD
 ```
 
-Also fetch full file contents GÇö read each changed file entirely, not just diff hunks.
+Also fetch full file contents â€” read each changed file entirely, not just diff hunks.
 
 ### PR Mode
 
@@ -56,13 +56,13 @@ Check `gh` CLI availability first. If missing, warn and fall back to local mode 
 
 ```bash
 # Check gh
-gh auth status 2>/dev/null || echo "gh not available"
+gh auth status 2>&1 || echo "gh not available"
 
 # PR info
-gh pr view <NUMBER> --json number,title,body,author,baseRefName,headRefName,changedFiles,additions,deletions 2>/dev/null
+gh pr view <NUMBER> --json number,title,body,author,baseRefName,headRefName,changedFiles,additions,deletions 2>&1
 
 # PR diff
-gh pr diff <NUMBER> 2>/dev/null
+gh pr diff <NUMBER> 2>&1
 ```
 
 Read each changed file in full via the diff or by fetching from the PR's head branch.
@@ -83,7 +83,7 @@ Check for conventions files: `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `.edit
 
 ---
 
-## Phase 1.5 GÇö Scope Flags
+## Phase 1.5 â€” Scope Flags
 
 Parse `$ARGUMENTS` for scope flags that control which changes to review:
 
@@ -97,95 +97,43 @@ Parse `$ARGUMENTS` for scope flags that control which changes to review:
 | `--base-commit <sha>` | Compare against a specific commit |
 | `--dir <path>` | Review a specific directory (must be a git repo) |
 | `--json` | Output findings as JSON only (no markdown report) |
-| `--format <fmt>` | Explicit output format: `markdown` (default), `json`, or `both` |
-| `--chunk <module>` | Review a specific module (e.g., src/auth) |
-| `--force-full` | Force full review, bypassing incremental tracking |
+| `--format <markdown\|json\|both>` | Control output format (default: `markdown`) |
+| `--chunk <module>` | Review a specific module/chunk of a large PR |
+| `--force-full` | Skip incremental checks, force full review |
 
 Store parsed flags as `$REVIEW_SCOPE`. When `--json` is set, emit structured
-JSON only in Phase 4 (no markdown). When `--format` is set, respect the chosen
-format: `markdown` emits only markdown, `json` emits only JSON, `both` emits
-markdown followed by JSON separated by `---REVIEW_JSON---`. The default (no
-`--json` or `--format` flag) emits markdown only. When `--dir` is set, scope
-git operations to that directory.
+JSON in Phase 4 instead of the markdown report. When `--format` is set to
+`both`, emit both markdown and JSON. When `--chunk` is set, scope the review
+to that module only (see Phase 1.6). When `--force-full` is set, bypass
+incremental review tracking and run the full checklist. When `--dir`
+is set, scope git operations to that directory.
 
 ---
 
-## Phase 1.6 GÇö Large PR Handling
+## Phase 1.6 â€” Large PR Handling
 
-When the diff contains more than 50 changed files or the total token count exceeds ~30k tokens, apply chunked review:
+When the diff exceeds 50 changed files or an estimated 30,000 tokens, apply
+chunking to keep review quality high:
 
-1. **Chunk by module/directory**: Group changed files by their top-level directory (e.g., `src/`, `tests/`, `docs/`). Each chunk should be a logical unit that can be reviewed independently.
-2. **Prioritize source changes**: Review source code files before test files, configuration, and documentation. Source changes are more likely to contain critical issues.
-3. **Token-aware chunking**: If token count is available (e.g., via `gh pr diff --stat`), limit each chunk to ~10k tokens to stay within LLM context windows.
-4. **Orchestrator re-invocation**: The orchestrator may re-invoke this skill per chunk. Each invocation should produce findings for that chunk only.
-5. **Manual chunk selection**: Use the `--chunk <module>` flag to review a specific module. Example: `--chunk src/auth` reviews only changes in `src/auth/`.
+1. **Detect**: Count changed files via `git diff --name-only`. Estimate tokens
+   from total diff size (rough heuristic: ~4 tokens per line of diff).
+2. **Chunk**: If over threshold, split by module or directory. Use `--chunk
+   <module>` if provided; otherwise auto-chunk by top-level directory.
+3. **Prioritize**: Review source code and configuration changes first. Skip
+   generated files, lockfiles, and vendored dependencies unless flagged.
+4. **Iterate**: Review each chunk sequentially. Aggregate findings across
+   chunks into a single report in Phase 4.
+5. **Warn**: Emit a warning in the report summary: "Large PR: review was
+   chunked into N parts. Some changes may not have been reviewed in depth."
 
-If chunking is applied, note in the report which chunks were reviewed and which were deferred.
-
----
-
-## Health Dimensions Integration (Optional)
-
-This integration is **optional**. If no baseline exists or is not provided, skip this section entirely. The review skill operates standalone without baseline data.
-
-### Loading Baseline
-
-Before starting Phase 2, attempt to load a baseline snapshot from `$CODE_REVIEW_BASELINE` (default: `ccr-baseline.json`) in the current working directory or the target codebase root (`$TARGET_DIR`). Use Read to attempt loading; if the file does not exist or is not valid JSON, log `"[SKIP] No baseline found at ccr-baseline.json GÇö health baseline comparison disabled."` and proceed without baseline integration.
-
-### Baseline Schema
-
-The baseline file follows the CCR Phase 4e snapshot format:
-
-```json
-{
-  "timestamp": "ISO-8601",
-  "target": "<path>",
-  "health_score": "GREEN|YELLOW|RED",
-  "tech_debt_hours": 123,
-  "critical_count": 5,
-  "per_domain_scores": { "<domain_canonical_id>": <score_0_10> },
-  "per_domain_open_findings": {
-    "<domain_canonical_id>": { "critical": 0, "high": 0 }
-  }
-}
-```
-
-Domain canonical IDs map to the standard 14 domains: `architecture`, `code_quality`, `security`, `tech_debt`, `test_health`, `dependencies`, `documentation`, `build_ci`, `performance`, `database`, `ui_ux`, `devops`, `standards`, `process_quality`.
-
-### Comparing Current vs Baseline
-
-When a baseline is loaded, compute deltas for each dimension:
-
-| Metric | Baseline Source | Current Source | Delta |
-|--------|----------------|----------------|-------|
-| Tech debt hours | `tech_debt_hours` | Current review estimate | `current - baseline` (signed hours, -¦%) |
-| Critical count | `critical_count` | Current critical findings | `current - baseline` |
-| Per-domain score | `per_domain_scores[domain]` | Agent score for that domain | `current - baseline` (-¦points) |
-| Per-domain open findings | `per_domain_open_findings[domain]` | Current CRITICAL+HIGH per domain | `current - baseline` |
-
-### Highlighting Regressions
-
-A **regression** is flagged when the current value is worse than the baseline:
-
-| Metric | Regression Threshold |
-|--------|---------------------|
-| Health score | Changed from GREEN GåÆ YELLOW or RED, or YELLOW GåÆ RED |
-| Tech debt hours | Increased by >10% or >5h (whichever is smaller) |
-| Critical count | Any increase |
-| Per-domain score | Decreased by GëÑ2 points |
-| Per-domain open findings | Any increase in CRITICAL or HIGH counts |
-
-Regressions are reported in the markdown report under "Health Baseline Comparison" and in the JSON output under `baseline_comparison.regressions`. If no regressions are found, report "No regressions detected" in both outputs.
+If `--force-full` is set, skip chunking and review everything regardless of
+size.
 
 ---
 
-## Phase 2 GÇö Review Checklist
+## Phase 2 â€” Review Checklist
 
 Check every changed file against these categories:
-
-### Pre-Check: Load Health Baseline (Optional)
-
-If a baseline was loaded in "Health Dimensions Integration", compute and store the comparison data now. Identify which domains are affected by the current diff (e.g., security-related files GåÆ `security` domain). For each affected domain, extract the corresponding baseline score and open finding counts. Store as `$BASELINE_COMPARISON` for use in Phase 4 JSON and markdown output. If no baseline was loaded, this step is a no-op.
 
 ### Correctness
 - Logic errors, off-by-one mistakes, incorrect conditionals
@@ -202,9 +150,9 @@ If a baseline was loaded in "Health Dimensions Integration", compute and store t
 
 ### Structure & Maintainability
 - Does the code fit existing patterns and conventions?
-- Excessive nesting (>4 levels) GÇö consider early returns or extraction
+- Excessive nesting (>4 levels) â€” consider early returns or extraction
 - Functions >50 lines or files >800 lines
-- Missing error handling GÇö every error path should log, cleanup, and not crash
+- Missing error handling â€” every error path should log, cleanup, and not crash
 - `console.log`, `print()`, TODO/FIXME in production code
 - Mutation of function parameters
 
@@ -221,69 +169,44 @@ If a baseline was loaded in "Health Dimensions Integration", compute and store t
 
 ### Validation Commands
 
-Run project-appropriate commands to verify. Capture stderr and exit codes for structured error reporting.
+Run project-appropriate commands to verify:
 
 | Detected | Commands |
 |----------|----------|
-| Node/TS | `npm run typecheck 2>&1`, `npx tsc --noEmit 2>&1`, `npm run lint 2>&1`, `npm test 2>&1`, `npm run build 2>&1` |
+| Node/TS | `npm run typecheck 2>&1` \|\| `npx tsc --noEmit 2>&1`, `npm run lint 2>&1`, `npm test 2>&1`, `npm run build 2>&1` |
 | Rust | `cargo clippy -- -D warnings 2>&1`, `cargo test 2>&1`, `cargo build 2>&1` |
 | Go | `go vet ./... 2>&1`, `go test ./... 2>&1`, `go build ./... 2>&1` |
 | Python | `python -m pytest 2>&1` or `python -m unittest discover 2>&1` |
-| PowerShell \* | `Invoke-ScriptAnalyzer -Path . -Recurse 2>&1` (requires PSScriptAnalyzer) |
-| Bash \* | `shellcheck -x *.sh 2>&1`, `bash -n *.sh 2>&1` (requires shellcheck) |
 | Fallback | Try `make test`, `npm test`, `pytest` in order |
 
-\* **Optional** GÇö these commands require platform-specific tools that may not be installed. See "Cross-Platform Fallback Logic" below for skip behavior and installation guidance.
-
-For each command run, capture:
-- **stdout** (output)
-- **stderr** (error messages)
-- **exit code** (0 = success, non-zero = failure)
-
-If a command is not found (exit code 127 or "command not found"), report "Skipped: tool not installed" and provide installation guidance.
-
-Record pass/fail for each command run. In the markdown report, show the first 3 lines of stderr in the Errors column for failed commands. For programmatic consumption (`--json`), include full stderr/stdout/exit_code in the `validation_errors` object (see Phase 4).
+Record pass/fail for each command run. Capture both stdout and stderr for
+diagnostic output (use `2>&1` not `2>/dev/null`).
 
 ### Cross-Platform Fallback Logic
 
-Some validation commands depend on platform-specific tools that may not be installed. This subsection defines how to detect, skip, and report missing tools.
+When running validation commands, detect the current platform and shell to
+select the right linter variants:
 
-#### Detection
+| Platform | Detection | Behavior |
+|----------|-----------|----------|
+| PowerShell | `$PSVersionTable.PSEdition` exists | Use `Invoke-Expression` or `&` call syntax; skip `.sh`-only linters |
+| Bash/Unix | `$BASH_VERSION` or `uname` returns Linux/Darwin | Use standard shell syntax; skip `.ps1`-only linters |
+| Windows (Git Bash) | `$MSYSTEM` set | Treat as Bash with Windows paths |
 
-Before running optional commands, probe availability:
+**Skip behavior**: If a required linter binary is not installed, report
+`"Skipped"` for that command and continue. If ALL linters for a detected
+project type are missing, emit a warning: "No linters available for
+<project type> â€” install <tool> to enable validation."
 
-| Platform | Tool | Detection Command | Install If Missing |
-|----------|------|-------------------|-------------------|
-| PowerShell | PSScriptAnalyzer | `pwsh -Command "Get-Module -ListAvailable PSScriptAnalyzer"` | `pwsh -Command "Install-Module -Name PSScriptAnalyzer -Force"` |
-| Bash | shellcheck | `command -v shellcheck` | Ubuntu/Debian: `sudo apt install shellcheck`, macOS: `brew install shellcheck` |
-| Any | make | `command -v make` (Unix) or `Get-Command make -ErrorAction SilentlyContinue` (PS) | Platform package manager |
-
-Detection should use exit codes, not string matching. Exit code 0 = tool present; non-zero = tool absent.
-
-#### Skip Behavior
-
-When a tool is not detected:
-
-1. **Skip, don't fail** GÇö record the result as `SKIPPED` in `validation_results`, not `FAIL`.
-2. **Emit a one-line notice** GÇö `"Skipped: <tool> not installed"` in the report's Errors column.
-3. **Don't block the review** GÇö skipped optional commands do not change the APPROVE/REQUEST CHANGES/BLOCK decision. Only required commands (Node/TS, Rust, Go, Python) can cause a `FAIL` that affects the decision.
-4. **Include install hint in JSON** GÇö when `--json` is set, `validation_errors` for skipped commands should contain `exit_code: 127` and `stderr: "Skipped: <tool> not installed. Install via: <install command>"`.
-
-#### Installation Guidance
-
-When a tool is skipped, provide platform-appropriate guidance in the findings section of the report:
-
-| Skipped Tool | Guidance |
-|-------------|----------|
-| PSScriptAnalyzer | `Install via: pwsh -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"` |
-| shellcheck | `Install via: sudo apt install shellcheck` (Debian/Ubuntu), `brew install shellcheck` (macOS), or `choco install shellcheck` (Windows/MSYS2) |
-| make | `Install via: sudo apt install make` (Debian/Ubuntu), `brew install make` (macOS), or install via MSYS2/Git Bash on Windows |
-
-If the skipped command is the **only** validation for a given project type (e.g., a pure Bash project with only shellcheck), note that "no validation commands were runnable" and flag this as a review limitation rather than a pass.
+**Installation guidance**:
+- Node/TS: `npm install -g typescript eslint` or use project-local via `npx`
+- Rust: `rustup component add clippy`
+- Go: included with Go toolchain
+- Python: `pip install ruff` or `pip install flake8`
 
 ---
 
-## Phase 3 GÇö Grade & Decide
+## Phase 3 â€” Grade & Decide
 
 ### Severity Levels
 
@@ -301,14 +224,14 @@ If the skipped command is the **only** validation for a given project type (e.g.
 | Zero CRITICAL/HIGH, validation passes | **APPROVE** |
 | Only MEDIUM/LOW, validation passes | **APPROVE with comments** |
 | Any HIGH or validation failures | **REQUEST CHANGES** |
-| Any CRITICAL | **BLOCK** GÇö must fix before merge |
+| Any CRITICAL | **BLOCK** â€” must fix before merge |
 
 ### GitHub PR Posting (optional)
 
 If `gh` CLI is available and in PR mode, post review to GitHub:
 
 ```bash
-# COMMENT (non-blocking GÇö use when already reviewed by Phase 5a)
+# COMMENT (non-blocking â€” use when already reviewed by Phase 5a)
 gh pr review "$PR_NUMBER" --comment --body "<findings summary>"
 
 # Inline comments for specific lines if applicable
@@ -316,11 +239,11 @@ gh api repos/:owner/:repo/pulls/"$PR_NUMBER"/reviews \
   --input comments.json
 ```
 
-If `gh` is not available, print the report to stdout and note "gh not available GÇö install GitHub CLI to post reviews directly."
+If `gh` is not available, print the report to stdout and note "gh not available â€” install GitHub CLI to post reviews directly."
 
 ---
 
-## Phase 3.5 GÇö Fix-Review Cycle
+## Phase 3.5 â€” Fix-Review Cycle
 
 This skill supports iterative fix-review cycles for automated PR quality gates.
 
@@ -328,7 +251,7 @@ This skill supports iterative fix-review cycles for automated PR quality gates.
 
 After Phase 3 produces findings and the invoking orchestrator has applied fixes,
 the orchestrator may re-invoke this skill to re-review the updated diff. This
-creates a review GåÆ fix GåÆ re-review loop.
+creates a review â†’ fix â†’ re-review loop.
 
 ### Loop Control
 
@@ -343,98 +266,38 @@ On each re-invocation:
 
 ### Incremental Review Tracking
 
-To avoid re-gathering and re-checking the full diff on every re-review, coordinate
-with the orchestrator's state management using incremental tracking.
+To avoid re-reviewing unchanged sections, maintain incremental state in
+`ccr-state.json`:
 
-#### State Fields (in `ccr-state.json`)
+**State fields**:
+- `base_hash`: The git commit SHA used as the diff base for the last review
+- `head_hash`: The git commit SHA of the last reviewed HEAD
+- `reviewed_files`: Map of file path â†’ hash of content at last review
+- `findings_by_file`: Map of file path â†’ array of finding IDs for that file
+- `last_decision`: The decision from the last review (`APPROVE`, `REQUEST_CHANGES`, `BLOCK`)
 
-Add these fields to the orchestrator state schema:
+**Hash computation**: Use `git rev-parse HEAD` for commit hashes and
+`git hash-object <file>` for per-file content hashes.
 
-```json
-{
-  "last_review_diff_hash": "",
-  "last_review_findings": [],
-  "last_review_files": [],
-  "last_review_decision": ""
-}
-```
+**Precedence rules**:
+1. If `--force-full` is set, ignore state and run full review
+2. If `base_hash` or `head_hash` changed, re-review all files that differ
+3. If only new commits were added on top of a known `head_hash`, review only
+   files changed in the new commits
+4. If no state file exists, run a full review and save state
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `last_review_diff_hash` | string | SHA-256 hash of the full diff at the time of the last review |
-| `last_review_findings` | array | Complete findings array from the last review output |
-| `last_review_files` | array | List of files that were reviewed in the last pass |
-| `last_review_decision` | string | Decision from the last review (`APPROVE`, `REQUEST_CHANGES`, `BLOCK`) |
-
-#### Hash Computation
-
-Compute the diff hash at the start of Phase 1 (after gathering the diff) using
-a deterministic hash of the diff content:
-
-```bash
-# Unix
-echo -n "$DIFF_CONTENT" | sha256sum | cut -d' ' -f1
-
-# Windows PowerShell
-$hash = [System.BitConverter]::ToString(
-    [System.Security.Cryptography.SHA256]::Create().ComputeHash(
-        [System.Text.Encoding]::UTF8.GetBytes($DIFF_CONTENT)
-    )
-) -replace '-', ''
-$hash.ToLower()
-```
-
-Store this hash as `$CURRENT_DIFF_HASH`. If `ccr-state.json` contains a
-`last_review_diff_hash`, compare against it.
-
-#### Incremental vs Full Review Decision
-
-| Condition | Action |
-|-----------|--------|
-| `last_review_diff_hash` is empty or missing | **Full review** GÇö no prior state to compare |
-| `$CURRENT_DIFF_HASH == last_review_diff_hash` | **Skip review** GÇö diff unchanged, emit previous findings |
-| Diff hash changed, only 1-3 files changed | **Incremental review** GÇö re-check only changed files |
-| Diff hash changed, >3 files or new files added | **Full review** GÇö changes too broad for incremental |
-| `last_review_decision == "APPROVE"` and hash changed | **Incremental review** GÇö prior approval means only regressions matter |
-
-#### Incremental Review Procedure
-
-When performing an incremental review:
-
-1. **Diff the changed files**: Run `git diff` only against files in
-   `$CURRENT_DIFF_FILES` that differ from `last_review_files` or that have
-   new changes since the last review.
-
-2. **Filter previous findings**: Remove any finding from `last_review_findings`
-   whose `file` no longer appears in the current diff (the fix removed the
-   offending code). Keep findings whose `file` still has changes.
-
-3. **Run checklist on changed files only**: Apply the Phase 2 checklist
-   exclusively to files with new or modified hunks. Skip files that were in the
-   previous diff but have not changed since.
-
-4. **Merge findings**: Combine surviving previous findings with new findings
-   from the incremental check. De-duplicate by `file:line` + `title`.
-
-5. **Re-grade**: Run Phase 3 grading on the merged finding set.
-
-6. **Update state**: Write the new diff hash, findings array, file list, and
-   decision back to `ccr-state.json`.
-
-#### When to Force Full Review
-
-Always perform a full review (ignore incremental path) when:
-
-- This is the first review (no `last_review_*` fields in state)
-- The diff grew by more than 20 files since the last review
-- The base branch changed (new commits landed on the target branch)
-- The review scope flags changed (e.g., switched from `-t staged` to `-t all`)
-- The orchestrator explicitly requests a full re-review via `--force-full`
-- More than 5 iterations have occurred (drift risk increases with staleness)
+**Incremental procedure**:
+1. Load `ccr-state.json` from the project root (if it exists)
+2. Compute current `head_hash` and compare to stored `head_hash`
+3. If incremental: `git diff <old_head>..HEAD --name-only` to get changed files
+4. Run Phase 2 checklist only on changed files
+5. Merge new findings with preserved findings for unchanged files
+6. Update `ccr-state.json` with new hashes and findings
+7. If `--force-full`, skip steps 2-4 and review everything
 
 ### Structured JSON Output for Loop
 
-When invoked with `--json` or `--format=json`, emit findings as a JSON object to stdout (no markdown). When invoked with `--format=both`, emit the markdown report first, then JSON separated by `---REVIEW_JSON---`. The default (no flags) emits markdown only.
+When invoked with `--json`, emit findings as a JSON object to stdout after the markdown report:
 
 ```json
 {
@@ -454,43 +317,16 @@ When invoked with `--json` or `--format=json`, emit findings as a JSON object to
     "lint": "PASS",
     "tests": "FAIL"
   },
-  "validation_errors": {
-    "tests": {
-      "exit_code": 1,
-      "stderr": "FAILED tests/test_auth.py::test_login - AssertionError: 401 != 200",
-      "stdout": "============================= test session starts =============================..."
-    }
-  },
   "decision": "REQUEST_CHANGES",
   "total_findings": 5,
   "critical_count": 1,
   "high_count": 2,
   "medium_count": 1,
-  "low_count": 1,
-  "diff_hash": "abc123...",
-  "review_mode": "incremental|full",
-  "files_checked": ["src/config.py", "src/auth.py"],
-  "baseline_comparison": {
-    "available": true,
-    "baseline_timestamp": "2025-01-15T10:00:00Z",
-    "baseline_target": "src/",
-    "deltas": {
-      "tech_debt_hours": { "baseline": 120, "current": 95, "delta": -25, "delta_pct": -20.8 },
-      "critical_count": { "baseline": 5, "current": 3, "delta": -2 },
-      "per_domain_scores": {
-        "security": { "baseline": 4, "current": 6, "delta": 2 },
-        "tech_debt": { "baseline": 5, "current": 7, "delta": 2 }
-      },
-      "per_domain_open_findings": {
-        "security": { "baseline": { "critical": 2, "high": 3 }, "current": { "critical": 1, "high": 2 }, "delta": { "critical": -1, "high": -1 } }
-      }
-    },
-    "regressions": []
-  }
+  "low_count": 1
 }
 ```
 
-The orchestrator uses `findings` array for the autofix loop and `decision` to determine whether to re-invoke. The `diff_hash` field enables incremental tracking GÇö the orchestrator stores this in `ccr-state.json` as `last_review_diff_hash` for the next re-review comparison.
+The orchestrator uses `findings` array for the autofix loop and `decision` to determine whether to re-invoke.
 
 ### Termination Signals
 
@@ -498,21 +334,14 @@ The orchestrator should stop looping when:
 - `decision == "APPROVE"` (zero CRITICAL/HIGH, validation passes)
 - No new findings vs previous iteration (stalled)
 - Max iterations reached (set by `REVIEW_MAX_ITERATIONS`, default 3)
-- Diff hash unchanged for 2 consecutive iterations (no code changes being applied)
 
 ---
 
-## Phase 4 GÇö Report
+## Phase 4 â€” Report
 
-Produce output based on the chosen format:
-
-| Flag | Output |
-|------|--------|
-| (none) | Markdown report only |
-| `--json` | JSON only (no markdown) |
-| `--format markdown` | Markdown report only (same as default) |
-| `--format json` | JSON only (same as `--json`) |
-| `--format both` | Markdown report, then JSON separated by `---REVIEW_JSON---` |
+Produce a structured report. If `--json` was passed in `$REVIEW_SCOPE`, emit
+JSON only (no markdown). If `--format both` was passed, emit both markdown
+and JSON separated by `---REVIEW_JSON---`.
 
 ### Markdown Report
 
@@ -526,46 +355,33 @@ Produce output based on the chosen format:
 ## Findings by Severity
 
 ### CRITICAL
-- [file:line] GÇö <description>
+- [file:line] â€” <description>
 
 ### HIGH
-- [file:line] GÇö <description>
+- [file:line] â€” <description>
 
 ### MEDIUM
-- [file:line] GÇö <description>
+- [file:line] â€” <description>
 
 ### LOW
-- [file:line] GÇö <description>
+- [file:line] â€” <description>
 
 ## Validation Results
 
-| Check | Result | Errors |
-|-------|--------|--------|
-| Type check | Pass / Fail / Skipped | <stderr or "none"> |
-| Lint | Pass / Fail / Skipped | <stderr or "none"> |
-| Tests | Pass / Fail / Skipped | <stderr or "none"> |
-| Build | Pass / Fail / Skipped | <stderr or "none"> |
-
-**Error interpretation**: When a command fails, report the first 3 lines of stderr in the Errors column. If the error is a missing tool (exit code 127 or "command not found"), write "Skipped: tool not installed" and note installation steps in the findings. Full stderr and stdout are available in the JSON output via `validation_errors` for programmatic consumption.
-
-## Health Baseline Comparison
-
-_Include this section only when a baseline was loaded. If no baseline exists, omit entirely._
-
-- **Baseline timestamp**: <ISO-8601>
-- **Health score**: <previous> GåÆ <current> (improved/stable/declined)
-- **Tech debt**: <previous>h GåÆ <current>h (+ö%)
-- **Critical issues**: <previous> GåÆ <current> (+ö%)
-- **Domain scores**: <list only domains affected by this diff, with -¦points>
-- **Regressions**: <list each regression with metric, previous, current, and delta; or "None detected">
+| Check | Result |
+|-------|--------|
+| Type check | Pass / Fail / Skipped |
+| Lint | Pass / Fail / Skipped |
+| Tests | Pass / Fail / Skipped |
+| Build | Pass / Fail / Skipped |
 
 ## Files Reviewed
 <file list>
 ```
 
-### JSON Output (when `--json` or `--format=json` or `--format=both` is set)
+### JSON Output (when `--json` or `--format json|both` flag is set)
 
-When `--json` or `--format=json`, emit JSON only to stdout (no markdown). When `--format=both`, emit JSON after the markdown report, separated by `---REVIEW_JSON---`. The JSON structure:
+Emit after the markdown report (if `--format both`), separated by `---REVIEW_JSON---`:
 
 ```json
 {
@@ -586,81 +402,14 @@ When `--json` or `--format=json`, emit JSON only to stdout (no markdown). When `
     "tests": "FAIL",
     "build": "PASS"
   },
-  "validation_errors": {
-    "tests": {
-      "exit_code": 1,
-      "stderr": "FAILED tests/test_auth.py::test_login - AssertionError: 401 != 200",
-      "stdout": "============================= test session starts =============================..."
-    }
-  },
   "decision": "APPROVE | REQUEST CHANGES | BLOCK",
   "total_findings": 5,
   "critical_count": 1,
   "high_count": 2,
   "medium_count": 1,
   "low_count": 1,
-  "files_reviewed": ["path/to/file1.ext", "path/to/file2.ext"],
-  "baseline_comparison": {
-    "available": true,
-    "baseline_timestamp": "2025-01-15T10:00:00Z",
-    "baseline_target": "src/",
-    "deltas": {
-      "tech_debt_hours": { "baseline": 120, "current": 95, "delta": -25, "delta_pct": -20.8 },
-      "critical_count": { "baseline": 5, "current": 3, "delta": -2 },
-      "per_domain_scores": {
-        "security": { "baseline": 4, "current": 6, "delta": 2 }
-      },
-      "per_domain_open_findings": {
-        "security": { "baseline": { "critical": 2, "high": 3 }, "current": { "critical": 1, "high": 2 }, "delta": { "critical": -1, "high": -1 } }
-      }
-    },
-    "regressions": []
-  }
+  "files_reviewed": ["path/to/file1.ext", "path/to/file2.ext"]
 }
-```
-
-`validation_errors` is an object keyed by validation command name (e.g., `"typecheck"`, `"lint"`, `"tests"`, `"build"`). It is **only present when at least one validation command fails or is skipped**. Each value is an object with:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `exit_code` | integer | Process exit code. 0 = success, 127 = command not found, non-zero = failure |
-| `stderr` | string | Captured stderr output (truncated to 2000 chars if longer) |
-| `stdout` | string | Captured stdout output (truncated to 2000 chars if longer) |
-
-When a command is skipped (tool not installed), set `exit_code: 127` and include an installation hint in `stderr` (e.g., `"Skipped: command not found. Install via: cargo install clippy"`). Commands that pass (`validation_results` = `"PASS"`) should **not** appear in `validation_errors`.
-
----
-
-## Output Format Examples
-
-### Default (markdown only)
-
-```bash
-review
-# GåÆ Markdown report to stdout
-```
-
-### JSON only
-
-```bash
-review --json
-review --format json
-# GåÆ JSON object to stdout, no markdown
-```
-
-### Both formats
-
-```bash
-review --format both
-# GåÆ Markdown report, then ---REVIEW_JSON--- separator, then JSON object
-```
-
-### Combined with scope flags
-
-```bash
-review abc1234 --json          # JSON only for commit abc1234
-review --format both -t staged # Both formats for staged changes only
-review --dir src/auth --json   # JSON only, scoped to src/auth
 ```
 
 ---
@@ -671,11 +420,19 @@ review --dir src/auth --json   # JSON only, scoped to src/auth
 - **No git repo**: Error: "Not a git repository."
 - **No changes**: "Nothing to review."
 - **PR not found**: Error and exit.
-- **Validation commands not found**: Optional commands (PowerShell/Bash linters) are skipped with `SKIPPED` status and do not affect the decision. Required commands (typecheck, test, build) that are not found are also skipped with a warning, but missing required validation is noted as a review limitation. See "Cross-Platform Fallback Logic" for detection and install guidance.
-- **Large PR (>50 files)**: Apply chunked review per Phase 1.6. Group by module, prioritize source changes, respect token limits. Orchestrator may re-invoke per chunk.
+- **Validation commands not found (required)**: Hard failure â€” required linter or
+  test runner is missing. Report the missing command and exit with a non-zero
+  status. The user must install the tool before review can proceed.
+- **Validation commands not found (optional)**: Report "Skipped" for that command
+  and continue with the rest of the checklist.
+- **Large PR (>50 files)**: Apply Phase 1.6 chunking unless `--force-full` is set.
+- **Incremental review bypass**: If `ccr-state.json` is corrupt or unreadable,
+  fall back to a full review and overwrite the state file.
 - **Max iterations**: Controlled by `REVIEW_MAX_ITERATIONS` env var (default 3).
-- **Incremental review bypass**: Use `--force-full` to skip incremental tracking and perform a complete re-review. Automatically triggered when diff hash is missing, base branch changed, or >20 files changed.
 
 ## Cleanup
 
-Delete any temporary files created during review. Do not leave cached diffs on disk. Preserve `ccr-state.json` fields (`last_review_*`) across reviews GÇö these enable incremental tracking and must not be cleaned up.
+Delete any temporary files created during review. Do not leave cached diffs on
+disk. Preserve `ccr-state.json` between review runs â€” it stores incremental
+review state (see Incremental Review Tracking). Only delete it if the user
+explicitly requests a full reset or if the file is corrupt.
