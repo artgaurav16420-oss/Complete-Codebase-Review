@@ -56,7 +56,7 @@ Check `gh` CLI availability first. If missing, warn and fall back to local mode 
 
 ```bash
 # Check gh
-command -v gh >/dev/null 2>&1 && gh auth status 2>&1 || echo "gh not available"
+command -v gh >/dev/null 2>&1 && (gh auth status 2>&1 || echo "gh not authenticated") || echo "gh not available"
 
 # PR info
 gh pr view <NUMBER> --json number,title,body,author,baseRefName,headRefName,changedFiles,additions,deletions 2>&1
@@ -176,7 +176,7 @@ Run project-appropriate commands to verify:
 | Node/TS | `npm run typecheck 2>&1` \|\| `npx tsc --noEmit 2>&1`, `npm run lint 2>&1`, `npm test 2>&1`, `npm run build 2>&1` |
 | Rust | `cargo clippy -- -D warnings 2>&1`, `cargo test 2>&1`, `cargo build 2>&1` |
 | Go | `go vet ./... 2>&1`, `go test ./... 2>&1`, `go build ./... 2>&1` |
-| Python | `python -m pytest 2>&1` or `python -m unittest discover 2>&1` |
+| Python | `python -m pytest 2>&1 || python -m unittest discover 2>&1` |
 | Fallback | Try `make test`, `npm test`, `pytest` in order |
 
 Record pass/fail for each command run. Capture both stdout and stderr for
@@ -292,6 +292,9 @@ To avoid re-reviewing unchanged sections, maintain incremental state in
 3. If incremental: `git diff <old_head>..HEAD --name-only` to get changed files
 4. Run Phase 2 checklist only on changed files
 5. Merge new findings with preserved findings for unchanged files
+   NOTE: When merging, re-index finding IDs from preserved findings to avoid
+   collisions with new finding IDs. Assign new IDs sequentially starting after
+   the highest new finding ID.
 6. Update `ccr-state.json` with new hashes and findings
 7. If `--force-full`, skip steps 2-4 and review everything
 

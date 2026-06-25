@@ -26,9 +26,6 @@ _REVIEW_REQUIRED_SECTIONS = [
     "## Cleanup",
 ]
 
-_VALIDATION_COMMANDS = ["Node/TS", "Rust", "Go", "Python"]
-
-
 def _load_review_skill():
     """Load skills/review/SKILL.md content."""
     skill_path = os.path.join(
