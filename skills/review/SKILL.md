@@ -56,7 +56,7 @@ Check `gh` CLI availability first. If missing, warn and fall back to local mode 
 
 ```bash
 # Check gh
-gh auth status 2>&1 || echo "gh not available"
+command -v gh >/dev/null 2>&1 && gh auth status 2>&1 || echo "gh not available"
 
 # PR info
 gh pr view <NUMBER> --json number,title,body,author,baseRefName,headRefName,changedFiles,additions,deletions 2>&1
@@ -193,7 +193,7 @@ select the right linter variants:
 | Bash/Unix | `$BASH_VERSION` or `uname` returns Linux/Darwin | Use standard shell syntax; skip `.ps1`-only linters |
 | Windows (Git Bash) | `$MSYSTEM` set | Treat as Bash with Windows paths |
 
-**Skip behavior**: If a required linter binary is not installed, report
+**Skip behavior**: If an optional linter binary is not installed, report
 `"Skipped"` for that command and continue. If ALL linters for a detected
 project type are missing, emit a warning: "No linters available for
 <project type> — install <tool> to enable validation."
@@ -277,7 +277,7 @@ To avoid re-reviewing unchanged sections, maintain incremental state in
 - `last_decision`: The decision from the last review (`APPROVE`, `REQUEST_CHANGES`, `BLOCK`)
 
 **Hash computation**: Use `git rev-parse HEAD` for commit hashes and
-`git hash-object <file>` for per-file content hashes.
+`git rev-parse HEAD:<file>` for per-file content hashes.
 
 **Precedence rules**:
 1. If `--force-full` is set, ignore state and run full review
