@@ -3,7 +3,7 @@ name: review
 description: Review local changes, commits, branches, or PRs — severity-graded findings with approve/block decision. Portable across runtimes (Claude Code, OpenCode, Codex, etc.).
 version: 2.0.0
 allowed-tools: "Read, Grep, Glob, Bash, WebSearch, Task"
-argument-hint: "[hash|branch|pr|--json|-t scope|--base <b>|--base-commit <sha>|--dir <path>]"
+argument-hint: "[hash|branch|pr|--json|-t scope|--base <branch>|--base-commit <sha>|--dir <path>|--format <markdown|json|both>|--chunk <module>|--force-full]"
 ---
 
 # Code Review
@@ -56,13 +56,13 @@ Check `gh` CLI availability first. If missing, warn and fall back to local mode 
 
 ```bash
 # Check gh
-gh auth status 2>/dev/null || echo "gh not available"
+command -v gh >/dev/null 2>&1 && (gh auth status 2>&1 || echo "gh not authenticated") || echo "gh not available"
 
 # PR info
-gh pr view <NUMBER> --json number,title,body,author,baseRefName,headRefName,changedFiles,additions,deletions 2>/dev/null
+gh pr view <NUMBER> --json number,title,body,author,baseRefName,headRefName,changedFiles,additions,deletions 2>&1
 
 # PR diff
-gh pr diff <NUMBER> 2>/dev/null
+gh pr diff <NUMBER> 2>&1
 ```
 
 Read each changed file in full via the diff or by fetching from the PR's head branch.
@@ -96,11 +96,38 @@ Parse `$ARGUMENTS` for scope flags that control which changes to review:
 | `--base <branch>` | Compare against a specific branch |
 | `--base-commit <sha>` | Compare against a specific commit |
 | `--dir <path>` | Review a specific directory (must be a git repo) |
-| `--json` | Output findings as JSON for programmatic consumption |
+| `--json` | Output findings as JSON only (no markdown report) |
+| `--format <markdown\|json\|both>` | Control output format (default: `markdown`) |
+| `--chunk <module>` | Review a specific module/chunk of a large PR |
+| `--force-full` | Skip incremental checks, force full review |
 
 Store parsed flags as `$REVIEW_SCOPE`. When `--json` is set, emit structured
-JSON in Phase 4 instead of (or in addition to) the markdown report. When `--dir`
+JSON in Phase 4 instead of the markdown report. When `--format` is set to
+`both`, emit both markdown and JSON. When `--chunk` is set, scope the review
+to that module only (see Phase 1.6). When `--force-full` is set, bypass
+incremental review tracking and run the full checklist. When `--dir`
 is set, scope git operations to that directory.
+
+---
+
+## Phase 1.6 — Large PR Handling
+
+When the diff exceeds 50 changed files or an estimated 30,000 tokens, apply
+chunking to keep review quality high:
+
+1. **Detect**: Count changed files using the appropriate `git diff` command for the active `$REVIEW_MODE`. Estimate tokens
+   from total diff size (rough heuristic: ~4 tokens per line of diff).
+2. **Chunk**: If over threshold, split by module or directory. Use `--chunk
+   <module>` if provided; otherwise auto-chunk by top-level directory.
+3. **Prioritize**: Review source code and configuration changes first. Skip
+   generated files, lockfiles, and vendored dependencies unless flagged.
+4. **Iterate**: Review each chunk sequentially. Aggregate findings across
+   chunks into a single report in Phase 4.
+5. **Warn**: Emit a warning in the report summary: "Large PR: review was
+   chunked into N parts. Some changes may not have been reviewed in depth."
+
+If `--force-full` is set, skip chunking and review everything regardless of
+size.
 
 ---
 
@@ -146,13 +173,36 @@ Run project-appropriate commands to verify:
 
 | Detected | Commands |
 |----------|----------|
-| Node/TS | `npm run typecheck 2>/dev/null` \|\| `npx tsc --noEmit 2>/dev/null`, `npm run lint 2>/dev/null`, `npm test 2>/dev/null`, `npm run build 2>/dev/null` |
-| Rust | `cargo clippy -- -D warnings 2>/dev/null`, `cargo test 2>/dev/null`, `cargo build 2>/dev/null` |
-| Go | `go vet ./... 2>/dev/null`, `go test ./... 2>/dev/null`, `go build ./... 2>/dev/null` |
-| Python | `python -m pytest 2>/dev/null` or `python -m unittest discover 2>/dev/null` |
+| Node/TS | `npm run typecheck 2>&1` \|\| `npx tsc --noEmit 2>&1`, `npm run lint 2>&1`, `npm test 2>&1`, `npm run build 2>&1` |
+| Rust | `cargo clippy -- -D warnings 2>&1`, `cargo test 2>&1`, `cargo build 2>&1` |
+| Go | `go vet ./... 2>&1`, `go test ./... 2>&1`, `go build ./... 2>&1` |
+| Python | `if python -c "import pytest" >/dev/null 2>&1; then python -m pytest 2>&1; else python -m unittest discover 2>&1; fi` |
 | Fallback | Try `make test`, `npm test`, `pytest` in order |
 
-Record pass/fail for each command run.
+Record pass/fail for each command run. Capture both stdout and stderr for
+diagnostic output (use `2>&1` not `2>/dev/null`).
+
+### Cross-Platform Fallback Logic
+
+When running validation commands, detect the current platform and shell to
+select the right linter variants:
+
+| Platform | Detection | Behavior |
+|----------|-----------|----------|
+| PowerShell | `$PSVersionTable.PSEdition` exists | Use `Invoke-Expression` or `&` call syntax; skip `.sh`-only linters |
+| Bash/Unix | `$BASH_VERSION` or `uname` returns Linux/Darwin | Use standard shell syntax; skip `.ps1`-only linters |
+| Windows (Git Bash) | `$MSYSTEM` set | Treat as Bash with Windows paths |
+
+**Skip behavior**: If an optional linter binary is not installed, report
+`"Skipped"` for that command and continue. If ALL linters for a detected
+project type are missing, emit a warning: "No linters available for
+<project type> — install <tool> to enable validation."
+
+**Installation guidance**:
+- Node/TS: `npm install -g typescript eslint` or use project-local via `npx`
+- Rust: `rustup component add clippy`
+- Go: included with Go toolchain
+- Python: `pip install ruff` or `pip install flake8`
 
 ---
 
@@ -214,6 +264,40 @@ On each re-invocation:
 4. Phase 3 re-grades
 5. Results are emitted again
 
+### Incremental Review Tracking
+
+To avoid re-reviewing unchanged sections, maintain incremental state in
+`ccr-state.json`:
+
+**State fields**:
+- `base_hash`: The git commit SHA used as the diff base for the last review
+- `head_hash`: The git commit SHA of the last reviewed HEAD
+- `reviewed_files`: Map of file path → hash of content at last review
+- `findings_by_file`: Map of file path → array of full finding objects (ID, severity, title, line, description, suggested_fix) for that file
+- `last_decision`: The decision from the last review (`APPROVE`, `REQUEST_CHANGES`, `BLOCK`)
+
+**Hash computation**: Use `git rev-parse HEAD` for commit hashes and
+`git rev-parse HEAD:<file>` for per-file content hashes.
+
+**Precedence rules**:
+1. If `--force-full` is set, ignore state and run full review
+2. If `base_hash` or `head_hash` changed, re-review all files that differ
+3. If only new commits were added on top of a known `head_hash`, review only
+   files changed in the new commits
+4. If no state file exists, run a full review and save state
+
+**Incremental procedure**:
+1. Load `ccr-state.json` from the project root (if it exists)
+2. Compute current `head_hash` and compare to stored `head_hash`
+3. If incremental: `git diff <old_head>..HEAD --name-only` to get changed files
+4. Run Phase 2 checklist only on changed files
+5. Merge new findings with preserved findings for unchanged files
+   NOTE: When merging, preserve the finding IDs from the unchanged files to maintain
+   stability. Assign new IDs to the new findings sequentially, starting after the
+   highest existing finding ID.
+6. Update `ccr-state.json` with new hashes and findings
+7. If `--force-full`, skip steps 2-4 and review everything
+
 ### Structured JSON Output for Loop
 
 When invoked with `--json`, emit findings as a JSON object to stdout after the markdown report:
@@ -258,8 +342,9 @@ The orchestrator should stop looping when:
 
 ## Phase 4 — Report
 
-Produce a structured report. If `--json` was passed in `$REVIEW_SCOPE`, also emit
-JSON to stdout after the markdown report (separated by `---REVIEW_JSON---`).
+Produce a structured report. If `--json` was passed in `$REVIEW_SCOPE`, emit
+JSON only (no markdown). If `--format both` was passed, emit both markdown
+and JSON separated by `---REVIEW_JSON---`.
 
 ### Markdown Report
 
@@ -297,9 +382,9 @@ JSON to stdout after the markdown report (separated by `---REVIEW_JSON---`).
 <file list>
 ```
 
-### JSON Output (when `--json` flag is set)
+### JSON Output (when `--json` or `--format json` or `--format both` flag is set)
 
-Emit after the markdown report, separated by `---REVIEW_JSON---`:
+Emit after the markdown report (if `--format both`), separated by `---REVIEW_JSON---`:
 
 ```json
 {
@@ -338,10 +423,19 @@ Emit after the markdown report, separated by `---REVIEW_JSON---`:
 - **No git repo**: Error: "Not a git repository."
 - **No changes**: "Nothing to review."
 - **PR not found**: Error and exit.
-- **Validation commands not found**: Report "Skipped" for each, proceed with review.
-- **Large PR (>50 files)**: Warn about review scope. Focus on source changes first.
+- **Validation commands not found (required)**: Hard failure — required linter or
+  test runner is missing. Report the missing command and exit with a non-zero
+  status. The user must install the tool before review can proceed.
+- **Validation commands not found (optional)**: Report "Skipped" for that command
+  and continue with the rest of the checklist.
+- **Large PR (>50 files)**: Apply Phase 1.6 chunking unless `--force-full` is set.
+- **Incremental review bypass**: If `ccr-state.json` is corrupt or unreadable,
+  fall back to a full review and overwrite the state file.
 - **Max iterations**: Controlled by `REVIEW_MAX_ITERATIONS` env var (default 3).
 
 ## Cleanup
 
-Delete any temporary files created during review. Do not leave cached diffs on disk.
+Delete any temporary files created during review. Do not leave cached diffs on
+disk. Preserve `ccr-state.json` between review runs — it stores incremental
+review state (see Incremental Review Tracking). Only delete it if the user
+explicitly requests a full reset or if the file is corrupt.
