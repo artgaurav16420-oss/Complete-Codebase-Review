@@ -120,13 +120,11 @@ def _validate_xdg_path(xdg_path, home):
     """Check XDG_CONFIG_HOME resolves under user home; return path or None."""
     try:
         resolved = xdg_path.resolve()
+        home_resolved = home.resolve()
     except (OSError, ValueError):
         return None
-    try:
-        if resolved.is_relative_to(home.resolve()):
-            return resolved
-    except (OSError, ValueError):
-        pass
+    if resolved.is_relative_to(home_resolved):
+        return resolved
     return None
 
 
@@ -269,10 +267,10 @@ def _validate_target_path(path):
         raise ValueError(f"Path traversal detected: {path}")
     try:
         resolved = path.resolve()
+        parent_resolved = path.parent.resolve()
     except (OSError, ValueError) as e:
         raise ValueError(f"Failed to resolve path: {path}") from e
-    resolved_parent = resolved.parent
-    if not resolved_parent.is_relative_to(path.parent.resolve()):
+    if not resolved.parent.is_relative_to(parent_resolved):
         raise ValueError(
             f"Symlink resolves outside target directory: {path} -> {resolved}"
         )
