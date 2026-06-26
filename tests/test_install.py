@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 
 def _import_install():
@@ -788,6 +788,26 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
 
 class TestInternalFunctions(_BaseInstallTest):
     """Tests for previously uncovered internal helper functions."""
+
+    def test_onerror_retries_after_chmod(self):
+        mock_func = MagicMock()
+        with patch("install.os.chmod"):
+            self.install._onerror(mock_func, "/some/path", None)
+        mock_func.assert_called_once_with("/some/path")
+
+    def test_onerror_handles_os_error(self):
+        mock_func = MagicMock()
+        with patch("install.os.chmod", side_effect=OSError("denied")):
+            self.install._onerror(mock_func, "/some/path", None)
+        mock_func.assert_called_once_with("/some/path")
+
+    def test_onerror_fallback_on_not_implemented(self):
+        mock_func = MagicMock()
+        with patch("install.os.chmod",
+                   side_effect=[NotImplementedError, None]), \
+             patch("install.os.path.islink", return_value=False):
+            self.install._onerror(mock_func, "/some/path", None)
+        mock_func.assert_called_once_with("/some/path")
 
     def test_use_color_returns_false_when_no_tty(self):
         with patch.object(sys.stdout, "isatty", return_value=False):
