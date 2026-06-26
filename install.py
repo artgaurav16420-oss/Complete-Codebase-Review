@@ -117,10 +117,16 @@ def print_error(msg):
 
 
 def _validate_xdg_path(xdg_path):
-    """Check XDG_CONFIG_HOME resolves to an absolute path; return resolved path or None."""
+    """Check XDG_CONFIG_HOME resolves to an absolute path; return resolved path or None.
+
+    Per XDG spec, XDG_CONFIG_HOME may be outside the user's home directory
+    (e.g. /mnt/storage/config). We only verify it resolves to an absolute path.
+    """
     try:
         resolved = xdg_path.resolve()
     except (OSError, ValueError, RuntimeError):
+        return None
+    if not resolved.is_absolute():
         return None
     return resolved
 
