@@ -285,10 +285,10 @@ def validate_agent_status(md):
 
 
 WEASEL_PATTERNS = [
-    r'\bmight\b', r'\blikely\b', r'\bcould potentially\b',
-    r'\bit is recommended\b', r'\bconsider refactoring\b',
-    r'\bbest practice suggests\b', r'\bgenerally speaking\b',
-    r'\bin most cases\b',
+    r'\bmight\b', r'\blikely\b', r'\bcould\s+potentially\b',
+    r'\bit\s+is\s+recommended\b', r'\bconsider\s+refactoring\b',
+    r'\bbest\s+practice\s+suggests\b', r'\bgenerally\s+speaking\b',
+    r'\bin\s+most\s+cases\b',
 ]
 
 
@@ -301,13 +301,14 @@ def validate_findings_have_evidence(md):
         if len(cells) < 1:
             continue
         finding = cells[0]
-        if not re.match(r'^\[\S+:\d+\]\s+—\s+.+?\s+→\s+.+$', finding):
+        if not re.match(r'^\[[^:]+:\d+\]\s+—\s+.+?\s+→\s+.+$', finding):
             errors.append(
                 f"Finding missing [file:line] — flaw → failure_mode: "
                 f"{finding[:60]}"
             )
+        finding_desc = re.sub(r'^\[[^\]]+\]\s*—\s*', '', finding)
         for pattern in WEASEL_PATTERNS:
-            if re.search(pattern, finding, re.IGNORECASE):
+            if re.search(pattern, finding_desc, re.IGNORECASE):
                 errors.append(f"Finding contains weasel word: {finding[:60]}")
     return errors
 
