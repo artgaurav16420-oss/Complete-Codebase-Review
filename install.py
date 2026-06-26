@@ -116,7 +116,7 @@ def print_error(msg):
     _print(msg, "ERROR", "\033[91m")
 
 
-def _validate_xdg_path(xdg_path, home):
+def _validate_xdg_path(xdg_path):
     """Check XDG_CONFIG_HOME resolves to an absolute path; return resolved path or None."""
     try:
         resolved = xdg_path.resolve()
@@ -130,7 +130,7 @@ def _xdg_or_home_dir(home, app_dir):
     if platform.system() == "Linux":
         xdg_env = os.environ.get("XDG_CONFIG_HOME", "").strip()
         if xdg_env:
-            validated = _validate_xdg_path(Path(xdg_env), home)
+            validated = _validate_xdg_path(Path(xdg_env))
             if validated is not None:
                 return validated / app_dir / "skills"
     return home / f".{app_dir}" / "skills"

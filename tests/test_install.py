@@ -770,8 +770,13 @@ class TestInternalFunctions(_BaseInstallTest):
 
     def test_onerror_retries_after_chmod(self):
         mock_func = MagicMock()
-        with patch("install.os.chmod"):
+        mock_chmod = MagicMock()
+        with patch("install.os.chmod", mock_chmod):
             self.install._onerror(mock_func, "/some/path", None)
+        mock_chmod.assert_called_once()
+        args, kwargs = mock_chmod.call_args
+        self.assertEqual(args[0], "/some/path")
+        self.assertFalse(kwargs.get("follow_symlinks", True))
         mock_func.assert_called_once_with("/some/path")
 
     def test_onerror_handles_os_error(self):
@@ -782,11 +787,13 @@ class TestInternalFunctions(_BaseInstallTest):
 
     def test_onerror_fallback_on_not_implemented(self):
         mock_func = MagicMock()
-        with patch("install.os.chmod",
-                   side_effect=[NotImplementedError, None]), \
+        mock_chmod = MagicMock(side_effect=[NotImplementedError, None])
+        with patch("install.os.chmod", mock_chmod), \
              patch("install.os.path.islink", return_value=False):
             self.install._onerror(mock_func, "/some/path", None)
-        mock_func.assert_called_once_with("/some/path")
+        second_call = mock_chmod.call_args_list[1]
+        self.assertEqual(second_call.args[0], "/some/path")
+        self.assertNotIn("follow_symlinks", second_call.kwargs)
 
     def test_use_color_returns_false_when_no_tty(self):
         with patch.object(sys.stdout, "isatty", return_value=False):
@@ -823,8 +830,7 @@ class TestInternalFunctions(_BaseInstallTest):
         self.assertEqual(result, Path("/home/user/.claude/skills"))
 
     def test_validate_xdg_path_resolves_any_absolute(self):
-        fake_home = Path("/home/user").resolve()
-        result = self.install._validate_xdg_path(Path("/tmp/xdg"), fake_home)
+        result = self.install._validate_xdg_path(Path("/tmp/xdg"))
         self.assertIsNotNone(result)
         self.assertEqual(result, Path("/tmp/xdg").resolve())
 
