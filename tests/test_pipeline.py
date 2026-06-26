@@ -285,9 +285,10 @@ def validate_agent_status(md):
 
 
 WEASEL_PATTERNS = [
-    r'\bmight\b', r'\bcould potentially\b', r'\bit is recommended\b',
-    r'\bconsider refactoring\b', r'\bbest practice suggests\b',
-    r'\bgenerally speaking\b', r'\bin most cases\b',
+    r'\bmight\b', r'\blikely\b', r'\bcould potentially\b',
+    r'\bit is recommended\b', r'\bconsider refactoring\b',
+    r'\bbest practice suggests\b', r'\bgenerally speaking\b',
+    r'\bin most cases\b',
 ]
 
 
@@ -300,8 +301,11 @@ def validate_findings_have_evidence(md):
         if len(cells) < 1:
             continue
         finding = cells[0]
-        if not re.search(r'\[\S+:\d+\]', finding):
-            errors.append(f"Finding missing file:line anchor: {finding[:60]}")
+        if not re.match(r'^\[\S+:\d+\]\s+—\s+.+?\s+→\s+.+$', finding):
+            errors.append(
+                f"Finding missing [file:line] — flaw → failure_mode: "
+                f"{finding[:60]}"
+            )
         for pattern in WEASEL_PATTERNS:
             if re.search(pattern, finding, re.IGNORECASE):
                 errors.append(f"Finding contains weasel word: {finding[:60]}")
@@ -502,16 +506,20 @@ class TestMarkdownValidation(unittest.TestCase):
         self.assertTrue(any("11" in e for e in errors))
 
     def test_rejected_findings_are_excluded_from_roadmap(self):
+        replacement = (
+            "- [tests/test_compliance.py:5] — Unused import"
+            " → minor dead code, no runtime impact\n"
+            "- ... (remaining 8 tasks)"
+        )
         md = SAMPLE_VALID_OUTPUT.replace(
-            "- ... (remaining 8 tasks)",
-            "- [tests/test_compliance.py:5] — Unused import → minor dead code, no runtime impact\n- ... (remaining 8 tasks)",
+            "- ... (remaining 8 tasks)", replacement,
         )
         errors = validate_markdown_output(md)
         self.assertTrue(any("rejected DA verdict" in e for e in errors))
 
     def test_rejected_findings_exact_title_matching(self):
         md = SAMPLE_VALID_OUTPUT.replace(
-            "Unused import in test_compliance.py",
+            "[tests/test_compliance.py:5] — Unused import → minor dead code, no runtime impact",
             "Different title altogether",
         )
         errors = validate_markdown_output(md)
