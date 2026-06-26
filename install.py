@@ -122,11 +122,12 @@ def _validate_xdg_path(xdg_path):
     Per XDG spec, XDG_CONFIG_HOME may be outside the user's home directory
     (e.g. /mnt/storage/config). We only verify it resolves to an absolute path.
     """
+    # Check original path is absolute before resolve (resolve always returns absolute)
+    if not xdg_path.is_absolute():
+        return None
     try:
         resolved = xdg_path.resolve()
     except (OSError, ValueError, RuntimeError):
-        return None
-    if not resolved.is_absolute():
         return None
     return resolved
 

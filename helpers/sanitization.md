@@ -34,8 +34,11 @@ def sanitize_path(path_str, allowed_roots=None):
         return None
     if allowed_roots:
         for root in allowed_roots:
-            if resolved.is_relative_to(root):
-                return resolved
+            try:
+                if resolved.is_relative_to(Path(root).resolve()):
+                    return resolved
+            except (OSError, ValueError, RuntimeError):
+                continue
         return None
     return resolved
 ```

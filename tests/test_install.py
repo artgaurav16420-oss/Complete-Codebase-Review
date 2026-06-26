@@ -836,6 +836,10 @@ class TestInternalFunctions(_BaseInstallTest):
             self.assertIsNotNone(result)
             self.assertEqual(result, xdg.resolve())
 
+    def test_validate_xdg_path_rejects_relative(self):
+        result = self.install._validate_xdg_path(Path("relative/path"))
+        self.assertIsNone(result)
+
     def test_get_version_caches_result(self):
         self.install._VERSION_CACHE = None
         call_count = 0
