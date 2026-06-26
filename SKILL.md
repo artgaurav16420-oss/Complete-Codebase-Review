@@ -567,6 +567,8 @@ If the reviewer finds bugs, edge cases missed, or regressions introduced:
 
 ### 5c. Local Review Loop
 
+**MANDATORY GATE: Do NOT proceed to 5d until this loop completes.**
+
 After corrections are applied, enter an automated local review loop:
 
 - Re-run the Independent Reviewer (5a) on the updated working tree
@@ -579,6 +581,8 @@ Track iteration count as `$LOCAL_LOOP_ITERATIONS`. Log each iteration:
 `[LOCAL REVIEW LOOP] Iteration N: X findings remaining`
 
 ### 5d. Full Test Suite Run
+
+**PREREQUISITE: Phase 5c local review loop must have completed (either clean exit or max iterations reached). Do not jump here directly from 5b.**
 
 After the local review loop exits cleanly, run the full test suite:
 
@@ -776,6 +780,7 @@ Instructions:
 | 8 | Web verification MANDATORY for Security + Dependencies domains |
 | 9 | NEVER modify the codebase during Phases 1-3 — read-only diagnostics only |
 | 10 | Fix plan MUST wait for user approval — no auto-apply |
+| 11 | Phase 5c (local review loop) MANDATORY after every 5b correction application — re-run the reviewer, do NOT skip to 5d |
 
 ## Anti-Rationalization Table
 
@@ -789,6 +794,7 @@ Instructions:
 | "Skip [dimension], it's not relevant" | All dimensions apply unless explicitly confirmed absent |
 | "Web verification takes too long" | A false CVE report is worse than the 30s to verify it |
 | "I'll fix this obvious bug while I'm here" | Read-only review — fix plan captures it. Applying mid-review corrupts findings |
+| "One review pass is enough, no need to loop" | The reviewer may miss issues the first pass — re-review catches regressions introduced by fixes |
 
 ## Tech Debt Calibration
 
@@ -812,7 +818,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 
 - Focusing on a few files instead of the full codebase
 - Giving a qualitative "looks good" without metrics
-- Skipping any phase (discovery, analysis, synthesis, roadmap, DA)
+- Skipping any phase (discovery, analysis, synthesis, roadmap, DA, **5c local review loop**)
 - Claiming findings without evidence or source
 - <75% of specialist agents in full mode (insufficient coverage)
 - Skipping web verification for security findings
