@@ -110,7 +110,7 @@ while idx < len(raw):
         obj, end = decoder.raw_decode(raw, idx)
         if isinstance(obj, list):
             data.extend(obj)
-        idx = idx + end
+        idx = end
     except json.JSONDecodeError:
         idx += 1
 for c in data:

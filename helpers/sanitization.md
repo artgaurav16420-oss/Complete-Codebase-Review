@@ -100,13 +100,13 @@ def sanitize_url(url):
 
 ### 6. Bot Comment Sanitization (Full Pipeline)
 ```python
-def sanitize_bot_comment(comment, allowed_roots=None):
+def sanitize_bot_comment(comment, allowed_roots):
     """Full sanitization pipeline for bot-authored GitHub comments.
 
     Args:
         comment: GitHub API comment dict with 'body' and 'user' keys.
-        allowed_roots: List of allowed root directories for path validation.
-            If None, paths are validated for traversal only (no root restriction).
+        allowed_roots: Required list of allowed root directories. Extracted
+            paths must resolve within one of these roots.
     """
     text = comment.get("body", "")
     # Truncate first to avoid expensive ops on huge inputs
