@@ -39,9 +39,13 @@ _SKILL_EXCLUDED = {
 
 def _onerror(func, path, exc_info):
     """Retry a failed rmtree operation by making the path writable first.
-    
+
     Uses follow_symlinks=False to prevent permission changes on symlink targets
     outside the expected directory tree.
+
+    NOTE: onerror kwarg is deprecated in Python 3.12+ (PEP 632). Removal is
+    planned for Python 4.0. Switch to onexc (receives exception instance
+    directly) when Python 3.9 support is dropped.
     """
     try:
         try:
@@ -112,12 +116,25 @@ def print_error(msg):
     _print(msg, "ERROR", "\033[91m")
 
 
+def _validate_xdg_path(xdg_path, home):
+    """Check XDG_CONFIG_HOME resolves under user home; return path or None."""
+    resolved = xdg_path.resolve()
+    try:
+        if resolved.is_relative_to(home.resolve()):
+            return resolved
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def _xdg_or_home_dir(home, app_dir):
     """Return app skill dir under XDG_CONFIG_HOME on Linux, else ~/.<app_dir>/skills."""
     if platform.system() == "Linux":
         xdg_env = os.environ.get("XDG_CONFIG_HOME", "").strip()
         if xdg_env:
-            return Path(xdg_env) / app_dir / "skills"
+            validated = _validate_xdg_path(Path(xdg_env), home)
+            if validated is not None:
+                return validated / app_dir / "skills"
     return home / f".{app_dir}" / "skills"
 
 
@@ -247,7 +264,13 @@ def _validate_target_path(path):
     """
     if ".." in path.parts:
         raise ValueError(f"Path traversal detected: {path}")
-    return path.resolve()
+    resolved = path.resolve()
+    resolved_parent = resolved.parent
+    if not resolved_parent.is_relative_to(path.parent.resolve()):
+        raise ValueError(
+            f"Symlink resolves outside target directory: {path} -> {resolved}"
+        )
+    return resolved
 
 
 def _run_target_install(src_dir, target, dry_run):
@@ -282,6 +305,13 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
             target_dir = _validate_target_path(target_dir)
         except ValueError as e:
             print_error(f"Invalid target path for {tool_name}: {e}")
+            continue
+        home = Path.home()
+        if not target_dir.resolve().is_relative_to(home):
+            print_error(
+                f"Auto-install target {tool_name} resolves outside home "
+                f"directory: {target_dir}"
+            )
             continue
         if dry_run:
             skill_dest = target_dir / 'complete-codebase-review'

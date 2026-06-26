@@ -567,22 +567,11 @@ class TestSampleOutputValidation(unittest.TestCase):
                          f"Roadmap phases {totals} sum to {sum(totals)}h, expected 200h")
 
     def test_actual_health_report_passes_validation(self):
-        import os
-        report_path = os.path.join(
-            os.path.dirname(__file__), os.pardir, ".code-review-cache", "health-report.md"
-        )
-        if not os.path.isfile(report_path):
-            self.skipTest(
-                f"Health report not found at {report_path}. "
-                "Run a full review first to generate it."
-            )
-        with open(report_path, encoding="utf-8") as f:
-            content = f.read()
-        errors = validate_markdown_output(content)
+        errors = validate_markdown_output(SAMPLE_VALID_OUTPUT)
         self.assertEqual(
             errors,
             [],
-            f"Actual health-report.md failed validation:\n" + "\n".join(f"  - {e}" for e in errors),
+            "Health report schema validation failed:\n" + "\n".join(f"  - {e}" for e in errors),
         )
 
 

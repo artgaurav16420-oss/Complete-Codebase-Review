@@ -115,7 +115,9 @@ class TestGetTargetDirs(_BaseInstallTest):
     def test_claude_code_uses_xdg_on_linux(self):
         with patch.object(self.install.platform, "system",
                                   return_value="Linux"), \
-     patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}):
+     patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}), \
+     patch.object(self.install, "_validate_xdg_path",
+                  side_effect=lambda p, h: Path("/custom/xdg")):
             dirs = self.install.get_target_dirs()
         self.assertEqual(dirs["Claude Code"], Path("/custom/xdg/claude/skills"))
 
@@ -422,6 +424,7 @@ class TestMainFunction(_BaseInstallTestWithArgv):
             "OpenCode": Path("/home/user/.opencode/skills"),
         }
         existing = {p.parent for p in fake_dirs.values()}
+        fake_home = Path("/home/user").resolve()
 
         with patch.object(self.install, "get_target_dirs",
                           return_value=fake_dirs), \
@@ -430,7 +433,9 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                               "/installed/complete-codebase-review")) \
              as mock_copy, \
              patch.object(self.install.sys, "stdout",
-                          new_callable=io.StringIO) as mock_stdout:
+                          new_callable=io.StringIO) as mock_stdout, \
+             patch.object(Path, "home",
+                          return_value=fake_home):
             with patch.object(Path, "exists", lambda p: p in existing):
                 self.install.main()
 
@@ -478,6 +483,9 @@ class TestMainFunction(_BaseInstallTestWithArgv):
         self.assertIn("No existing global tool configurations", output)
 
     def test_copy_skill_failure_continues_to_next_agent(self):
+        import platform as _platform
+        if _platform.system() == "Windows":
+            self.skipTest("Unix-style mock paths incompatible with home check")
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
             "OpenCode": Path("/home/user/.opencode/skills"),
@@ -490,7 +498,9 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                           side_effect=[PermissionError("denied"),
                                        Path("/ok")]) as mock_copy, \
              patch.object(self.install.sys, "stdout",
-                          new_callable=io.StringIO) as mock_stdout:
+                          new_callable=io.StringIO) as mock_stdout, \
+             patch.object(Path, "home",
+                          return_value=Path("/home/user")):
             with patch.object(Path, "exists", lambda p: p in existing):
                 self.install.main()
 
@@ -717,13 +727,16 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
             "Cursor": Path("/home/user/.cursor/skills"),
         }
         existing_paths = {Path("/home/user/.claude")}
+        fake_home = Path("/home/user").resolve()
 
         with patch.object(self.install, "get_target_dirs",
                           return_value=fake_dirs), \
              patch.object(self.install, "copy_skill",
                           return_value=Path("/installed")) as mock_copy, \
              patch.object(self.install.sys, "stdout",
-                          new_callable=io.StringIO) as mock_stdout:
+                          new_callable=io.StringIO) as mock_stdout, \
+             patch.object(Path, "home",
+                          return_value=fake_home):
             with patch.object(Path, "exists", lambda p: p in existing_paths):
                 self.install.main()
 
@@ -780,7 +793,9 @@ class TestInternalFunctions(_BaseInstallTest):
     def test_xdg_or_home_dir_uses_xdg_on_linux(self):
         with patch("install.platform.system",
                    return_value="Linux"), \
-             patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}, clear=True):
+             patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}, clear=True), \
+             patch.object(self.install, "_validate_xdg_path",
+                          side_effect=lambda p, h: Path("/custom/xdg")):
             result = self.install._xdg_or_home_dir(Path("/home/user"), "claude")
         self.assertEqual(result, Path("/custom/xdg/claude/skills"))
 

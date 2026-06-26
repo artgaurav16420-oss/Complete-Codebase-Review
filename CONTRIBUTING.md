@@ -12,7 +12,7 @@ This project uses **only Python stdlib**. No `requirements.txt`, no `pip install
 # Compliance tests (62 tests)
 python tests/test_compliance.py
 
-# All 6 test suites (165 tests)
+# All 6 test suites (246 tests)
 python -m unittest discover -s tests -p "test_*.py" -v
 
 # With coverage
@@ -41,6 +41,16 @@ python -m coverage report
 - Use `tempfile.TemporaryDirectory()` for filesystem tests — never test in the repo root
 - Use `unittest.mock.patch` for mocking; prefer context managers over decorators for complex setups.
 - Assert on behavior, not implementation details (e.g., assert file exists, not that `copytree` was called).
+
+### Version Synchronization
+
+The version string is defined in **three places** and must stay in sync:
+
+- `SKILL.md` frontmatter
+- `pyproject.toml`
+- `CHANGELOG.md`
+
+The compliance test `test_compliance.py:test_version_sources_stay_in_sync` enforces this. If you bump the version in one file, update all three before committing.
 
 ## Code Style
 
