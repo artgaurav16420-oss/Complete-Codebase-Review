@@ -233,6 +233,13 @@ Each agent MUST:
 - **Web Verify**: CVE lookups, framework best-practices checks
 - **Output Format**: Standard severity-grouped findings
 
+### Strict Evidence Rule
+Every finding MUST satisfy ALL of:
+- **File & Line Anchor:** Include exact file path and line numbers (e.g., `src/auth.py:42`). No finding without a location.
+- **Zero Generic Advice:** Ban "Consider refactoring," "It is recommended," "Best practice suggests." Only report flaws that CURRENTLY exist.
+- **Blast Radius:** State the exact failure mode (e.g., "Causes infinite loop on payloads >1MB" not "Performance issue").
+- **Finding Format:** Each finding text MUST follow: `[file:line] — <concrete flaw> → <exact failure mode>`
+
 ### Agent Report Format
 
 Each specialist agent MUST return findings in this exact structure:
@@ -252,7 +259,7 @@ Each specialist agent MUST return findings in this exact structure:
 ### CRITICAL
 | Finding | File(s) | Evidence |
 |---------|---------|----------|
-| ... | path/file | [metric/observation] |
+| [file:line] — concrete flaw → failure mode | path/file | [metric/observation] |
 
 ### HIGH
 ...
@@ -361,9 +368,21 @@ Each agent report MUST include a compact findings summary (severity + count + to
 
 ### 3b. Devil's Advocate Agent
 
+**Three-Strike Rejection Rule:**
+The DA MUST automatically REJECT any finding that fails ANY of these tests:
+1. **"So What?" Test:** Is it technically imperfect, or does it actually guarantee a negative outcome (outage, breach, friction)? Mere imperfection → REJECTED.
+2. **"Echo Chamber" Test:** Is it just repeating a linter rule without explaining the architectural context? Linter echo → REJECTED.
+3. **"No Path" Test:** Does it use weasel words ("might," "likely," "could potentially") instead of pointing to an exact execution path? Weasel words → REJECTED.
+
+**For CONFIRMED/PLAUSIBLE findings, rewrite the summary to include:**
+- **The Trigger:** The exact condition that causes the flaw
+- **The Fix Paradigm:** The architectural pattern required (not just "fix the code")
+
+**Weasel Word Ban:** Auto-REJECT findings containing: "might", "could potentially", "it is recommended", "consider refactoring", "best practice suggests", "generally speaking", "in most cases".
+
 Input: synthesized report + discovery manifest
 Actions:
-- Challenge EVERY finding
+- Challenge EVERY finding using Three-Strike Rejection Rule
 - Web-verify each claim
 - Independently read code to confirm
 - Assign: CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED

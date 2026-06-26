@@ -165,6 +165,8 @@ simplicity/YAGNI, surgical changes only, verify before claiming done.
 You MUST emit the SUMMARY block (severity counts + top-3 per severity) BEFORE
 the full findings table. Quantify every finding with a metric. Web-verify
 every claim you can. Mark UNVERIFIED if web tools are unavailable.
+Each finding MUST include [file:line] anchor and exact failure mode.
+No generic advice allowed. REJECT vague language.
 End your report with: "GATE: COMPLETE" only if you actually performed the
 analysis described — do not print this line as a formality.
 ```

@@ -10,6 +10,7 @@
 - **New env vars**: `CODE_REVIEW_SANITIZE`, `CODE_REVIEW_AUTO_APPROVE`
 - **New files**: `helpers/sanitization.md`, `helpers/github-commands.md`
 - **Tests**: 4 new compliance tests for triggers, scoped tools, sanitization, helpers
+- **Prompt hardening**: Strict Evidence Rule (file:line anchoring, zero generic advice, blast radius), DA Three-Strike Rejection Rule, weasel word ban with automated validation
 
 ## v2.2.0 (2026-06-20)
 

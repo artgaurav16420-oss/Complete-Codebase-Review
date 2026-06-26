@@ -284,6 +284,30 @@ def validate_agent_status(md):
     return errors
 
 
+WEASEL_PATTERNS = [
+    r'\bmight\b', r'\bcould potentially\b', r'\bit is recommended\b',
+    r'\bconsider refactoring\b', r'\bbest practice suggests\b',
+    r'\bgenerally speaking\b', r'\bin most cases\b',
+]
+
+
+def validate_findings_have_evidence(md):
+    """Check findings contain file:line anchors and no weasel words."""
+    errors = []
+    findings_text = _section_text(md, "## Detailed Findings")
+    for line in _table_rows(findings_text):
+        cells = _parse_table_row(line)
+        if len(cells) < 1:
+            continue
+        finding = cells[0]
+        if not re.search(r'\[\S+:\d+\]', finding):
+            errors.append(f"Finding missing file:line anchor: {finding[:60]}")
+        for pattern in WEASEL_PATTERNS:
+            if re.search(pattern, finding, re.IGNORECASE):
+                errors.append(f"Finding contains weasel word: {finding[:60]}")
+    return errors
+
+
 def validate_markdown_output(md):
     """Validate a complete review output Markdown document. Returns list of errors."""
     errors = []
@@ -297,6 +321,7 @@ def validate_markdown_output(md):
     errors.extend(validate_tech_debt_summary(md))
     errors.extend(validate_tech_debt_reconciliation(md))
     errors.extend(validate_agent_status(md))
+    errors.extend(validate_findings_have_evidence(md))
     return errors
 
 
@@ -329,17 +354,17 @@ SAMPLE_VALID_OUTPUT = r"""# Codebase Health Report — my-web-app (src/)
 
 | Finding | Severity | Domain | Est. Hours | DA Verdict |
 |---------|----------|--------|------------|------------|
-| Hardcoded DB password in config/database.php | CRITICAL | Security | 2h | CONFIRMED |
-| Circular dep: auth -> user -> notification -> auth | CRITICAL | Architecture | 8h | CONFIRMED |
-| Hardcoded API key in tests/fixtures/auth.json | CRITICAL | Security | 2h | CONFIRMED |
-| Vibe coding: no behavior-driven tests found | HIGH | Process Quality | 4h | CONFIRMED |
-| Module user/service.go: cyclomatic complexity 34 | HIGH | Code Quality | 4h | CONFIRMED |
-| Test coverage <20% in 3 of 8 modules | HIGH | Test Health | 12h | PLAUSIBLE |
-| Deprecated lodash.set used in 17 call sites | HIGH | Dependencies | 3h | CONFIRMED |
-| Missing API docs for /admin/* endpoints (9 endpoints) | HIGH | Documentation | 4.5h | CONFIRMED |
-| N+1 query in /orders endpoint | HIGH | Database | 3h | CONFIRMED |
-| Mixed snake_case and camelCase in src/models | MEDIUM | Standards | 2h | QUESTIONABLE |
-| Unused import in test_compliance.py | LOW | Code Quality | 0.25h | REJECTED |
+| [config/database.php:42] — Hardcoded DB password → credential leak on source exposure | CRITICAL | Security | 2h | CONFIRMED |
+| [src/auth/cycle.go:15] — Circular dep auth→user→notification→auth → startup deadlock risk | CRITICAL | Architecture | 8h | CONFIRMED |
+| [tests/fixtures/auth.json:3] — Hardcoded API key → credential leak in test artifacts | CRITICAL | Security | 2h | CONFIRMED |
+| [src/auth/handler.go:1] — No behavior-driven tests → unverified auth logic regressions | HIGH | Process Quality | 4h | CONFIRMED |
+| [src/user/service.go:67] — Cyclomatic complexity 34 → unmaintainable, error-prone changes | HIGH | Code Quality | 4h | CONFIRMED |
+| [src/modules/*/test.py:1] — Test coverage <20% in 3 of 8 modules → silent regressions undetected | HIGH | Test Health | 12h | PLAUSIBLE |
+| [src/utils/lodash.js:12] — Deprecated lodash.set in 17 call sites → prototype pollution risk | HIGH | Dependencies | 3h | CONFIRMED |
+| [docs/api/admin.md:1] — Missing API docs for /admin/* endpoints (9 endpoints) → integration failures | HIGH | Documentation | 4.5h | CONFIRMED |
+| [src/api/orders.py:89] — N+1 query in /orders endpoint → O(n) DB calls, timeout on scale | HIGH | Database | 3h | CONFIRMED |
+| [src/models/index.ts:1] — Mixed snake_case and camelCase → inconsistent API contracts | MEDIUM | Standards | 2h | QUESTIONABLE |
+| [tests/test_compliance.py:5] — Unused import → minor dead code, no runtime impact | LOW | Code Quality | 0.25h | REJECTED |
 
 ## Improvement Roadmap
 
@@ -479,7 +504,7 @@ class TestMarkdownValidation(unittest.TestCase):
     def test_rejected_findings_are_excluded_from_roadmap(self):
         md = SAMPLE_VALID_OUTPUT.replace(
             "- ... (remaining 8 tasks)",
-            "- Unused import in test_compliance.py\n- ... (remaining 8 tasks)",
+            "- [tests/test_compliance.py:5] — Unused import → minor dead code, no runtime impact\n- ... (remaining 8 tasks)",
         )
         errors = validate_markdown_output(md)
         self.assertTrue(any("rejected DA verdict" in e for e in errors))

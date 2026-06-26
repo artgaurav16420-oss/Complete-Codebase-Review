@@ -241,6 +241,18 @@ class TestContentQuality(_BaseComplianceTest):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.content)
 
+    def test_strict_evidence_rule(self):
+        self.assertIn('Strict Evidence Rule', self.content)
+
+    def test_three_strike_rule(self):
+        self.assertIn('Three-Strike Rejection Rule', self.content)
+
+    def test_weasel_word_ban(self):
+        self.assertIn('Weasel Word Ban', self.content)
+
+    def test_finding_format_requires_file_line(self):
+        self.assertIn('[file:line]', self.content)
+
 
 class TestCrossPlatform(_BaseComplianceTest):
     """Cross-platform command coverage."""
