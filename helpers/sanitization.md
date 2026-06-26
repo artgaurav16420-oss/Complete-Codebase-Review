@@ -23,13 +23,18 @@ def sanitize_unicode(text):
 ### 2. Path Validation
 ```python
 from pathlib import Path
-def sanitize_path(path_str, allowed_roots=None):
+def sanitize_path(path_str, allowed_roots):
     """Validate path has no traversal and resolves within allowed roots.
 
-    If allowed_roots is None, returns any resolved absolute path that
-    has no '..' components. Callers should always provide allowed_roots
-    when processing untrusted input to restrict to known safe directories.
+    Args:
+        path_str: Path string to validate.
+        allowed_roots: Required list of allowed root directories.
+            Resolved path must be relative to one of these roots.
+    Returns:
+        Resolved path if valid, None otherwise.
     """
+    if not allowed_roots:
+        return None
     p = Path(path_str)
     if ".." in p.parts:
         return None
@@ -37,15 +42,13 @@ def sanitize_path(path_str, allowed_roots=None):
         resolved = p.resolve()
     except (OSError, ValueError, RuntimeError):
         return None
-    if allowed_roots:
-        for root in allowed_roots:
-            try:
-                if resolved.is_relative_to(Path(root).resolve()):
-                    return resolved
-            except (OSError, ValueError, RuntimeError):
-                continue
-        return None
-    return resolved
+    for root in allowed_roots:
+        try:
+            if resolved.is_relative_to(Path(root).resolve()):
+                return resolved
+        except (OSError, ValueError, RuntimeError):
+            continue
+    return None
 ```
 
 ### 3. Content Size Limits

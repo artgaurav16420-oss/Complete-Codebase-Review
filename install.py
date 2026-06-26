@@ -277,7 +277,8 @@ def _validate_target_path(path):
     except (OSError, ValueError, RuntimeError) as e:
         raise ValueError(f"Failed to resolve path: {path}") from e
     # Verify canonical path stays within intended parent boundary
-    if not resolved.parent.is_relative_to(parent_resolved):
+    # Skip check when resolved equals parent (installing to CWD via -t .)
+    if resolved != parent_resolved and not resolved.parent.is_relative_to(parent_resolved):
         raise ValueError(
             f"Symlink escapes target directory: {path} -> {resolved}"
         )
