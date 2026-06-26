@@ -568,7 +568,9 @@ class TestSampleOutputValidation(unittest.TestCase):
                          f"Roadmap phases {totals} sum to {sum(totals)}h, expected 200h")
 
     def test_actual_health_report_passes_validation(self):
-        report_path = Path(__file__).resolve().parent.parent / ".code-review-cache" / "health-report.md"
+        import os
+        cache_dir = os.environ.get("CODE_REVIEW_CACHE_DIR", ".code-review-cache")
+        report_path = Path(__file__).resolve().parent.parent / cache_dir / "health-report.md"
         if not report_path.exists():
             self.skipTest("health-report.md not found on disk")
         md = report_path.read_text(encoding="utf-8")

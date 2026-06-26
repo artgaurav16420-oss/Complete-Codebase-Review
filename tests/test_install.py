@@ -830,9 +830,11 @@ class TestInternalFunctions(_BaseInstallTest):
         self.assertEqual(result, Path("/home/user/.claude/skills"))
 
     def test_validate_xdg_path_resolves_any_absolute(self):
-        result = self.install._validate_xdg_path(Path("/tmp/xdg"))
-        self.assertIsNotNone(result)
-        self.assertEqual(result, Path("/tmp/xdg").resolve())
+        with tempfile.TemporaryDirectory() as tmpdir:
+            xdg = Path(tmpdir) / "xdg"
+            result = self.install._validate_xdg_path(xdg)
+            self.assertIsNotNone(result)
+            self.assertEqual(result, xdg.resolve())
 
     def test_get_version_caches_result(self):
         self.install._VERSION_CACHE = None

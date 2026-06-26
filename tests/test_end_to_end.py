@@ -6,6 +6,7 @@ Tests that the full pipeline is wired correctly:
 
 (CLI smoke tests are in test_smoke.py to avoid duplication.)
 """
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -24,7 +25,8 @@ class TestEndToEndHealthReport(unittest.TestCase):
             from tests.test_pipeline import validate_markdown_output
         finally:
             sys.path[:] = old_path
-        report_path = REPO_ROOT / ".code-review-cache" / "health-report.md"
+        cache_dir = os.environ.get("CODE_REVIEW_CACHE_DIR", ".code-review-cache")
+        report_path = REPO_ROOT / cache_dir / "health-report.md"
         if not report_path.is_file():
             self.skipTest("Health report not found — run pipeline first")
         content = report_path.read_text(encoding="utf-8")
