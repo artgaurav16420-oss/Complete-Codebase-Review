@@ -484,8 +484,8 @@ class TestMainFunction(_BaseInstallTestWithArgv):
 
     def test_copy_skill_failure_continues_to_next_agent(self):
         import platform as _platform
-        if _platform.system() == "Windows":
-            self.skipTest("Unix-style mock paths incompatible with home check")
+        if _platform.system() != "Linux":
+            self.skipTest("Unix-style mock paths only work on Linux")
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
             "OpenCode": Path("/home/user/.opencode/skills"),
