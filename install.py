@@ -118,7 +118,10 @@ def print_error(msg):
 
 def _validate_xdg_path(xdg_path, home):
     """Check XDG_CONFIG_HOME resolves under user home; return path or None."""
-    resolved = xdg_path.resolve()
+    try:
+        resolved = xdg_path.resolve()
+    except (OSError, ValueError):
+        return None
     try:
         if resolved.is_relative_to(home.resolve()):
             return resolved
@@ -264,7 +267,10 @@ def _validate_target_path(path):
     """
     if ".." in path.parts:
         raise ValueError(f"Path traversal detected: {path}")
-    resolved = path.resolve()
+    try:
+        resolved = path.resolve()
+    except (OSError, ValueError) as e:
+        raise ValueError(f"Failed to resolve path: {path}") from e
     resolved_parent = resolved.parent
     if not resolved_parent.is_relative_to(path.parent.resolve()):
         raise ValueError(
@@ -306,7 +312,7 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
         except ValueError as e:
             print_error(f"Invalid target path for {tool_name}: {e}")
             continue
-        home = Path.home()
+        home = Path.home().resolve()
         if not target_dir.resolve().is_relative_to(home):
             print_error(
                 f"Auto-install target {tool_name} resolves outside home "

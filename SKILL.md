@@ -582,7 +582,7 @@ Track iteration count as `$LOCAL_LOOP_ITERATIONS`. Log each iteration:
 
 ### 5d. Full Test Suite Run
 
-**PREREQUISITE: Phase 5c local review loop must have completed (either clean exit or max iterations reached). Do not jump here directly from 5b.**
+**PREREQUISITE: Phase 5c local review loop must have completed (either zero findings or max iterations reached). Do not jump here directly from 5b.**
 
 After the local review loop exits cleanly, run the full test suite:
 
@@ -636,11 +636,12 @@ if `gh` is available:
    - **Linux (Debian/Ubuntu)**: `type -p wget >/dev/null || sudo apt-get install wget -y && sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt update && sudo apt install gh -y`
    - **Linux (other)**: `sudo dnf install 'dnf-command(config-manager)' && sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && sudo dnf install gh`
 
-   After installation, verify with `gh --version`. If installation fails, skip PR creation.
-   If user declines, skip PR creation and proceed to 5g.
+    After installation, verify with `gh --version`. If installation fails, skip PR creation.
+    If user declines, skip PR creation and proceed to 5g.
 
-   If `gh` is available but not authenticated, ask the user to run `gh auth login` manually, then proceed.
-   If remote is not GitHub, skip PR creation and proceed to 5g with a note:
+    If `gh` is available but not authenticated, ask the user to run `gh auth login` manually.
+    Only proceed to `gh pr create` after confirmed authentication.
+    If remote is not GitHub, skip PR creation and proceed to 5g with a note:
    "PR creation skipped — remote is not GitHub.
    Branch with fixes exists locally at $BRANCH."
 
