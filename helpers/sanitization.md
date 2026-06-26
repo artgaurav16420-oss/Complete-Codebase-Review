@@ -24,7 +24,12 @@ def sanitize_unicode(text):
 ```python
 from pathlib import Path
 def sanitize_path(path_str, allowed_roots=None):
-    """Validate path has no traversal and resolves within allowed roots."""
+    """Validate path has no traversal and resolves within allowed roots.
+
+    If allowed_roots is None, returns any resolved absolute path that
+    has no '..' components. Callers should always provide allowed_roots
+    when processing untrusted input to restrict to known safe directories.
+    """
     p = Path(path_str)
     if ".." in p.parts:
         return None

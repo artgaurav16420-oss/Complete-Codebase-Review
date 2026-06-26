@@ -276,11 +276,12 @@ def _validate_target_path(path):
         parent_resolved = path.parent.resolve()
     except (OSError, ValueError, RuntimeError) as e:
         raise ValueError(f"Failed to resolve path: {path}") from e
-    # Verify canonical path stays within intended parent boundary
-    if not resolved.parent.is_relative_to(parent_resolved):
-        raise ValueError(
-            f"Symlink escapes target directory: {path} -> {resolved}"
-        )
+    # Skip boundary check for relative paths (., .., empty) — they resolve to CWD
+    if path.is_absolute():
+        if not resolved.parent.is_relative_to(parent_resolved):
+            raise ValueError(
+                f"Symlink escapes target directory: {path} -> {resolved}"
+            )
     return resolved
 
 
