@@ -121,7 +121,7 @@ def _validate_xdg_path(xdg_path, home):
     try:
         resolved = xdg_path.resolve()
         home_resolved = home.resolve()
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         return None
     if resolved.is_relative_to(home_resolved):
         return resolved
@@ -268,7 +268,7 @@ def _validate_target_path(path):
     try:
         resolved = path.resolve()
         parent_resolved = path.parent.resolve()
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RuntimeError) as e:
         raise ValueError(f"Failed to resolve path: {path}") from e
     if not resolved.parent.is_relative_to(parent_resolved):
         raise ValueError(
@@ -301,6 +301,10 @@ def _run_target_install(src_dir, target, dry_run):
 def _run_auto_install(src_dir, target_dirs, dry_run):
     """Install to all detected AI agent config directories. Returns True if any succeeded."""
     installed_any = False
+    try:
+        home = Path.home().resolve()
+    except (OSError, ValueError, RuntimeError):
+        home = None
     for tool_name, target_dir in target_dirs.items():
         if not target_dir.parent.exists():
             continue
@@ -310,8 +314,7 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
         except ValueError as e:
             print_error(f"Invalid target path for {tool_name}: {e}")
             continue
-        home = Path.home().resolve()
-        if not target_dir.resolve().is_relative_to(home):
+        if home and not target_dir.resolve().is_relative_to(home):
             print_error(
                 f"Auto-install target {tool_name} resolves outside home "
                 f"directory: {target_dir}"

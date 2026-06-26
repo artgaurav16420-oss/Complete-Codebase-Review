@@ -573,11 +573,12 @@ class TestSampleOutputValidation(unittest.TestCase):
             self.skipTest("health-report.md not found on disk")
         md = report_path.read_text(encoding="utf-8")
         errors = validate_markdown_output(md)
-        if errors:
-            self.skipTest(
-                "health-report.md exists but does not conform to schema "
-                f"({len(errors)} validation errors)"
+        self.assertEqual(
+            errors, [],
+            "health-report.md does not conform to schema:\n" + "\n".join(
+                f"  - {e}" for e in errors
             )
+        )
 
 
 if __name__ == "__main__":

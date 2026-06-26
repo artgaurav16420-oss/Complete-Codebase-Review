@@ -21,10 +21,7 @@ class TestEndToEndHealthReport(unittest.TestCase):
         old_path = list(sys.path)
         try:
             sys.path.insert(0, str(REPO_ROOT))
-            from tests.test_pipeline import (
-                SAMPLE_VALID_OUTPUT,
-                validate_markdown_output,
-            )
+            from tests.test_pipeline import validate_markdown_output
         finally:
             sys.path[:] = old_path
         report_path = REPO_ROOT / ".code-review-cache" / "health-report.md"
@@ -32,11 +29,12 @@ class TestEndToEndHealthReport(unittest.TestCase):
             self.skipTest("Health report not found — run pipeline first")
         content = report_path.read_text(encoding="utf-8")
         errors = validate_markdown_output(content)
-        if errors:
-            self.skipTest(
-                f"health-report.md has {len(errors)} validation errors "
-                "(regenerate with full pipeline run)"
+        self.assertEqual(
+            errors, [],
+            "health report failed validation:\n" + "\n".join(
+                f"  - {e}" for e in errors
             )
+        )
 
 
 if __name__ == "__main__":
