@@ -90,6 +90,29 @@ class TestStructural(_BaseComplianceTest):
         self.assertFalse(
             re.search(r'(spawn|synthes|phase|agent|parallel)', desc_match.group(1), re.IGNORECASE))
 
+    def test_triggers_field_present(self):
+        self.assertIn("triggers:", self.content)
+        trigger_section = re.search(r'triggers:\s*\n((?:\s*-\s*.+\n)+)', self.content)
+        self.assertIsNotNone(trigger_section, "triggers field must have list items")
+        triggers = trigger_section.group(1).strip().split("\n")
+        self.assertGreaterEqual(len(triggers), 3, "At least 3 triggers required")
+
+    def test_scoped_tools_section_present(self):
+        self.assertIn("Scoped Tool Permissions", self.content)
+        self.assertIn("Phase 1-3", self.content)
+        self.assertIn("Phase 4", self.content)
+        self.assertIn("Phase 5", self.content)
+
+    def test_sanitize_env_var_present(self):
+        self.assertIn("CODE_REVIEW_SANITIZE", self.content)
+        self.assertIn("CODE_REVIEW_AUTO_APPROVE", self.content)
+
+    def test_helpers_directory_exists(self):
+        repo_root = Path(self.skill_path).resolve().parent
+        self.assertTrue((repo_root / "helpers").is_dir())
+        self.assertTrue((repo_root / "helpers" / "sanitization.md").is_file())
+        self.assertTrue((repo_root / "helpers" / "github-commands.md").is_file())
+
     def test_command_frontmatter_fields(self):
         self.assertIn('user-invocable: true', self.content)
         self.assertIn('argument-hint:', self.content)

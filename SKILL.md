@@ -5,7 +5,14 @@ user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, Task"
 effort: ${CODE_REVIEW_EFFORT:-max}
-version: 2.2.0
+version: 2.3.0
+triggers:
+  - "review.*codebase"
+  - "run.*CCR"
+  - "audit.*security"
+  - "complete.*code.*review"
+  - "codebase.*health"
+  - "assess.*code"
 ---
 
 # Complete Codebase Review
@@ -25,6 +32,8 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer. |
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 | `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
+| `CODE_REVIEW_SANITIZE` | `true` | Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping). |
+| `CODE_REVIEW_AUTO_APPROVE` | `low` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
 
 
 ## Overview
@@ -171,6 +180,20 @@ context (e.g. "Process Quality (Karpathy Compliance)" in the agent table below,
 | `devops` | DevOps & Infra | DevOps |
 | `standards` | Standards Compliance | Standards |
 | `process_quality` | Process Quality (Karpathy Compliance) | Process Quality |
+
+### Scoped Tool Permissions
+
+Each phase has specific tool access to enforce least-privilege:
+
+| Phase | Allowed Tools | Purpose |
+|-------|--------------|---------|
+| Phase 1-3 (Discovery, Analysis, Synthesis) | `Read, Grep, Glob, WebSearch, WebFetch` | Read-only analysis |
+| Phase 4 (Fix Plan + Apply) | Add `Bash` | Execute fix commands |
+| Phase 5a-5c (Review Loop) | Add `Task` | Spawn reviewer agents |
+| Phase 5d (Tests) | `Bash` only | Run test suite |
+| Phase 5e-5f (PR + External) | Add `Task` | Create PR, fetch comments |
+
+Agents MUST NOT use tools outside their phase's allowed set. Violations are logged and the agent is halted.
 
 ### Specialist Agents
 
@@ -686,17 +709,39 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
    ```bash
    OWNER_REPO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
    gh pr view $PR_NUMBER
-   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments
-   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews
+   # Use pagination for large PRs (see helpers/github-commands.md)
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments --paginate
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews --paginate
    ```
 
-4. **Parse actionable findings** from bot comments:
+4. **Sanitize and parse actionable findings** from bot comments:
    - Filter to bot-authored comments only (where `user.type == "Bot"`,
      e.g. CodeRabbit, gemini-code-assist, etc.)
+   - **Sanitize** all comment bodies when `CODE_REVIEW_SANITIZE=true` (see `helpers/sanitization.md`):
+     - Normalize Unicode to NFC
+     - Strip dangerous shell commands (rm -rf, sudo, chmod 777, etc.)
+     - Validate extracted file paths (reject traversal)
+     - Truncate content exceeding 10KB
    - Extract file paths, line numbers, suggested changes
    - Classify as CRITICAL/HIGH/MEDIUM/LOW
+   - Skip findings with `REJECTED` or unverifiable claims
 
-5. **Apply fixes**: For each actionable finding:
+5. **Apply fixes** with per-issue approval based on `CODE_REVIEW_AUTO_APPROVE`:
+   - `all`: Auto-apply all findings (legacy behavior)
+   - `low` (default): Auto-apply LOW/MEDIUM; present CRITICAL/HIGH to user
+   - `none`: Present all findings to user for approval
+   
+   For user-presented findings:
+   ```text
+   Found N actionable issues:
+   1. [CRITICAL] file.py:42 — description
+   2. [HIGH] file.py:100 — description
+   3. [LOW] file.py:200 — description
+   
+   Reply with issue numbers to apply (e.g., '1,3'), 'all', or 'skip'
+   ```
+   
+   For each approved finding:
    - Read the affected file
    - Apply the suggested fix (or minimal correction)
    - Verify locally (lint/typecheck)

@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.3.0 (2026-06-26)
+
+- **Input sanitization**: Unicode normalization, shell command stripping, path validation for bot comments
+- **Scoped tool permissions**: Phase 1-3 read-only agents restricted from write operations
+- **Per-issue approval**: External loop auto-approve threshold configurable via `CODE_REVIEW_AUTO_APPROVE`
+- **GraphQL pagination**: Large PR comment fetching with cursor-based pagination
+- **Regex triggers**: Natural-language activation patterns ("review codebase", "run CCR", etc.)
+- **New env vars**: `CODE_REVIEW_SANITIZE`, `CODE_REVIEW_AUTO_APPROVE`
+- **New files**: `helpers/sanitization.md`, `helpers/github-commands.md`
+- **Tests**: 4 new compliance tests for triggers, scoped tools, sanitization, helpers
+
 ## v2.2.0 (2026-06-20)
 
 [#25](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/pull/25)
