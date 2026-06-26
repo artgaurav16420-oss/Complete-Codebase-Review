@@ -28,7 +28,10 @@ def sanitize_path(path_str, allowed_roots=None):
     p = Path(path_str)
     if ".." in p.parts:
         return None
-    resolved = p.resolve()
+    try:
+        resolved = p.resolve()
+    except (OSError, ValueError, RuntimeError):
+        return None
     if allowed_roots:
         for root in allowed_roots:
             if resolved.is_relative_to(root):
@@ -89,12 +92,13 @@ def sanitize_url(url):
 def sanitize_bot_comment(comment):
     """Full sanitization pipeline for bot-authored GitHub comments."""
     text = comment.get("body", "")
+    # Truncate first to avoid expensive ops on huge inputs
+    text = sanitize_content(text)
     text = sanitize_unicode(text)
     text = sanitize_shell_suggestions(text)
-    text = sanitize_content(text)
-    # Extract and validate file paths
+    # Extract and validate file paths (walrus avoids double resolve)
     paths = re.findall(r'`([^`]+\.\w+)`', text)
-    validated_paths = [sanitize_path(p) for p in paths if sanitize_path(p)]
+    validated_paths = [v for p in paths if (v := sanitize_path(p)) is not None]
     return {
         "body": text,
         "paths": validated_paths,

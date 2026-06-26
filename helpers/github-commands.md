@@ -93,9 +93,26 @@ fi
 ## Bot Detection Patterns
 
 ```bash
-# Filter bot-authored comments
+# Filter bot-authored comments (handles paginated output)
 gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments --paginate | \
-  python -c "import json,sys; [print(c['body']) for c in json.load(sys.stdin) if c['user']['type']=='Bot']"
+  python -c "
+import json, sys
+data = []
+for line in sys.stdin:
+    line = line.strip()
+    if line:
+        try:
+            chunk = json.loads(line)
+            if isinstance(chunk, list):
+                data.extend(chunk)
+            else:
+                data.append(chunk)
+        except json.JSONDecodeError:
+            pass
+for c in data:
+    if c.get('user', {}).get('type') == 'Bot':
+        print(c.get('body', ''))
+"
 ```
 
 ## Commit and Push Helper
