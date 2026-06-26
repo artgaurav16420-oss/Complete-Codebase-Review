@@ -94,13 +94,25 @@ fi
 
 ```bash
 # Filter bot-authored comments (handles paginated output)
-# gh api outputs pretty-printed JSON — read entire output, not line-by-line
+# gh api --paginate outputs concatenated JSON arrays — accumulate all pages
 gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments --paginate | \
   python -c "
 import json, sys
-data = json.load(sys.stdin)
-if isinstance(data, dict):
-    data = [data]
+raw = sys.stdin.read()
+data = []
+decoder = json.JSONDecoder()
+idx = 0
+while idx < len(raw):
+    idx = raw.find('[', idx)
+    if idx == -1:
+        break
+    try:
+        obj, end = decoder.raw_decode(raw, idx)
+        if isinstance(obj, list):
+            data.extend(obj)
+        idx = idx + end
+    except json.JSONDecodeError:
+        idx += 1
 for c in data:
     if c.get('user', {}).get('type') == 'Bot':
         print(c.get('body', ''))

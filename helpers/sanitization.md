@@ -97,8 +97,14 @@ def sanitize_url(url):
 
 ### 6. Bot Comment Sanitization (Full Pipeline)
 ```python
-def sanitize_bot_comment(comment):
-    """Full sanitization pipeline for bot-authored GitHub comments."""
+def sanitize_bot_comment(comment, allowed_roots=None):
+    """Full sanitization pipeline for bot-authored GitHub comments.
+
+    Args:
+        comment: GitHub API comment dict with 'body' and 'user' keys.
+        allowed_roots: List of allowed root directories for path validation.
+            If None, paths are validated for traversal only (no root restriction).
+    """
     text = comment.get("body", "")
     # Truncate first to avoid expensive ops on huge inputs
     text = sanitize_content(text)
@@ -106,7 +112,7 @@ def sanitize_bot_comment(comment):
     text = sanitize_shell_suggestions(text)
     # Extract and validate file paths (walrus avoids double resolve)
     paths = re.findall(r'`([^`]+\.\w+)`', text)
-    validated_paths = [v for p in paths if (v := sanitize_path(p)) is not None]
+    validated_paths = [v for p in paths if (v := sanitize_path(p, allowed_roots)) is not None]
     return {
         "body": text,
         "paths": validated_paths,
