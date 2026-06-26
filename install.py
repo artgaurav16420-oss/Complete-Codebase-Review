@@ -120,9 +120,11 @@ def _validate_xdg_path(xdg_path):
     """Check XDG_CONFIG_HOME resolves to an absolute path; return resolved path or None.
 
     Per XDG spec, XDG_CONFIG_HOME may be outside the user's home directory
-    (e.g. /mnt/storage/config). We only verify it resolves to an absolute path.
+    (e.g. /mnt/storage/config). We verify it is absolute, has no traversal
+    components, and resolves successfully.
     """
-    # Check original path is absolute before resolve (resolve always returns absolute)
+    if ".." in xdg_path.parts:
+        return None
     if not xdg_path.is_absolute():
         return None
     try:
@@ -271,8 +273,14 @@ def _validate_target_path(path):
         raise ValueError(f"Path traversal detected: {path}")
     try:
         resolved = path.resolve()
+        parent_resolved = path.parent.resolve()
     except (OSError, ValueError, RuntimeError) as e:
         raise ValueError(f"Failed to resolve path: {path}") from e
+    # Verify canonical path stays within intended parent boundary
+    if not resolved.parent.is_relative_to(parent_resolved):
+        raise ValueError(
+            f"Symlink escapes target directory: {path} -> {resolved}"
+        )
     return resolved
 
 
