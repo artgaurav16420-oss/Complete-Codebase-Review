@@ -8,6 +8,7 @@ Status) and validates that sample outputs conform.
 """
 import re
 import unittest
+from pathlib import Path
 
 VALID_SEVERITIES = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}
 VALID_DA_VERDICTS = {
@@ -568,21 +569,17 @@ class TestSampleOutputValidation(unittest.TestCase):
 
     def test_actual_health_report_passes_validation(self):
         import os
-        report_path = os.path.join(
-            os.path.dirname(__file__), os.pardir, ".code-review-cache", "health-report.md"
-        )
-        if not os.path.isfile(report_path):
-            self.skipTest(
-                f"Health report not found at {report_path}. "
-                "Run a full review first to generate it."
-            )
-        with open(report_path, encoding="utf-8") as f:
-            content = f.read()
-        errors = validate_markdown_output(content)
+        cache_dir = os.environ.get("CODE_REVIEW_CACHE_DIR", ".code-review-cache")
+        report_path = Path(__file__).resolve().parent.parent / cache_dir / "health-report.md"
+        if not report_path.exists():
+            self.skipTest("health-report.md not found on disk")
+        md = report_path.read_text(encoding="utf-8")
+        errors = validate_markdown_output(md)
         self.assertEqual(
-            errors,
-            [],
-            f"Actual health-report.md failed validation:\n" + "\n".join(f"  - {e}" for e in errors),
+            errors, [],
+            "health-report.md does not conform to schema:\n" + "\n".join(
+                f"  - {e}" for e in errors
+            )
         )
 
 

@@ -18,6 +18,7 @@ You can configure the execution behavior by exporting these environment variable
 *   `CODE_REVIEW_FILTER` (default: `all`): Output filter. Set to `critical-high`
     to show only CRITICAL and HIGH severity findings in the report. Per-Domain
     Scores still show full counts for context.
+*   `REVIEW_MAX_ITERATIONS` (default: `3`): Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates.
 
 ## ⚡ Quick Mode
 

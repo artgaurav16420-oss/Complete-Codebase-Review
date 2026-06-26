@@ -33,7 +33,7 @@ Please complete the following information:
 - **OS**: [e.g., Windows 11, macOS 14, Ubuntu 22.04]
 - **Python version**: [e.g., 3.11, 3.12]
 - **Install method**: [e.g., pip install, git clone + pip, Docker]
-- **Tool version**: [e.g., 1.2.3 — run `pip show complete-codebase-review` or check `pyproject.toml`]
+- **Tool version**: [e.g., 1.2.3 — run `python install.py --version` or check `pyproject.toml`]
 - **Target codebase type**: [e.g., Python monorepo, Node.js app, multi-language]
 - **Target codebase size**: [e.g., 50 files / 10k LOC]
 

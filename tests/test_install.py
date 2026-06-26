@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 
 def _import_install():
@@ -113,11 +113,14 @@ class TestGetTargetDirs(_BaseInstallTest):
         self.assertEqual(dirs, expected)
 
     def test_claude_code_uses_xdg_on_linux(self):
+        fake_home = Path('/home/user').resolve()
+        fake_xdg = fake_home / '.config'
         with patch.object(self.install.platform, "system",
                                   return_value="Linux"), \
-     patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}):
+     patch.dict(os.environ, {"XDG_CONFIG_HOME": str(fake_xdg)}), \
+     patch.object(Path, "home", return_value=fake_home):
             dirs = self.install.get_target_dirs()
-        self.assertEqual(dirs["Claude Code"], Path("/custom/xdg/claude/skills"))
+        self.assertEqual(dirs["Claude Code"], fake_xdg / "claude" / "skills")
 
     def test_claude_code_uses_dot_claude_when_xdg_unset_on_linux(self):
         """Without XDG_CONFIG_HOME, Linux should use ~/.claude like other platforms."""
@@ -422,6 +425,7 @@ class TestMainFunction(_BaseInstallTestWithArgv):
             "OpenCode": Path("/home/user/.opencode/skills"),
         }
         existing = {p.parent for p in fake_dirs.values()}
+        fake_home = Path("/home/user").resolve()
 
         with patch.object(self.install, "get_target_dirs",
                           return_value=fake_dirs), \
@@ -430,7 +434,9 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                               "/installed/complete-codebase-review")) \
              as mock_copy, \
              patch.object(self.install.sys, "stdout",
-                          new_callable=io.StringIO) as mock_stdout:
+                          new_callable=io.StringIO) as mock_stdout, \
+             patch.object(Path, "home",
+                          return_value=fake_home):
             with patch.object(Path, "exists", lambda p: p in existing):
                 self.install.main()
 
@@ -490,7 +496,9 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                           side_effect=[PermissionError("denied"),
                                        Path("/ok")]) as mock_copy, \
              patch.object(self.install.sys, "stdout",
-                          new_callable=io.StringIO) as mock_stdout:
+                          new_callable=io.StringIO) as mock_stdout, \
+             patch.object(Path, "home",
+                          return_value=Path("/home/user").resolve()):
             with patch.object(Path, "exists", lambda p: p in existing):
                 self.install.main()
 
@@ -641,7 +649,6 @@ class TestValidateTargetPath(_BaseInstallTest):
         output = mock_stdout.getvalue()
         self.assertIn("Path traversal", output)
 
-
 class TestMainEdgeCases(_BaseInstallTestWithArgv):
     """Edge-case tests for main()."""
 
@@ -717,13 +724,16 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
             "Cursor": Path("/home/user/.cursor/skills"),
         }
         existing_paths = {Path("/home/user/.claude")}
+        fake_home = Path("/home/user").resolve()
 
         with patch.object(self.install, "get_target_dirs",
                           return_value=fake_dirs), \
              patch.object(self.install, "copy_skill",
                           return_value=Path("/installed")) as mock_copy, \
              patch.object(self.install.sys, "stdout",
-                          new_callable=io.StringIO) as mock_stdout:
+                          new_callable=io.StringIO) as mock_stdout, \
+             patch.object(Path, "home",
+                          return_value=fake_home):
             with patch.object(Path, "exists", lambda p: p in existing_paths):
                 self.install.main()
 
@@ -758,6 +768,33 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
 class TestInternalFunctions(_BaseInstallTest):
     """Tests for previously uncovered internal helper functions."""
 
+    def test_onerror_retries_after_chmod(self):
+        mock_func = MagicMock()
+        mock_chmod = MagicMock()
+        with patch("install.os.chmod", mock_chmod):
+            self.install._onerror(mock_func, "/some/path", None)
+        mock_chmod.assert_called_once()
+        args, kwargs = mock_chmod.call_args
+        self.assertEqual(args[0], "/some/path")
+        self.assertFalse(kwargs.get("follow_symlinks", True))
+        mock_func.assert_called_once_with("/some/path")
+
+    def test_onerror_handles_os_error(self):
+        mock_func = MagicMock()
+        with patch("install.os.chmod", side_effect=OSError("denied")):
+            self.install._onerror(mock_func, "/some/path", None)
+        mock_func.assert_called_once_with("/some/path")
+
+    def test_onerror_fallback_on_not_implemented(self):
+        mock_func = MagicMock()
+        mock_chmod = MagicMock(side_effect=[NotImplementedError, None])
+        with patch("install.os.chmod", mock_chmod), \
+             patch("install.os.path.islink", return_value=False):
+            self.install._onerror(mock_func, "/some/path", None)
+        second_call = mock_chmod.call_args_list[1]
+        self.assertEqual(second_call.args[0], "/some/path")
+        self.assertNotIn("follow_symlinks", second_call.kwargs)
+
     def test_use_color_returns_false_when_no_tty(self):
         with patch.object(sys.stdout, "isatty", return_value=False):
             result = self.install._use_color()
@@ -778,16 +815,30 @@ class TestInternalFunctions(_BaseInstallTest):
         self.assertTrue(result)
 
     def test_xdg_or_home_dir_uses_xdg_on_linux(self):
+        fake_home = Path('/home/user').resolve()
+        fake_xdg = fake_home / '.config'
         with patch("install.platform.system",
                    return_value="Linux"), \
-             patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/xdg"}, clear=True):
-            result = self.install._xdg_or_home_dir(Path("/home/user"), "claude")
-        self.assertEqual(result, Path("/custom/xdg/claude/skills"))
+             patch.dict(os.environ, {"XDG_CONFIG_HOME": str(fake_xdg)}, clear=True), \
+             patch.object(Path, "home", return_value=fake_home):
+            result = self.install._xdg_or_home_dir(fake_home, "claude")
+        self.assertEqual(result, fake_xdg / "claude" / "skills")
 
     def test_xdg_or_home_dir_uses_home_on_non_linux(self):
         with patch("install.platform.system", return_value="Windows"):
             result = self.install._xdg_or_home_dir(Path("/home/user"), "claude")
         self.assertEqual(result, Path("/home/user/.claude/skills"))
+
+    def test_validate_xdg_path_resolves_any_absolute(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            xdg = Path(tmpdir) / "xdg"
+            result = self.install._validate_xdg_path(xdg)
+            self.assertIsNotNone(result)
+            self.assertEqual(result, xdg.resolve())
+
+    def test_validate_xdg_path_rejects_relative(self):
+        result = self.install._validate_xdg_path(Path("relative/path"))
+        self.assertIsNone(result)
 
     def test_get_version_caches_result(self):
         self.install._VERSION_CACHE = None

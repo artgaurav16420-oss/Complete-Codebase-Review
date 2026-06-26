@@ -39,9 +39,13 @@ _SKILL_EXCLUDED = {
 
 def _onerror(func, path, exc_info):
     """Retry a failed rmtree operation by making the path writable first.
-    
+
     Uses follow_symlinks=False to prevent permission changes on symlink targets
     outside the expected directory tree.
+
+    NOTE: onerror kwarg is deprecated in Python 3.12+ (PEP 632). Removal is
+    planned for Python 4.0. Switch to onexc (receives exception instance
+    directly) when Python 3.9 support is dropped.
     """
     try:
         try:
@@ -112,12 +116,32 @@ def print_error(msg):
     _print(msg, "ERROR", "\033[91m")
 
 
+def _validate_xdg_path(xdg_path):
+    """Check XDG_CONFIG_HOME resolves to an absolute path; return resolved path or None.
+
+    Per XDG spec, XDG_CONFIG_HOME may be outside the user's home directory
+    (e.g. /mnt/storage/config). We verify it is absolute, has no traversal
+    components, and resolves successfully.
+    """
+    if ".." in xdg_path.parts:
+        return None
+    if not xdg_path.is_absolute():
+        return None
+    try:
+        resolved = xdg_path.resolve()
+    except (OSError, ValueError, RuntimeError):
+        return None
+    return resolved
+
+
 def _xdg_or_home_dir(home, app_dir):
     """Return app skill dir under XDG_CONFIG_HOME on Linux, else ~/.<app_dir>/skills."""
     if platform.system() == "Linux":
         xdg_env = os.environ.get("XDG_CONFIG_HOME", "").strip()
         if xdg_env:
-            return Path(xdg_env) / app_dir / "skills"
+            validated = _validate_xdg_path(Path(xdg_env))
+            if validated is not None:
+                return validated / app_dir / "skills"
     return home / f".{app_dir}" / "skills"
 
 
@@ -247,7 +271,18 @@ def _validate_target_path(path):
     """
     if ".." in path.parts:
         raise ValueError(f"Path traversal detected: {path}")
-    return path.resolve()
+    try:
+        resolved = path.resolve()
+        parent_resolved = path.parent.resolve()
+    except (OSError, ValueError, RuntimeError) as e:
+        raise ValueError(f"Failed to resolve path: {path}") from e
+    # Verify canonical path stays within intended parent boundary
+    # Skip check when resolved equals parent (installing to CWD via -t .)
+    if resolved != parent_resolved and not resolved.parent.is_relative_to(parent_resolved):
+        raise ValueError(
+            f"Symlink escapes target directory: {path} -> {resolved}"
+        )
+    return resolved
 
 
 def _run_target_install(src_dir, target, dry_run):

@@ -5,7 +5,14 @@ user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, Task"
 effort: ${CODE_REVIEW_EFFORT:-max}
-version: 2.2.0
+version: 2.3.0
+triggers:
+  - "review.*codebase"
+  - "run.*CCR"
+  - "audit.*security"
+  - "complete.*code.*review"
+  - "codebase.*health"
+  - "assess.*code"
 ---
 
 # Complete Codebase Review
@@ -25,6 +32,8 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer. |
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 | `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
+| `CODE_REVIEW_SANITIZE` | `true` | Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping). |
+| `CODE_REVIEW_AUTO_APPROVE` | `low` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
 
 
 ## Overview
@@ -171,6 +180,20 @@ context (e.g. "Process Quality (Karpathy Compliance)" in the agent table below,
 | `devops` | DevOps & Infra | DevOps |
 | `standards` | Standards Compliance | Standards |
 | `process_quality` | Process Quality (Karpathy Compliance) | Process Quality |
+
+### Scoped Tool Permissions
+
+Each phase has specific tool access to enforce least-privilege:
+
+| Phase | Allowed Tools | Purpose |
+|-------|--------------|---------|
+| Phase 1-3 (Discovery, Analysis, Synthesis) | `Read, Grep, Glob, WebSearch, WebFetch` | Read-only analysis |
+| Phase 4 (Fix Plan + Apply) | Add `Bash` | Execute fix commands |
+| Phase 5a-5c (Review Loop) | Add `Task` | Spawn reviewer agents |
+| Phase 5d (Tests) | `Bash` only | Run test suite |
+| Phase 5e-5f (PR + External) | Add `Task` | Create PR, fetch comments |
+
+Agents MUST NOT use tools outside their phase's allowed set. Violations are logged and the agent is halted.
 
 ### Specialist Agents
 
@@ -567,6 +590,8 @@ If the reviewer finds bugs, edge cases missed, or regressions introduced:
 
 ### 5c. Local Review Loop
 
+**MANDATORY GATE: Do NOT proceed to 5d until this loop completes.**
+
 After corrections are applied, enter an automated local review loop:
 
 - Re-run the Independent Reviewer (5a) on the updated working tree
@@ -579,6 +604,8 @@ Track iteration count as `$LOCAL_LOOP_ITERATIONS`. Log each iteration:
 `[LOCAL REVIEW LOOP] Iteration N: X findings remaining`
 
 ### 5d. Full Test Suite Run
+
+**PREREQUISITE: Phase 5c local review loop must have completed (either zero findings or max iterations reached). Do not jump here directly from 5b.**
 
 After the local review loop exits cleanly, run the full test suite:
 
@@ -623,8 +650,22 @@ if `gh` is available:
    gh auth status 2>/dev/null
    git remote get-url origin 2>/dev/null | grep -q github.com
    ```
-   If either fails, skip PR creation and proceed to 5g with a note:
-   "PR creation skipped — `gh` CLI not available or remote is not GitHub.
+   If `gh` is not installed, ask the user:
+   > "The `gh` CLI is not installed. Would you like me to install it? (yes/no)"
+
+   If user approves, install per platform:
+   - **Windows**: `winget install GitHub.cli --silent --accept-package-agreements --accept-source-agreements`
+   - **macOS**: `brew install gh`
+   - **Linux (Debian/Ubuntu)**: `type -p wget >/dev/null || sudo apt-get install wget -y && sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt update && sudo apt install gh -y`
+   - **Linux (RHEL/Fedora)**: `sudo dnf install 'dnf-command(config-manager)' && sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && sudo dnf install gh`
+
+    After installation, verify with `gh --version`. If installation fails, skip PR creation.
+    If user declines, skip PR creation and proceed to 5g.
+
+    If `gh` is available but not authenticated, ask the user to run `gh auth login` manually.
+    Only proceed to `gh pr create` after confirmed authentication.
+    If remote is not GitHub, skip PR creation and proceed to 5g with a note:
+   "PR creation skipped — remote is not GitHub.
    Branch with fixes exists locally at $BRANCH."
 
 3. **Push and create PR** — no user confirmation needed:
@@ -668,17 +709,39 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
    ```bash
    OWNER_REPO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
    gh pr view $PR_NUMBER
-   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments
-   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews
+   # Use pagination for large PRs (see helpers/github-commands.md)
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments --paginate
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews --paginate
    ```
 
-4. **Parse actionable findings** from bot comments:
+4. **Sanitize and parse actionable findings** from bot comments:
    - Filter to bot-authored comments only (where `user.type == "Bot"`,
      e.g. CodeRabbit, gemini-code-assist, etc.)
+   - **Sanitize** all comment bodies when `CODE_REVIEW_SANITIZE=true` (see `helpers/sanitization.md`):
+     - Normalize Unicode to NFC
+     - Strip dangerous shell commands (rm -rf, sudo, chmod 777, etc.)
+     - Validate extracted file paths (reject traversal)
+     - Truncate content exceeding 10KB
    - Extract file paths, line numbers, suggested changes
    - Classify as CRITICAL/HIGH/MEDIUM/LOW
+   - Skip findings with `REJECTED` or unverifiable claims
 
-5. **Apply fixes**: For each actionable finding:
+5. **Apply fixes** with per-issue approval based on `CODE_REVIEW_AUTO_APPROVE`:
+   - `all`: Auto-apply all findings (legacy behavior)
+   - `low` (default): Auto-apply LOW/MEDIUM; present CRITICAL/HIGH to user
+   - `none`: Present all findings to user for approval
+   
+   For user-presented findings:
+   ```text
+   Found N actionable issues:
+   1. [CRITICAL] file.py:42 — description
+   2. [HIGH] file.py:100 — description
+   3. [LOW] file.py:200 — description
+   
+   Reply with issue numbers to apply (e.g., '1,3'), 'all', or 'skip'
+   ```
+   
+   For each approved finding:
    - Read the affected file
    - Apply the suggested fix (or minimal correction)
    - Verify locally (lint/typecheck)
@@ -776,6 +839,7 @@ Instructions:
 | 8 | Web verification MANDATORY for Security + Dependencies domains |
 | 9 | NEVER modify the codebase during Phases 1-3 — read-only diagnostics only |
 | 10 | Fix plan MUST wait for user approval — no auto-apply |
+| 11 | Phase 5c (local review loop) MANDATORY after every 5b correction application — re-run the reviewer, do NOT skip to 5d |
 
 ## Anti-Rationalization Table
 
@@ -789,6 +853,7 @@ Instructions:
 | "Skip [dimension], it's not relevant" | All dimensions apply unless explicitly confirmed absent |
 | "Web verification takes too long" | A false CVE report is worse than the 30s to verify it |
 | "I'll fix this obvious bug while I'm here" | Read-only review — fix plan captures it. Applying mid-review corrupts findings |
+| "One review pass is enough, no need to loop" | The reviewer may miss issues the first pass — re-review catches regressions introduced by fixes |
 
 ## Tech Debt Calibration
 
@@ -812,7 +877,7 @@ When quantifying tech debt, use the following table as a floor estimate per find
 
 - Focusing on a few files instead of the full codebase
 - Giving a qualitative "looks good" without metrics
-- Skipping any phase (discovery, analysis, synthesis, roadmap, DA)
+- Skipping any phase (discovery, analysis, synthesis, roadmap, DA, **5c local review loop**)
 - Claiming findings without evidence or source
 - <75% of specialist agents in full mode (insufficient coverage)
 - Skipping web verification for security findings
@@ -969,6 +1034,7 @@ Below is a realistic example of what a completed health report looks like for a 
 | Cache directory not writable | Fall back to OS temporary directory |
 | $ARGUMENTS path invalid | Ask user for a valid path; fall back to `.` |
 | User declines fix plan | Clean up and exit — no changes written |
+| `gh` CLI not installed | Ask user permission to install (winget/brew/apt). If declined or install fails, skip PR creation — branch remains locally. |
 
 ## Sub-Agent Failure Recovery
 
