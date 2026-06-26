@@ -627,8 +627,21 @@ if `gh` is available:
    gh auth status 2>/dev/null
    git remote get-url origin 2>/dev/null | grep -q github.com
    ```
-   If either fails, skip PR creation and proceed to 5g with a note:
-   "PR creation skipped — `gh` CLI not available or remote is not GitHub.
+   If `gh` is not installed, ask the user:
+   > "The `gh` CLI is not installed. Would you like me to install it? (yes/no)"
+
+   If user approves, install per platform:
+   - **Windows**: `winget install GitHub.cli --silent --accept-package-agreements --accept-source-agreements`
+   - **macOS**: `brew install gh`
+   - **Linux (Debian/Ubuntu)**: `type -p wget >/dev/null || sudo apt-get install wget -y && sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt update && sudo apt install gh -y`
+   - **Linux (other)**: `sudo dnf install 'dnf-command(config-manager)' && sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && sudo dnf install gh`
+
+   After installation, verify with `gh --version`. If installation fails, skip PR creation.
+   If user declines, skip PR creation and proceed to 5g.
+
+   If `gh` is available but not authenticated, ask the user to run `gh auth login` manually, then proceed.
+   If remote is not GitHub, skip PR creation and proceed to 5g with a note:
+   "PR creation skipped — remote is not GitHub.
    Branch with fixes exists locally at $BRANCH."
 
 3. **Push and create PR** — no user confirmation needed:
@@ -975,6 +988,7 @@ Below is a realistic example of what a completed health report looks like for a 
 | Cache directory not writable | Fall back to OS temporary directory |
 | $ARGUMENTS path invalid | Ask user for a valid path; fall back to `.` |
 | User declines fix plan | Clean up and exit — no changes written |
+| `gh` CLI not installed | Ask user permission to install (winget/brew/apt). If declined or install fails, skip PR creation — branch remains locally. |
 
 ## Sub-Agent Failure Recovery
 
