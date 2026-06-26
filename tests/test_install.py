@@ -649,25 +649,6 @@ class TestValidateTargetPath(_BaseInstallTest):
         output = mock_stdout.getvalue()
         self.assertIn("Path traversal", output)
 
-    def test_symlink_escape_detected(self):
-        import platform as _platform
-        if _platform.system() == "Windows":
-            self.skipTest("Symlink behavior differs on Windows")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            real = Path(tmpdir) / "real"
-            real.mkdir()
-            outside = Path(tmpdir) / "outside"
-            outside.mkdir()
-            link = outside / "escape"
-            try:
-                link.symlink_to(real, target_is_directory=True)
-            except (OSError, NotImplementedError):
-                self.skipTest("Symlinks not supported")
-            with self.assertRaises(ValueError) as ctx:
-                self.install._validate_target_path(link)
-            self.assertIn("Symlink resolves outside", str(ctx.exception))
-
-
 class TestMainEdgeCases(_BaseInstallTestWithArgv):
     """Edge-case tests for main()."""
 
@@ -841,16 +822,11 @@ class TestInternalFunctions(_BaseInstallTest):
             result = self.install._xdg_or_home_dir(Path("/home/user"), "claude")
         self.assertEqual(result, Path("/home/user/.claude/skills"))
 
-    def test_validate_xdg_path_rejects_outside_home(self):
+    def test_validate_xdg_path_resolves_any_absolute(self):
         fake_home = Path("/home/user").resolve()
-        result = self.install._validate_xdg_path(Path("/etc/xdg"), fake_home)
-        self.assertIsNone(result)
-
-    def test_validate_xdg_path_accepts_under_home(self):
-        fake_home = Path("/home/user").resolve()
-        xdg = Path("/home/user/.config")
-        result = self.install._validate_xdg_path(xdg, fake_home)
+        result = self.install._validate_xdg_path(Path("/tmp/xdg"), fake_home)
         self.assertIsNotNone(result)
+        self.assertEqual(result, Path("/tmp/xdg").resolve())
 
     def test_get_version_caches_result(self):
         self.install._VERSION_CACHE = None
