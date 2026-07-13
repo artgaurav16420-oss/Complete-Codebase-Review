@@ -28,6 +28,8 @@ _ALL_AGENTS = [
     "Standards Compliance", "Process Quality (Karpathy Compliance)",
 ]
 
+_AGENT_PATTERN = re.compile('|'.join(map(re.escape, _ALL_AGENTS)))
+
 
 def _has_changelog():
     path = os.path.join(os.path.dirname(__file__), "..", "CHANGELOG.md")
@@ -153,7 +155,7 @@ class TestContentQuality(_BaseComplianceTest):
         self.assertIn('Security Posture', self.content)
 
     def test_at_least_12_agents(self):
-        matched = sum(1 for a in _ALL_AGENTS if a in self.content)
+        matched = len(set(_AGENT_PATTERN.findall(self.content)))
         self.assertGreaterEqual(matched, 12)
 
     def test_skill_loading_per_agent(self):
@@ -395,7 +397,7 @@ class TestIntegration(_BaseComplianceTest):
         self.assertIn('Critical?', self.content)
 
     def test_parallel_analysis_all_14_agents(self):
-        matched = sum(1 for a in _ALL_AGENTS if a in self.content)
+        matched = len(set(_AGENT_PATTERN.findall(self.content)))
         self.assertGreaterEqual(matched, 14)
         self.assertIn('Methodology', self.content)
         self.assertIn('Quantify findings', self.content)
