@@ -626,7 +626,7 @@ class TestRunTargetInstall(_BaseInstallTest):
         mock_copy.return_value = Path("/resolved/target/complete-codebase-review")
         self.install._run_target_install(Path("/src"), "/target", dry_run=False)
         mock_copy.assert_called_once_with(Path("/src"), Path("/resolved/target"))
-        mock_print_success.assert_any_call("Installed to: /resolved/target/complete-codebase-review")
+        mock_print_success.assert_any_call(f"Installed to: {Path('/resolved/target/complete-codebase-review')}")
         mock_print_success.assert_any_call("Installation complete!")
 
     @patch('install._validate_target_path')
