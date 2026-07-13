@@ -182,14 +182,14 @@ def validate_improvement_roadmap(md, findings=None):
         if f"### {phase}" not in text and f"**{phase}**" not in text:
             errors.append(f"Improvement Roadmap missing {phase}")
     if findings:
-        roadmap_items = [item.strip().casefold() for item in _extract_roadmap_items(md)]
+        roadmap_items = {item.strip().casefold() for item in _extract_roadmap_items(md)}
         for idx, f in enumerate(findings):
             if f.get("da_verdict") != "REJECTED":
                 continue
             title = f.get("finding", "").strip().casefold()
             if not title:
                 continue
-            if any(title == ri for ri in roadmap_items):
+            if title in roadmap_items:
                 errors.append(
                     f"Finding[{idx}] rejected DA verdict must be excluded from roadmap"
                 )
