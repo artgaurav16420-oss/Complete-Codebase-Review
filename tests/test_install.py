@@ -765,6 +765,54 @@ class TestMainEdgeCases(_BaseInstallTestWithArgv):
         self.assertIn("Local installation failed", output)
 
 
+
+class TestRunLocalFallback(_BaseInstallTest):
+    """Tests for the _run_local_fallback function."""
+
+    def test_gitignore_warning(self):
+        with patch.object(self.install, "print_info") as mock_print_info, \
+             patch("pathlib.Path.cwd", return_value=Path("/fake")), \
+             patch.object(Path, "exists", return_value=True), \
+             patch.object(Path, "read_text", return_value=".skills\n"):
+            with patch.object(self.install, "copy_skill", return_value=Path("/fake/.skills")):
+                self.install._run_local_fallback(Path("/src"), dry_run=False)
+
+        warning_calls = [c for c in mock_print_info.call_args_list if "WARNING: .skills/ is listed in .gitignore" in c.args[0]]
+        self.assertTrue(len(warning_calls) > 0)
+
+    def test_dry_run(self):
+        with patch.object(self.install, "print_info") as mock_print_info, \
+             patch("pathlib.Path.cwd", return_value=Path("/fake")), \
+             patch.object(Path, "exists", return_value=False):
+            with patch.object(self.install, "copy_skill") as mock_copy:
+                self.install._run_local_fallback(Path("/src"), dry_run=True)
+
+        mock_copy.assert_not_called()
+        dry_run_calls = [c for c in mock_print_info.call_args_list if "[DRY-RUN]" in c.args[0]]
+        self.assertTrue(len(dry_run_calls) > 0)
+
+    def test_successful_install(self):
+        with patch.object(self.install, "print_success") as mock_print_success, \
+             patch("pathlib.Path.cwd", return_value=Path("/fake")), \
+             patch.object(Path, "exists", return_value=False):
+            with patch.object(self.install, "copy_skill", return_value=Path("/fake/.skills/complete-codebase-review")):
+                self.install._run_local_fallback(Path("/src"), dry_run=False)
+
+        mock_print_success.assert_called_once()
+        self.assertIn("Installed to local directory", mock_print_success.call_args.args[0])
+
+    def test_install_failure_exits(self):
+        with patch.object(self.install, "print_error") as mock_print_error, \
+             patch("pathlib.Path.cwd", return_value=Path("/fake")), \
+             patch.object(Path, "exists", return_value=False):
+            with patch.object(self.install, "copy_skill", side_effect=PermissionError("denied")):
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install._run_local_fallback(Path("/src"), dry_run=False)
+
+        self.assertEqual(ctx.exception.code, 1)
+        mock_print_error.assert_called_once()
+        self.assertIn("Local installation failed", mock_print_error.call_args.args[0])
+
 class TestInternalFunctions(_BaseInstallTest):
     """Tests for previously uncovered internal helper functions."""
 
