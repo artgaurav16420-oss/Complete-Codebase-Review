@@ -209,6 +209,37 @@ def validate_tech_debt_summary(md):
     return errors
 
 
+def _extract_roadmap_total(roadmap_text):
+    """Extract sum of roadmap phase estimates."""
+    total = 0.0
+    for m in re.finditer(
+        r'(?mi)^(?:\#+\s+|\*\*)?Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text
+    ):
+        total += float(m.group(1))
+    return round(total, 2)
+
+
+def _extract_summary_total(debt_text):
+    """Extract Tech Debt Summary total."""
+    total_m = re.search(
+        r'(?i)\*\*Total estimated\*\*:\s*(\d+(?:\.\d+)?)\s*hours?', debt_text
+    )
+    return round(float(total_m.group(1)), 2) if total_m else None
+
+
+def _extract_domain_total(debt_text):
+    """Extract and sum domain breakdown."""
+    domain_m = re.search(
+        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s{0,1}[-*+]\s+|\n\s*#|\n\s*\d+\.\s+|\Z)', debt_text
+    )
+    if not domain_m:
+        return None
+    values = re.findall(r'(?i)\b(\d+(?:\.\d+)?)h\b', domain_m.group(1))
+    if values:
+        return round(sum(float(h) for h in values), 2)
+    return 0.0
+
+
 def validate_tech_debt_reconciliation(md):
     """Reconcile Roadmap phase totals, Tech Debt Summary total, and domain
     breakdown sum. All three must agree. Returns list of error strings."""
@@ -218,34 +249,9 @@ def validate_tech_debt_reconciliation(md):
     if not roadmap_text or not debt_text:
         return errors  # individual validators cover missing sections
 
-    # Extract sum of roadmap phase estimates
-    roadmap_total = 0.0
-    for m in re.finditer(
-        r'(?mi)^(?:\#+\s+|\*\*)?Phase\s+\d+.*estimated:\s*(\d+(?:\.\d+)?)\s*hours?', roadmap_text
-    ):
-        roadmap_total += float(m.group(1))
-
-    # Extract Tech Debt Summary total
-    total_m = re.search(
-        r'(?i)\*\*Total estimated\*\*:\s*(\d+(?:\.\d+)?)\s*hours?', debt_text
-    )
-    summary_total = float(total_m.group(1)) if total_m else None
-
-    # Extract and sum domain breakdown (handles single-line, multi-line, and table formats)
-    domain_m = re.search(
-        r'(?si)\*\*By domain\*\*:\s*(.*?)(?=\n\s{0,1}[-*+]\s+|\n\s*#|\n\s*\d+\.\s+|\Z)', debt_text
-    )
-    domain_total = None
-    if domain_m:
-        values = re.findall(r'(?i)\b(\d+(?:\.\d+)?)h\b', domain_m.group(1))
-        if values:
-            domain_total = round(sum(float(h) for h in values), 2)
-        else:
-            domain_total = 0.0
-
-    roadmap_total = round(roadmap_total, 2)
-    if summary_total is not None:
-        summary_total = round(summary_total, 2)
+    roadmap_total = _extract_roadmap_total(roadmap_text)
+    summary_total = _extract_summary_total(debt_text)
+    domain_total = _extract_domain_total(debt_text)
 
     if summary_total is None:
         errors.append(
