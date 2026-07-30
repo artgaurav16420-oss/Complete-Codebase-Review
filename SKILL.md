@@ -34,6 +34,7 @@ Customize the execution with these environment variables:
 | `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
 | `CODE_REVIEW_SANITIZE` | `true` | Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping). |
 | `CODE_REVIEW_AUTO_APPROVE` | `low` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
+| `CODE_REVIEW_FORMAT` | `markdown` | Output format. `markdown` = human-readable report, `json` = machine-parseable report (see Output Format section), `both` = both formats. |
 
 
 ## Overview
@@ -477,7 +478,7 @@ After the fix plan is generated, save a baseline snapshot to `$RESOLVED_CACHE_DI
 }
 ```
 
-`per_domain_open_findings` stores confirmed + plausible CRITICAL and HIGH finding counts per domain after DA verification. Phase 4f uses this field to classify domains as `[LOW-ACTIVITY]` on re-review.
+`per_domain_open_findings` stores confirmed + plausible CRITICAL and HIGH finding counts per domain after DA verification. Keys use canonical domain IDs from the Phase 2 table (e.g. `architecture`, `security`, `code_quality`, not `Architecture`, `Security Posture`, `Code Quality`). Phase 4f uses this field to classify domains as `[LOW-ACTIVITY]` on re-review.
 `re_review_count` tracks how many re-reviews have been performed; Phase 4f triggers a full re-scan every 3rd re-review to catch silent regressions.
 
 If a previous baseline exists, diff current vs previous and report trend in the executive summary:
@@ -669,6 +670,12 @@ if `gh` is available:
    gh auth status 2>/dev/null
    git remote get-url origin 2>/dev/null | grep -q github.com
    ```
+   If `gh auth status` fails but `GITHUB_TOKEN` or `GH_TOKEN` environment
+   variable is set, export it and retry:
+   ```bash
+   export GH_TOKEN="${GITHUB_TOKEN:-$GH_TOKEN}"
+   gh auth status 2>/dev/null
+   ```
    If `gh` is not installed, ask the user:
    > "The `gh` CLI is not installed. Would you like me to install it? (yes/no)"
 
@@ -729,9 +736,16 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
    OWNER_REPO=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"')
    gh pr view $PR_NUMBER
    # Use pagination for large PRs (see helpers/github-commands.md)
-   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments --paginate
-   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews --paginate
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments --paginate 2>&1 || \
+     (echo "[WARN] gh api rate limit hit — waiting 60s..." && sleep 60 && \
+      gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/comments --paginate 2>&1)
+   gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews --paginate 2>&1 || \
+     (echo "[WARN] gh api rate limit hit — waiting 60s..." && sleep 60 && \
+      gh api repos/$OWNER_REPO/pulls/$PR_NUMBER/reviews --paginate 2>&1)
    ```
+   If `gh api` returns 403/429, wait 60s and retry once. If both attempts
+   fail, fall back: "GitHub API unavailable. Please paste AI bot review
+   comments below, or type 'skip' to proceed without external review."
 
 4. **Sanitize and parse actionable findings** from bot comments:
    - Filter to bot-authored comments only (where `user.type == "Bot"`,
@@ -960,6 +974,72 @@ When `CODE_REVIEW_FILTER=critical-high`, omit MEDIUM and LOW findings from all r
 - Completed: X/X agents
 - Report verified by devil's advocate
 ```
+
+### JSON Output Format
+
+When `CODE_REVIEW_FORMAT=json` or `CODE_REVIEW_FORMAT=both`, emit a JSON
+object in addition to (or instead of) the markdown report:
+
+```json
+{
+  "report": {
+    "title": "Codebase Health Report",
+    "overall_health": "GREEN|YELLOW|RED",
+    "codebase_size": {"loc": 47320, "files": 312, "modules": 8},
+    "critical_issues": 3,
+    "tech_debt_hours": 200,
+    "priority_areas": ["Architecture", "Security", "Code Quality"]
+  },
+  "per_domain_scores": {
+    "architecture": {"score": 6.0, "critical": 1, "high": 2, "medium": 3, "low": 1},
+    "security": {"score": 4.0, "critical": 2, "high": 3, "medium": 1, "low": 0}
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "finding": "description of finding with [file:line] format",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "domain": "architecture|security|code_quality|...",
+      "est_hours": 8.0,
+      "da_verdict": "CONFIRMED|PLAUSIBLE|QUESTIONABLE|REJECTED|DA-ESCALATION"
+    }
+  ],
+  "roadmap": {
+    "phase_1": {"title": "Now", "estimated_hours": 35.0, "tasks": [...]},
+    "phase_2": {"title": "Next Quarter", "estimated_hours": 47.0, "tasks": [...]},
+    "phase_3": {"title": "Backlog", "estimated_hours": 118.0, "tasks": [...]}
+  },
+  "tech_debt": {
+    "total_hours": 200.0,
+    "by_domain": {"security": 18, "architecture": 24, ...},
+    "trend": "First baseline -- no trend data"
+  },
+  "agent_status": {
+    "completed": 12,
+    "total": 14,
+    "failed": ["Performance Baseline", "UI/UX Auditor"],
+    "da_verdict_summary": {"confirmed": 24, "plausible": 8, "questionable": 3, "rejected": 1}
+  },
+  "baseline": {
+    "timestamp": "ISO-8601",
+    "target": "$TARGET_DIR",
+    "trend_vs_previous": "none"
+  }
+}
+```
+
+All domain keys in `per_domain_scores` use canonical domain IDs from
+the Phase 2 table. The `codebase_size` object is omitted if discovery
+was unable to compute LOC/file/module counts. The `baseline.trend_vs_previous`
+field reports the trend comparison if a previous baseline exists, or
+`"none"` for first-run baselines.
+
+When `CODE_REVIEW_FORMAT=both`, print the markdown report to stdout
+first, then print `---CCR_JSON_START---` on its own line, followed by
+the JSON payload.
+
+When `CODE_REVIEW_FORMAT=json`, print ONLY the JSON payload with no
+markdown wrapper.
 
 ## Sample Output
 
