@@ -124,6 +124,64 @@ class TestSmokeTargetPath(unittest.TestCase):
         self.assertIn("Path traversal", result.stdout)
 
 
+class TestChecksumVerification(unittest.TestCase):
+    """Tests for --checksum and --self-verify flags."""
+
+    def test_self_verify_passes(self):
+        """Verify --self-verify succeeds with valid checksum."""
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--self-verify"],
+            capture_output=True, text=True
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Checksum verification passed", result.stdout)
+
+    def test_self_verify_with_missing_checksum_file_fails(self):
+        """Verify --self-verify fails when checksum file is missing."""
+        import tempfile
+        import shutil
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_install = Path(tmpdir) / "install.py"
+            shutil.copy(INSTALL_PY, tmp_install)
+            result = subprocess.run(
+                [PYTHON, str(tmp_install), "--self-verify"],
+                capture_output=True, text=True
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("install.py.sha256 not found", result.stdout)
+
+    def test_checksum_flag_passes(self):
+        """Verify --checksum succeeds with valid hash."""
+        hash_value = "8a7fa5446db4b6edb8d8f05d8b62deb1b941d51acbb4bc9453c80e653833463c"
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--checksum", hash_value],
+            capture_output=True, text=True
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Checksum verification passed", result.stdout)
+
+    def test_checksum_flag_fails_with_invalid_hash(self):
+        """Verify --checksum fails with invalid hash."""
+        invalid_hash = "0" * 64
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--checksum", invalid_hash],
+            capture_output=True, text=True
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Checksum verification FAILED", result.stdout)
+
+    def test_help_shows_checksum_options(self):
+        """Verify --help mentions checksum flags."""
+        result = subprocess.run(
+            [PYTHON, INSTALL_PY, "--help"],
+            capture_output=True, text=True
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--checksum", result.stdout)
+        self.assertIn("--self-verify", result.stdout)
+
+
 class TestNoColorEnv(unittest.TestCase):
     """Tests for NO_COLOR env var suppressing ANSI codes."""
 

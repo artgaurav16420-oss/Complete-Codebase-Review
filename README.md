@@ -160,8 +160,15 @@ The full report includes a 3-phase improvement roadmap, tech debt breakdown by d
 ## 🚀 Quick Start
 
 ```bash
-# Install (one command)
-curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
+# Step 1: Download installer + checksum (recommended for production)
+curl -fsSL -o install.py https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py
+curl -fsSL -o install.py.sha256 https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py.sha256
+
+# Step 2: Verify integrity
+sha256sum -c install.py.sha256
+
+# Step 3: Install
+python3 install.py
 
 # Run a review
 /complete-codebase-review .
@@ -171,11 +178,10 @@ export CODE_REVIEW_EFFORT=min
 /complete-codebase-review src/
 ```
 
-> **Security note:** The one-liner pipes from HTTPS. For production use, verify the script checksum after download:
+> **Convenience option (development only):** For quick testing, you can use the one-liner, but **verify the checksum afterwards** for production use:
 > ```bash
-> curl -fsSL -o install.py https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py
-> # Review the script, then run:
-> python3 install.py
+> # One-liner (not recommended for production)
+> curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
 > ```
 
 That's it. You'll get a full health report in 5-15 minutes.
@@ -184,15 +190,23 @@ That's it. You'll get a full health report in 5-15 minutes.
 
 ## 📦 Installation
 
-### One-line Install (Recommended)
+### Secure Install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
+# Download installer + checksum
+curl -fsSL -o install.py https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py
+curl -fsSL -o install.py.sha256 https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py.sha256
+
+# Verify integrity
+sha256sum -c install.py.sha256
+
+# Install
+python3 install.py
 ```
 
 The installer detects your environment (Claude Code, OpenCode, Cursor, Continue) and places the skill in the correct directory. See [install.py](install.py) for details.
 
-### Manual Install
+### Alternative: Clone Repository
 
 ```bash
 git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git ~/.claude/skills/complete-codebase-review

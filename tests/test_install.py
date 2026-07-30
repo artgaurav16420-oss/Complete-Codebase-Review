@@ -855,6 +855,77 @@ class TestInternalFunctions(_BaseInstallTest):
         self.install._VERSION_CACHE = None
 
 
+class TestChecksumFunctions(unittest.TestCase):
+    """Tests for _compute_sha256 and _verify_checksum functions."""
+
+    def setUp(self):
+        self.install = _import_install()
+
+    def test_compute_sha256_returns_hex_string(self):
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"test content")
+            temp_path = f.name
+        try:
+            result = self.install._compute_sha256(Path(temp_path))
+            self.assertEqual(len(result), 64)
+            self.assertRegex(result, r'^[a-f0-9]+$')
+        finally:
+            Path(temp_path).unlink()
+
+    def test_compute_sha256_consistent_hash(self):
+        content = b"test content for hashing"
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(content)
+            temp_path = f.name
+        try:
+            hash1 = self.install._compute_sha256(Path(temp_path))
+            hash2 = self.install._compute_sha256(Path(temp_path))
+            self.assertEqual(hash1, hash2)
+        finally:
+            Path(temp_path).unlink()
+
+    def test_verify_checksum_returns_true_for_valid_hash(self):
+        content = b"test content"
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(content)
+            temp_path = f.name
+        try:
+            expected_hash = self.install._compute_sha256(Path(temp_path))
+            result = self.install._verify_checksum(Path(temp_path), expected_hash)
+            self.assertTrue(result)
+        finally:
+            Path(temp_path).unlink()
+
+    def test_verify_checksum_returns_false_for_invalid_hash(self):
+        content = b"test content"
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(content)
+            temp_path = f.name
+        try:
+            invalid_hash = "0" * 64
+            result = self.install._verify_checksum(Path(temp_path), invalid_hash)
+            self.assertFalse(result)
+        finally:
+            Path(temp_path).unlink()
+
+    def test_verify_checksum_raises_file_not_found(self):
+        with self.assertRaises(FileNotFoundError):
+            self.install._verify_checksum(Path("/nonexistent/file.txt"), "abc123")
+
+    def test_verify_checksum_case_insensitive(self):
+        content = b"test"
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(content)
+            temp_path = f.name
+        try:
+            expected_hash = self.install._compute_sha256(Path(temp_path))
+            upper_hash = expected_hash.upper()
+            result = self.install._verify_checksum(Path(temp_path), upper_hash)
+            self.assertTrue(result)
+        finally:
+            Path(temp_path).unlink()
+
+
 class TestMainEntryPoint(unittest.TestCase):
     """Tests for the if __name__ == '__main__' guard."""
 
