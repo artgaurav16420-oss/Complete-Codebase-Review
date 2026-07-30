@@ -24,3 +24,15 @@ name = "Gaurav"
 Homepage = "https://github.com/artgaurav16420-oss/Complete-Codebase-Review"
 Repository = "https://github.com/artgaurav16420-oss/Complete-Codebase-Review"
 "Bug Tracker" = "https://github.com/artgaurav16420-oss/Complete-Codebase-Review/issues"
+
+[tool.pytest.ini_options]
+norecursedirs = [
+    ".bzr",
+    ".git",
+    ".hg",
+    ".svn",
+    "CVS",
+    "__pycache__",
+    "_darcs",
+    "dummy_repo",
+]
