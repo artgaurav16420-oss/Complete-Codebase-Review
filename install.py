@@ -23,17 +23,25 @@ import platform
 from pathlib import Path
 
 _SKILL_EXCLUDED = {
-    ".git", "__pycache__", "install.py", "install.sh",
-    "install.ps1", ".skills", ".env", ".secret",
-    ".credentials", ".code-review-cache",
-    "tests", ".github", "ADRs", ".gitignore",
-    ".gitattributes", ".coveragerc", "CONTRIBUTING.md",
-    "CHANGELOG.md", "LICENSE", "test.sh", "Makefile",
-    "AGENTS.md", "SECURITY.md", "help.md", "pyproject.toml",
-    "orchestrator-rules.md",
+    # VCS and build artifacts — never ship these
+    ".git", "__pycache__",
+    # Installer scripts — not part of the skill itself
+    "install.py", "install.sh", "install.ps1",
+    # CI, tests, design docs — runtime skill doesn't need these
+    ".github", "tests", "ADRs", "test.sh", "Makefile",
+    # Security/advisory files — GitHub standard files, not skill content
+    "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md",
+    "LICENSE", ".gitignore", ".gitattributes",
+    # Project metadata — not consumed at runtime
+    "pyproject.toml", "AGENTS.md", "help.md", ".coveragerc",
+    # Config/credentials — never shipped
+    ".skills", ".env", ".secret", ".credentials",
+    # Cache directory — runtime artifact
+    ".code-review-cache",
     # orchestrator-rules.md deliberately excluded — it's an internal
     # protocol document consumed by the orchestrator at repo root,
     # not a runtime requirement for installed skill consumers.
+    "orchestrator-rules.md",
 }
 
 
@@ -43,9 +51,8 @@ def _onerror(func, path, exc_info):
     Uses follow_symlinks=False to prevent permission changes on symlink targets
     outside the expected directory tree.
 
-    NOTE: onerror kwarg is deprecated in Python 3.12+ (PEP 632). Removal is
-    planned for Python 4.0. Switch to onexc (receives exception instance
-    directly) when Python 3.9 support is dropped.
+    NOTE: onerror is deprecated in Python 3.12+ (PEP 632) in favor of onexc,
+    but the callback signature remains stable across Python 3.9--3.13+.
     """
     try:
         try:

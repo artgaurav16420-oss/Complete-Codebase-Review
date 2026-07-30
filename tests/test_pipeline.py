@@ -330,6 +330,252 @@ def validate_markdown_output(md):
     return errors
 
 
+# JSON output format ------------------------------------------------------------
+
+VALID_HEALTH_JSON = {"GREEN", "YELLOW", "RED"}
+VALID_SEVERITIES_JSON = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+VALID_DA_VERDICTS_JSON = {
+    "CONFIRMED", "PLAUSIBLE", "QUESTIONABLE", "REJECTED", "DA-ESCALATION",
+}
+REQUIRED_REPORT_FIELDS = [
+    "report", "per_domain_scores", "findings", "roadmap",
+    "tech_debt", "agent_status", "baseline",
+]
+REQUIRED_REPORT_SUBFIELDS = [
+    "title", "overall_health", "critical_issues", "tech_debt_hours",
+]
+REQUIRED_FINDING_FIELDS = [
+    "id", "finding", "severity", "domain", "est_hours", "da_verdict",
+]
+REQUIRED_AGENT_STATUS_FIELDS = [
+    "completed", "total", "da_verdict_summary",
+]
+REQUIRED_TECH_DEBT_FIELDS = [
+    "total_hours", "by_domain", "trend",
+]
+
+
+def validate_json_output(data):
+    """Validate a JSON health report object. Returns list of error strings."""
+    errors = []
+    if not isinstance(data, dict):
+        errors.append("JSON root must be a dict")
+        return errors
+    for field in REQUIRED_REPORT_FIELDS:
+        if field not in data:
+            errors.append(f"Missing top-level field: '{field}'")
+    report = data.get("report")
+    if not isinstance(report, dict):
+        errors.append("report must be a dict")
+    else:
+        for field in REQUIRED_REPORT_SUBFIELDS:
+            if field not in report:
+                errors.append(f"Missing report field: '{field}'")
+        health = report.get("overall_health")
+        if not isinstance(health, str):
+            errors.append(f"overall_health must be a string, got {type(health).__name__}")
+        elif health and health not in VALID_HEALTH_JSON:
+            errors.append(f"Invalid overall_health: '{health}'")
+    scores = data.get("per_domain_scores")
+    if not isinstance(scores, dict):
+        errors.append("per_domain_scores must be a dict")
+    else:
+        for domain, scores_obj in scores.items():
+            if not isinstance(scores_obj, dict):
+                errors.append(f"per_domain_scores.{domain} must be a dict")
+                continue
+            s = scores_obj.get("score")
+            if s is not None and (
+                not isinstance(s, (int, float)) or s < 0 or s > 10
+            ):
+                errors.append(
+                    f"per_domain_scores.{domain} score {s} out of range [0, 10]"
+                )
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        errors.append("findings must be a list")
+    else:
+        for idx, f in enumerate(findings):
+            if not isinstance(f, dict):
+                errors.append(f"findings[{idx}] must be a dict")
+                continue
+            for field in REQUIRED_FINDING_FIELDS:
+                if field not in f:
+                    errors.append(f"findings[{idx}] missing field '{field}'")
+            sev = f.get("severity")
+            if not isinstance(sev, str):
+                errors.append(f"findings[{idx}] severity must be a string")
+            elif sev and sev not in VALID_SEVERITIES_JSON:
+                errors.append(f"findings[{idx}] invalid severity '{sev}'")
+            dv = f.get("da_verdict")
+            if not isinstance(dv, str):
+                errors.append(f"findings[{idx}] da_verdict must be a string")
+            elif dv and dv not in VALID_DA_VERDICTS_JSON:
+                errors.append(f"findings[{idx}] invalid da_verdict '{dv}'")
+    roadmap = data.get("roadmap")
+    if not isinstance(roadmap, dict):
+        errors.append("roadmap must be a dict")
+    else:
+        for phase_key in ["phase_1", "phase_2", "phase_3"]:
+            if phase_key not in roadmap:
+                errors.append(f"roadmap missing '{phase_key}'")
+    tech_debt = data.get("tech_debt")
+    if not isinstance(tech_debt, dict):
+        errors.append("tech_debt must be a dict")
+    else:
+        for field in REQUIRED_TECH_DEBT_FIELDS:
+            if field not in tech_debt:
+                errors.append(f"tech_debt missing field: '{field}'")
+    status = data.get("agent_status")
+    if not isinstance(status, dict):
+        errors.append("agent_status must be a dict")
+    else:
+        for field in REQUIRED_AGENT_STATUS_FIELDS:
+            if field not in status:
+                errors.append(f"agent_status missing field: '{field}'")
+    baseline = data.get("baseline")
+    if not isinstance(baseline, dict):
+        errors.append("baseline must be a dict")
+    elif "timestamp" not in baseline:
+        errors.append("baseline missing field: 'timestamp'")
+    return errors
+
+
+# Sample valid JSON output -----------------------------------------------------
+
+SAMPLE_VALID_JSON = {
+    "report": {
+        "title": "Codebase Health Report",
+        "overall_health": "YELLOW",
+        "codebase_size": {"loc": 47320, "files": 312, "modules": 8},
+        "critical_issues": 3,
+        "tech_debt_hours": 200,
+        "priority_areas": ["Security", "Architecture", "Process Quality"],
+    },
+    "per_domain_scores": {
+        "architecture": {
+            "score": 6.0, "critical": 1, "high": 2, "medium": 3, "low": 1
+        },
+        "security": {
+            "score": 4.0, "critical": 2, "high": 3, "medium": 1, "low": 0
+        },
+        "process_quality": {
+            "score": 8.0, "critical": 0, "high": 1, "medium": 1, "low": 2
+        },
+        "code_quality": {
+            "score": 7.0, "critical": 0, "high": 1, "medium": 4, "low": 2
+        },
+        "test_health": {
+            "score": 5.0, "critical": 0, "high": 2, "medium": 2, "low": 1
+        },
+        "dependencies": {
+            "score": 8.0, "critical": 0, "high": 0, "medium": 2, "low": 3
+        },
+        "documentation": {
+            "score": 6.0, "critical": 0, "high": 1, "medium": 1, "low": 4
+        },
+        "build_ci": {
+            "score": 9.0, "critical": 0, "high": 0, "medium": 1, "low": 1
+        },
+        "database": {
+            "score": 7.0, "critical": 0, "high": 1, "medium": 1, "low": 1
+        },
+    },
+    "findings": [
+        {
+            "id": "F-001",
+            "finding": (
+                "[config/database.php:42] - Hardcoded DB password"
+                " -> credential leak on source exposure"
+            ),
+            "severity": "CRITICAL",
+            "domain": "security",
+            "est_hours": 2.0,
+            "da_verdict": "CONFIRMED",
+        },
+        {
+            "id": "F-002",
+            "finding": (
+                "[src/auth/cycle.go:15] - Circular dep"
+                " auth->user->notification->auth"
+                " -> startup deadlock risk"
+            ),
+            "severity": "CRITICAL",
+            "domain": "architecture",
+            "est_hours": 8.0,
+            "da_verdict": "CONFIRMED",
+        },
+        {
+            "id": "F-003",
+            "finding": (
+                "[tests/fixtures/auth.json:3] - Hardcoded API key"
+                " -> credential leak in test artifacts"
+            ),
+            "severity": "CRITICAL",
+            "domain": "security",
+            "est_hours": 2.0,
+            "da_verdict": "CONFIRMED",
+        },
+    ],
+    "roadmap": {
+        "phase_1": {
+            "title": "Now",
+            "estimated_hours": 35.0,
+            "tasks": [
+                {
+                    "id": "T-001",
+                    "description": "Rotate hardcoded secrets -> env vars",
+                    "hours": 4,
+                }
+            ],
+        },
+        "phase_2": {
+            "title": "Next Quarter",
+            "estimated_hours": 47.0,
+            "tasks": [
+                {
+                    "id": "T-007",
+                    "description": "Refactor high-complexity functions",
+                    "hours": 14,
+                }
+            ],
+        },
+        "phase_3": {
+            "title": "Backlog",
+            "estimated_hours": 118.0,
+            "tasks": [
+                {
+                    "id": "T-012",
+                    "description": "Implement design system component library",
+                    "hours": 40,
+                }
+            ],
+        },
+    },
+    "tech_debt": {
+        "total_hours": 200.0,
+        "by_domain": {
+            "security": 18, "architecture": 24, "code_quality": 32,
+            "test_health": 48, "process_quality": 12, "dependencies": 12,
+            "documentation": 20, "standards": 16, "database": 18,
+        },
+        "trend": "First baseline -- no trend data",
+    },
+    "agent_status": {
+        "completed": 12,
+        "total": 14,
+        "failed": ["Performance Baseline", "UI/UX Auditor"],
+        "da_verdict_summary": {"confirmed": 24, "plausible": 8, "questionable": 3, "rejected": 1},
+    },
+    "baseline": {
+        "timestamp": "2026-07-30T12:00:00Z",
+        "target": "src/",
+        "trend_vs_previous": "none",
+    },
+}
+
+
+
 # Sample valid markdown output -------------------------------------------------
 
 SAMPLE_VALID_OUTPUT = r"""# Codebase Health Report — my-web-app (src/)
@@ -615,6 +861,111 @@ class TestSampleOutputValidation(unittest.TestCase):
                 f"  - {e}" for e in errors
             )
         )
+
+
+class TestJsonOutputValidation(unittest.TestCase):
+    """JSON output validators reject invalid and accept valid outputs."""
+
+    def test_valid_json_passes(self):
+        errors = validate_json_output(SAMPLE_VALID_JSON)
+        self.assertEqual(errors, [])
+
+    def test_missing_top_level_field(self):
+        data = dict(SAMPLE_VALID_JSON)
+        del data["report"]
+        errors = validate_json_output(data)
+        self.assertTrue(any("report" in e for e in errors))
+
+    def test_invalid_health_value(self):
+        data = dict(SAMPLE_VALID_JSON)
+        data["report"] = dict(data["report"], overall_health="PURPLE")
+        errors = validate_json_output(data)
+        self.assertTrue(any("PURPLE" in e for e in errors))
+
+    def test_invalid_severity(self):
+        data = dict(SAMPLE_VALID_JSON)
+        f = dict(data["findings"][0], severity="CATASTROPHIC")
+        data["findings"] = [f]
+        errors = validate_json_output(data)
+        self.assertTrue(any("CATASTROPHIC" in e for e in errors))
+
+    def test_invalid_da_verdict(self):
+        data = dict(SAMPLE_VALID_JSON)
+        f = dict(data["findings"][0], da_verdict="MAYBE")
+        data["findings"] = [f]
+        errors = validate_json_output(data)
+        self.assertTrue(any("MAYBE" in e for e in errors))
+
+    def test_score_out_of_range(self):
+        data = dict(SAMPLE_VALID_JSON)
+        data["per_domain_scores"] = {
+            "security": {"score": 11, "critical": 0, "high": 0, "medium": 0, "low": 0},
+        }
+        errors = validate_json_output(data)
+        self.assertTrue(any("11" in e for e in errors))
+
+    def test_roadmap_missing_phase(self):
+        data = dict(SAMPLE_VALID_JSON)
+        data["roadmap"] = {"phase_1": {"title": "Now", "estimated_hours": 10}}
+        errors = validate_json_output(data)
+        self.assertTrue(any("phase_2" in e for e in errors))
+
+    def test_findings_not_a_list(self):
+        data = dict(SAMPLE_VALID_JSON)
+        data["findings"] = "not-a-list"
+        errors = validate_json_output(data)
+        self.assertTrue(any("must be a list" in e for e in errors))
+
+    def test_not_a_dict(self):
+        errors = validate_json_output("not-a-dict")
+        self.assertTrue(any("must be a dict" in e for e in errors))
+
+
+class TestJsonSampleOutputValidation(unittest.TestCase):
+    """The sample JSON output must always pass strict validation."""
+
+    def test_sample_passes_strict_validation(self):
+        errors = validate_json_output(SAMPLE_VALID_JSON)
+        self.assertEqual(errors, [],
+                         f"Sample JSON failed validation: {errors}")
+
+    def test_sample_has_all_required_report_fields(self):
+        for field in REQUIRED_REPORT_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(field, SAMPLE_VALID_JSON)
+
+    def test_sample_has_valid_health(self):
+        self.assertIn(
+            SAMPLE_VALID_JSON["report"]["overall_health"],
+            VALID_HEALTH_JSON,
+        )
+
+    def test_sample_findings_have_required_fields(self):
+        for idx, f in enumerate(SAMPLE_VALID_JSON["findings"]):
+            for field in REQUIRED_FINDING_FIELDS:
+                with self.subTest(finding=idx, field=field):
+                    self.assertIn(field, f)
+
+    def test_sample_tech_debt_reconciliation(self):
+        by_domain = SAMPLE_VALID_JSON["tech_debt"]["by_domain"]
+        domain_sum = round(sum(by_domain.values()), 2)
+        total = round(SAMPLE_VALID_JSON["tech_debt"]["total_hours"], 2)
+        self.assertAlmostEqual(domain_sum, total, delta=0.5)
+
+    def test_sample_roadmap_phase_totals_match(self):
+        phases = SAMPLE_VALID_JSON["roadmap"]
+        total = sum(
+            phases[k]["estimated_hours"]
+            for k in ["phase_1", "phase_2", "phase_3"]
+        )
+        self.assertAlmostEqual(
+            total, SAMPLE_VALID_JSON["tech_debt"]["total_hours"], delta=0.5,
+        )
+
+    def test_sample_agent_status_counts_match(self):
+        ds = SAMPLE_VALID_JSON["agent_status"]["da_verdict_summary"]
+        total_verdicts = sum(ds.values())
+        self.assertGreater(total_verdicts, 0)
 
 
 if __name__ == "__main__":
