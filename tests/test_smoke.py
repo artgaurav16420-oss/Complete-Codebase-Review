@@ -140,7 +140,7 @@ class TestChecksumVerification(unittest.TestCase):
     def test_checksum_flag_fails_with_bad_format(self):
         """Verify --checksum rejects non-hex or wrong-length input."""
         import tempfile
-        bad_inputs = ["short", "xyz" * 30]
+        bad_inputs = ["", "short", "xyz" * 30]
         for bad in bad_inputs:
             with self.subTest(input=bad):
                 with tempfile.TemporaryDirectory() as tmpdir:

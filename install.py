@@ -449,13 +449,14 @@ def main():
         action="store_true",
         help="Show version and exit.",
     )
-    parser.add_argument(
+    verify_group = parser.add_mutually_exclusive_group()
+    verify_group.add_argument(
         "--checksum",
         metavar="HASH",
         default=None,
         help="Verify the script's SHA-256 checksum before running.",
     )
-    parser.add_argument(
+    verify_group.add_argument(
         "--self-verify",
         action="store_true",
         default=False,
@@ -478,8 +479,13 @@ def main():
             print_error("install.py.sha256 is empty — verification failed")
             sys.exit(1)
         expected_hash = checksum_content.split()[0]
-        if len(expected_hash) != 64 or not all(c in "0123456789abcdefABCDEF" for c in expected_hash):
-            print_error("install.py.sha256 contains invalid checksum format (expected 64 hex characters)")
+        if len(expected_hash) != 64 or not all(
+            c in "0123456789abcdefABCDEF" for c in expected_hash
+        ):
+            print_error(
+                "install.py.sha256 contains invalid checksum format"
+                " (expected 64 hex characters)"
+            )
             sys.exit(1)
         if _verify_checksum(script_path, expected_hash):
             print_success("Checksum verification passed")
@@ -488,10 +494,14 @@ def main():
             print_error("Checksum verification FAILED — script may be corrupted")
             sys.exit(1)
 
-    if args.checksum:
+    if args.checksum is not None:
         script_path = Path(__file__).resolve()
-        if len(args.checksum) != 64 or not all(c in "0123456789abcdefABCDEF" for c in args.checksum):
-            print_error("Invalid checksum format (expected 64 hexadecimal characters)")
+        if len(args.checksum) != 64 or not all(
+            c in "0123456789abcdefABCDEF" for c in args.checksum
+        ):
+            print_error(
+                "Invalid checksum format (expected 64 hexadecimal characters)"
+            )
             sys.exit(1)
         if _verify_checksum(script_path, args.checksum):
             print_success("Checksum verification passed")
