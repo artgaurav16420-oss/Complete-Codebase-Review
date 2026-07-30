@@ -48,13 +48,13 @@ try:
         issues = json.load(f)
 
     assert isinstance(issues, list), 'Expected issues must be a list'
-    assert len(issues) > 0, f'Expected at least one issue, got {len(issues)}'
+    assert len(issues) == 13, f'Expected 13 issues, got {len(issues)}'
     assert len(set(issues)) == len(issues), 'Duplicate issue identifiers found'
 
     for issue in issues:
         assert isinstance(issue, str) and issue.strip(), f'Invalid issue format: {issue}'
 
-    print(f'[SUCCESS] Validated {len(issues)} unique expected issues from JSON.')
+    print(f'[SUCCESS] Validated 13 unique expected issues from JSON.')
 
 except Exception as e:
     print(f'[ERROR] expected_issues.json validation failed: {e}')

@@ -473,7 +473,14 @@ def main():
         if not checksum_file.exists():
             print_error("install.py.sha256 not found")
             sys.exit(1)
-        expected_hash = checksum_file.read_text(encoding="utf-8").split()[0]
+        checksum_content = checksum_file.read_text(encoding="utf-8").strip()
+        if not checksum_content:
+            print_error("install.py.sha256 is empty — verification failed")
+            sys.exit(1)
+        expected_hash = checksum_content.split()[0]
+        if len(expected_hash) != 64 or not all(c in "0123456789abcdefABCDEF" for c in expected_hash):
+            print_error("install.py.sha256 contains invalid checksum format (expected 64 hex characters)")
+            sys.exit(1)
         if _verify_checksum(script_path, expected_hash):
             print_success("Checksum verification passed")
             sys.exit(0)
@@ -483,8 +490,12 @@ def main():
 
     if args.checksum:
         script_path = Path(__file__).resolve()
+        if len(args.checksum) != 64 or not all(c in "0123456789abcdefABCDEF" for c in args.checksum):
+            print_error("Invalid checksum format (expected 64 hexadecimal characters)")
+            sys.exit(1)
         if _verify_checksum(script_path, args.checksum):
             print_success("Checksum verification passed")
+            sys.exit(0)
         else:
             print_error("Checksum verification FAILED")
             sys.exit(1)

@@ -160,29 +160,21 @@ The full report includes a 3-phase improvement roadmap, tech debt breakdown by d
 ## 🚀 Quick Start
 
 ```bash
-# Step 1: Download installer + checksum (recommended for production)
-curl -fsSL -o install.py https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py
-curl -fsSL -o install.py.sha256 https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py.sha256
+# Clone the repository (authenticated via git, not raw HTTPS)
+git clone --depth 1 https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git
+cd Complete-Codebase-Review
 
-# Step 2: Verify integrity
-sha256sum -c install.py.sha256
+# Self-verify script integrity (detects accidental corruption)
+python3 install.py --self-verify
 
-# Step 3: Install
+# Install
 python3 install.py
 
 # Run a review
 /complete-codebase-review .
-
-# Quick mode (3 agents, 120s timeout)
-export CODE_REVIEW_EFFORT=min
-/complete-codebase-review src/
 ```
 
-> **Convenience option (development only):** For quick testing, you can use the one-liner, but **verify the checksum afterwards** for production use:
-> ```bash
-> # One-liner (not recommended for production)
-> curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
-> ```
+> **Release-based verification:** For production environments, download the installer from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify its SHA-256 checksum published alongside the release notes — never rely on a checksum downloaded from the same source as the script.
 
 That's it. You'll get a full health report in 5-15 minutes.
 
@@ -190,21 +182,21 @@ That's it. You'll get a full health report in 5-15 minutes.
 
 ## 📦 Installation
 
-### Secure Install (Recommended)
+### Recommended: Clone + Self-Verify
 
 ```bash
-# Download installer + checksum
-curl -fsSL -o install.py https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py
-curl -fsSL -o install.py.sha256 https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py.sha256
+# Clone the repository (authenticated via git)
+git clone --depth 1 https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git
+cd Complete-Codebase-Review
 
-# Verify integrity
-sha256sum -c install.py.sha256
+# Self-verify script integrity (detects accidental corruption)
+python3 install.py --self-verify
 
-# Install
+# Install to detected agent configs
 python3 install.py
 ```
 
-The installer detects your environment (Claude Code, OpenCode, Cursor, Continue) and places the skill in the correct directory. See [install.py](install.py) for details.
+The `--self-verify` flag detects accidental corruption of the installer, but does not authenticate the source. For production environments, download from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify the checksum published alongside the release notes.
 
 ### Alternative: Clone Repository
 
