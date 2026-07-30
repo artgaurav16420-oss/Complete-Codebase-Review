@@ -27,5 +27,12 @@ Repository = "https://github.com/artgaurav16420-oss/Complete-Codebase-Review"
 
 [tool.pytest.ini_options]
 norecursedirs = [
-    "tests/dummy_repo",
+    ".bzr",
+    ".git",
+    ".hg",
+    ".svn",
+    "CVS",
+    "__pycache__",
+    "_darcs",
+    "dummy_repo",
 ]
