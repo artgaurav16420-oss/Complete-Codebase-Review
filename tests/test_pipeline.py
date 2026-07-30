@@ -372,7 +372,9 @@ def validate_json_output(data):
             if field not in report:
                 errors.append(f"Missing report field: '{field}'")
         health = report.get("overall_health")
-        if health and health not in VALID_HEALTH_JSON:
+        if not isinstance(health, str):
+            errors.append(f"overall_health must be a string, got {type(health).__name__}")
+        elif health and health not in VALID_HEALTH_JSON:
             errors.append(f"Invalid overall_health: '{health}'")
     scores = data.get("per_domain_scores")
     if not isinstance(scores, dict):
@@ -401,10 +403,14 @@ def validate_json_output(data):
                 if field not in f:
                     errors.append(f"findings[{idx}] missing field '{field}'")
             sev = f.get("severity")
-            if sev and sev not in VALID_SEVERITIES_JSON:
+            if not isinstance(sev, str):
+                errors.append(f"findings[{idx}] severity must be a string")
+            elif sev and sev not in VALID_SEVERITIES_JSON:
                 errors.append(f"findings[{idx}] invalid severity '{sev}'")
             dv = f.get("da_verdict")
-            if dv and dv not in VALID_DA_VERDICTS_JSON:
+            if not isinstance(dv, str):
+                errors.append(f"findings[{idx}] da_verdict must be a string")
+            elif dv and dv not in VALID_DA_VERDICTS_JSON:
                 errors.append(f"findings[{idx}] invalid da_verdict '{dv}'")
     roadmap = data.get("roadmap")
     if not isinstance(roadmap, dict):

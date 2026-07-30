@@ -13,6 +13,21 @@ class TestAuth(unittest.TestCase):
         with patch.dict(os.environ, {"AUTH_SECRET": "correct_password"}):
             self.assertFalse(login("admin", "wrong_password"))
 
+    def test_login_missing_secret(self):
+        from auth.login import login
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(login("admin", "any_password"))
+
+    def test_login_blank_secret(self):
+        from auth.login import login
+        with patch.dict(os.environ, {"AUTH_SECRET": ""}):
+            self.assertFalse(login("admin", ""))
+
+    def test_login_unauthorized_user(self):
+        from auth.login import login
+        with patch.dict(os.environ, {"AUTH_SECRET": "correct_password"}):
+            self.assertFalse(login("hacker", "correct_password"))
+
     def test_ping(self):
         from auth.login import ping_host
         with patch("subprocess.run") as mock_run:

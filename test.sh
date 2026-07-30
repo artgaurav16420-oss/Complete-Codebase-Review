@@ -39,7 +39,7 @@ fi
 
 echo "[INFO] Validating expected issues JSON..."
 
-$PYTHON -c "
+"$PYTHON" -c "
 import json
 import sys
 
@@ -48,7 +48,8 @@ try:
         issues = json.load(f)
 
     assert isinstance(issues, list), 'Expected issues must be a list'
-    assert len(issues) > 0, 'Expected issues list cannot be empty'
+    assert len(issues) == 13, f'Expected 13 issues, got {len(issues)}'
+    assert len(set(issues)) == len(issues), 'Duplicate issue identifiers found'
 
     for issue in issues:
         assert isinstance(issue, str) and issue.strip(), f'Invalid issue format: {issue}'
