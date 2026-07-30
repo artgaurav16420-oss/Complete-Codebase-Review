@@ -51,7 +51,8 @@ def _onerror(func, path, exc_info):
     Uses follow_symlinks=False to prevent permission changes on symlink targets
     outside the expected directory tree.
 
-    The onerror callback signature is stable across Python 3.9--3.13+.
+    NOTE: onerror is deprecated in Python 3.12+ (PEP 632) in favor of onexc,
+    but the callback signature remains stable across Python 3.9--3.13+.
     """
     try:
         try:

@@ -17,13 +17,6 @@ cd "$SCRIPT_DIR"
 
 echo "[INFO] Starting Mock Validation Test Suite"
 
-TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ccr-dummy-repo.XXXXXX")"
-trap 'rm -rf "$TEST_DIR"' EXIT
-cp -r "$SCRIPT_DIR/tests/dummy_repo/" "$TEST_DIR/"
-chmod -R u+w "$TEST_DIR"
-
-echo "[INFO] Created dummy test repo at $TEST_DIR"
-
 SKILL_FILE="SKILL.md"
 FAIL=0
 
@@ -68,14 +61,14 @@ except Exception as e:
 " || FAIL=1
 
 echo "[INFO] Running all unit tests..."
-if $PYTHON -c "import coverage" >/dev/null 2>&1; then
-    $PYTHON -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" || FAIL=1
+if "$PYTHON" -c "import coverage" >/dev/null 2>&1; then
+    "$PYTHON" -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" || FAIL=1
     if [ "$FAIL" -eq 0 ]; then
-        $PYTHON -m coverage report
+        "$PYTHON" -m coverage report
     fi
 else
     echo "[INFO] coverage not available — running without coverage"
-    $PYTHON -m unittest discover -s tests -p "test_*.py" || FAIL=1
+    "$PYTHON" -m unittest discover -s tests -p "test_*.py" || FAIL=1
 fi
 
 if [ "$FAIL" -eq 1 ]; then

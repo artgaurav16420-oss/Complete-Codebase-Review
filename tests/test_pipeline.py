@@ -333,7 +333,7 @@ def validate_markdown_output(md):
 # JSON output format ------------------------------------------------------------
 
 VALID_HEALTH_JSON = {"GREEN", "YELLOW", "RED"}
-VALID_SEVERITIES_JSON = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}
+VALID_SEVERITIES_JSON = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
 VALID_DA_VERDICTS_JSON = {
     "CONFIRMED", "PLAUSIBLE", "QUESTIONABLE", "REJECTED", "DA-ESCALATION",
 }
@@ -364,16 +364,17 @@ def validate_json_output(data):
     for field in REQUIRED_REPORT_FIELDS:
         if field not in data:
             errors.append(f"Missing top-level field: '{field}'")
-    # report section
-    report = data.get("report", {})
-    for field in REQUIRED_REPORT_SUBFIELDS:
-        if field not in report:
-            errors.append(f"Missing report field: '{field}'")
-    health = report.get("overall_health")
-    if health and health not in VALID_HEALTH_JSON:
-        errors.append(f"Invalid overall_health: '{health}'")
-    # per_domain_scores
-    scores = data.get("per_domain_scores", {})
+    report = data.get("report")
+    if not isinstance(report, dict):
+        errors.append("report must be a dict")
+    else:
+        for field in REQUIRED_REPORT_SUBFIELDS:
+            if field not in report:
+                errors.append(f"Missing report field: '{field}'")
+        health = report.get("overall_health")
+        if health and health not in VALID_HEALTH_JSON:
+            errors.append(f"Invalid overall_health: '{health}'")
+    scores = data.get("per_domain_scores")
     if not isinstance(scores, dict):
         errors.append("per_domain_scores must be a dict")
     else:
@@ -382,14 +383,20 @@ def validate_json_output(data):
                 errors.append(f"per_domain_scores.{domain} must be a dict")
                 continue
             s = scores_obj.get("score")
-            if s is not None and (not isinstance(s, (int, float)) or s < 0 or s > 10):
-                errors.append(f"per_domain_scores.{domain} score {s} out of range [0, 10]")
-    # findings
-    findings = data.get("findings", [])
+            if s is not None and (
+                not isinstance(s, (int, float)) or s < 0 or s > 10
+            ):
+                errors.append(
+                    f"per_domain_scores.{domain} score {s} out of range [0, 10]"
+                )
+    findings = data.get("findings")
     if not isinstance(findings, list):
         errors.append("findings must be a list")
     else:
         for idx, f in enumerate(findings):
+            if not isinstance(f, dict):
+                errors.append(f"findings[{idx}] must be a dict")
+                continue
             for field in REQUIRED_FINDING_FIELDS:
                 if field not in f:
                     errors.append(f"findings[{idx}] missing field '{field}'")
@@ -399,24 +406,31 @@ def validate_json_output(data):
             dv = f.get("da_verdict")
             if dv and dv not in VALID_DA_VERDICTS_JSON:
                 errors.append(f"findings[{idx}] invalid da_verdict '{dv}'")
-    # roadmap
-    roadmap = data.get("roadmap", {})
-    for phase_key in ["phase_1", "phase_2", "phase_3"]:
-        if phase_key not in roadmap:
-            errors.append(f"roadmap missing '{phase_key}'")
-    # tech_debt
-    tech_debt = data.get("tech_debt", {})
-    for field in REQUIRED_TECH_DEBT_FIELDS:
-        if field not in tech_debt:
-            errors.append(f"tech_debt missing field: '{field}'")
-    # agent_status
-    status = data.get("agent_status", {})
-    for field in REQUIRED_AGENT_STATUS_FIELDS:
-        if field not in status:
-            errors.append(f"agent_status missing field: '{field}'")
-    # baseline
-    baseline = data.get("baseline", {})
-    if "timestamp" not in baseline:
+    roadmap = data.get("roadmap")
+    if not isinstance(roadmap, dict):
+        errors.append("roadmap must be a dict")
+    else:
+        for phase_key in ["phase_1", "phase_2", "phase_3"]:
+            if phase_key not in roadmap:
+                errors.append(f"roadmap missing '{phase_key}'")
+    tech_debt = data.get("tech_debt")
+    if not isinstance(tech_debt, dict):
+        errors.append("tech_debt must be a dict")
+    else:
+        for field in REQUIRED_TECH_DEBT_FIELDS:
+            if field not in tech_debt:
+                errors.append(f"tech_debt missing field: '{field}'")
+    status = data.get("agent_status")
+    if not isinstance(status, dict):
+        errors.append("agent_status must be a dict")
+    else:
+        for field in REQUIRED_AGENT_STATUS_FIELDS:
+            if field not in status:
+                errors.append(f"agent_status missing field: '{field}'")
+    baseline = data.get("baseline")
+    if not isinstance(baseline, dict):
+        errors.append("baseline must be a dict")
+    elif "timestamp" not in baseline:
         errors.append("baseline missing field: 'timestamp'")
     return errors
 
@@ -433,20 +447,41 @@ SAMPLE_VALID_JSON = {
         "priority_areas": ["Security", "Architecture", "Process Quality"],
     },
     "per_domain_scores": {
-        "architecture": {"score": 6.0, "critical": 1, "high": 2, "medium": 3, "low": 1},
-        "security": {"score": 4.0, "critical": 2, "high": 3, "medium": 1, "low": 0},
-        "process_quality": {"score": 8.0, "critical": 0, "high": 1, "medium": 1, "low": 2},
-        "code_quality": {"score": 7.0, "critical": 0, "high": 1, "medium": 4, "low": 2},
-        "test_health": {"score": 5.0, "critical": 0, "high": 2, "medium": 2, "low": 1},
-        "dependencies": {"score": 8.0, "critical": 0, "high": 0, "medium": 2, "low": 3},
-        "documentation": {"score": 6.0, "critical": 0, "high": 1, "medium": 1, "low": 4},
-        "build_ci": {"score": 9.0, "critical": 0, "high": 0, "medium": 1, "low": 1},
-        "database": {"score": 7.0, "critical": 0, "high": 1, "medium": 1, "low": 1},
+        "architecture": {
+            "score": 6.0, "critical": 1, "high": 2, "medium": 3, "low": 1
+        },
+        "security": {
+            "score": 4.0, "critical": 2, "high": 3, "medium": 1, "low": 0
+        },
+        "process_quality": {
+            "score": 8.0, "critical": 0, "high": 1, "medium": 1, "low": 2
+        },
+        "code_quality": {
+            "score": 7.0, "critical": 0, "high": 1, "medium": 4, "low": 2
+        },
+        "test_health": {
+            "score": 5.0, "critical": 0, "high": 2, "medium": 2, "low": 1
+        },
+        "dependencies": {
+            "score": 8.0, "critical": 0, "high": 0, "medium": 2, "low": 3
+        },
+        "documentation": {
+            "score": 6.0, "critical": 0, "high": 1, "medium": 1, "low": 4
+        },
+        "build_ci": {
+            "score": 9.0, "critical": 0, "high": 0, "medium": 1, "low": 1
+        },
+        "database": {
+            "score": 7.0, "critical": 0, "high": 1, "medium": 1, "low": 1
+        },
     },
     "findings": [
         {
             "id": "F-001",
-            "finding": "[config/database.php:42] - Hardcoded DB password -> credential leak on source exposure",
+            "finding": (
+                "[config/database.php:42] - Hardcoded DB password"
+                " -> credential leak on source exposure"
+            ),
             "severity": "CRITICAL",
             "domain": "security",
             "est_hours": 2.0,
@@ -454,7 +489,11 @@ SAMPLE_VALID_JSON = {
         },
         {
             "id": "F-002",
-            "finding": "[src/auth/cycle.go:15] - Circular dep auth->user->notification->auth -> startup deadlock risk",
+            "finding": (
+                "[src/auth/cycle.go:15] - Circular dep"
+                " auth->user->notification->auth"
+                " -> startup deadlock risk"
+            ),
             "severity": "CRITICAL",
             "domain": "architecture",
             "est_hours": 8.0,
@@ -462,7 +501,10 @@ SAMPLE_VALID_JSON = {
         },
         {
             "id": "F-003",
-            "finding": "[tests/fixtures/auth.json:3] - Hardcoded API key -> credential leak in test artifacts",
+            "finding": (
+                "[tests/fixtures/auth.json:3] - Hardcoded API key"
+                " -> credential leak in test artifacts"
+            ),
             "severity": "CRITICAL",
             "domain": "security",
             "est_hours": 2.0,
@@ -473,17 +515,35 @@ SAMPLE_VALID_JSON = {
         "phase_1": {
             "title": "Now",
             "estimated_hours": 35.0,
-            "tasks": [{"id": "T-001", "description": "Rotate hardcoded secrets -> env vars", "hours": 4}],
+            "tasks": [
+                {
+                    "id": "T-001",
+                    "description": "Rotate hardcoded secrets -> env vars",
+                    "hours": 4,
+                }
+            ],
         },
         "phase_2": {
             "title": "Next Quarter",
             "estimated_hours": 47.0,
-            "tasks": [{"id": "T-007", "description": "Refactor high-complexity functions", "hours": 14}],
+            "tasks": [
+                {
+                    "id": "T-007",
+                    "description": "Refactor high-complexity functions",
+                    "hours": 14,
+                }
+            ],
         },
         "phase_3": {
             "title": "Backlog",
             "estimated_hours": 118.0,
-            "tasks": [{"id": "T-012", "description": "Implement design system component library", "hours": 40}],
+            "tasks": [
+                {
+                    "id": "T-012",
+                    "description": "Implement design system component library",
+                    "hours": 40,
+                }
+            ],
         },
     },
     "tech_debt": {

@@ -997,21 +997,29 @@ object in addition to (or instead of) the markdown report:
   "findings": [
     {
       "id": "F-001",
-      "finding": "description of finding with [file:line] format",
-      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "domain": "architecture|security|code_quality|...",
-      "est_hours": 8.0,
-      "da_verdict": "CONFIRMED|PLAUSIBLE|QUESTIONABLE|REJECTED|DA-ESCALATION"
+      "finding": "[config/database.php:42] - Hardcoded DB password -> credential leak",
+      "severity": "CRITICAL",
+      "domain": "security",
+      "est_hours": 2.0,
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "id": "F-002",
+      "finding": "[src/auth/service.go:15] - No input validation -> injection risk",
+      "severity": "HIGH",
+      "domain": "security",
+      "est_hours": 4.0,
+      "da_verdict": "PLAUSIBLE"
     }
   ],
   "roadmap": {
-    "phase_1": {"title": "Now", "estimated_hours": 35.0, "tasks": [...]},
-    "phase_2": {"title": "Next Quarter", "estimated_hours": 47.0, "tasks": [...]},
-    "phase_3": {"title": "Backlog", "estimated_hours": 118.0, "tasks": [...]}
+    "phase_1": {"title": "Now", "estimated_hours": 35.0, "tasks": []},
+    "phase_2": {"title": "Next Quarter", "estimated_hours": 47.0, "tasks": []},
+    "phase_3": {"title": "Backlog", "estimated_hours": 118.0, "tasks": []}
   },
   "tech_debt": {
     "total_hours": 200.0,
-    "by_domain": {"security": 18, "architecture": 24, ...},
+    "by_domain": {"security": 18, "architecture": 24, "code_quality": 32},
     "trend": "First baseline -- no trend data"
   },
   "agent_status": {
@@ -1029,7 +1037,10 @@ object in addition to (or instead of) the markdown report:
 ```
 
 All domain keys in `per_domain_scores` use canonical domain IDs from
-the Phase 2 table. The `codebase_size` object is omitted if discovery
+the Phase 2 table. The `severity` field in findings accepts one of
+`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `INFO`. The `da_verdict` field
+accepts one of `CONFIRMED`, `PLAUSIBLE`, `QUESTIONABLE`, `REJECTED`, or
+`DA-ESCALATION`. The `codebase_size` object is omitted if discovery
 was unable to compute LOC/file/module counts. The `baseline.trend_vs_previous`
 field reports the trend comparison if a previous baseline exists, or
 `"none"` for first-run baselines.

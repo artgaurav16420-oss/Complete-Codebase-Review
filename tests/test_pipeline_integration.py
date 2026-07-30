@@ -34,7 +34,7 @@ class TestDummyRepoDiscovery(unittest.TestCase):
         actual = set()
         for f in repo.rglob("*.py"):
             rel = f.relative_to(repo)
-            actual.add(str(rel))
+            actual.add(str(rel).replace(os.sep, "/"))
         for exp in expected:
             self.assertIn(
                 exp, actual,
@@ -66,11 +66,24 @@ class TestOutputValidation(unittest.TestCase):
 
         import re
         m = re.search(
-            r"SAMPLE_VALID_OUTPUT\s*=\s*(['\"])(.*?)\1",
+            r"SAMPLE_VALID_OUTPUT\s*=\s*r?'''"
+            r"(.*?)"
+            r"'''",
             content, re.DOTALL,
         )
+        if not m:
+            m = re.search(
+                r'SAMPLE_VALID_OUTPUT\s*=\s*r?"""'
+                r"(.*?)"
+                r'"""',
+                content, re.DOTALL,
+            )
+        self.assertIsNotNone(
+            m,
+            "Could not find SAMPLE_VALID_OUTPUT in test_pipeline.py",
+        )
         if m:
-            sample = m.group(2)
+            sample = m.group(1)
             errors = validate_markdown_output(sample)
             self.assertEqual(
                 errors, [],
