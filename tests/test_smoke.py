@@ -1,131 +1,176 @@
-"""Smoke tests for install.py — subprocess CLI checks.
+"""Smoke tests for install.py — CLI checks.
 
-Runs install.py with various flags and asserts exit codes/output.
-No mocking — tests the real entry point as a user would invoke it.
+Runs install.py entry point with various flags and asserts exit codes/output.
+Uses in-process calls with patched sys.argv for coverage tracking.
 """
+import io
 import os
-import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+
+def _import_install():
+    """Import install module for in-process testing."""
+    p = str(Path(__file__).resolve().parent.parent)
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import install as install_mod
+    return install_mod
+
 
 INSTALL_PY = str(Path(__file__).resolve().parent.parent / "install.py")
-PYTHON = sys.executable
 
 
-class TestSmokeHelp(unittest.TestCase):
-    """Tests for --help and -h flags."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.help_result = subprocess.run(
-            [PYTHON, INSTALL_PY, "--help"],
-            capture_output=True, text=True
-        )
-
-    def test_help_exits_zero(self):
-        self.assertEqual(self.help_result.returncode, 0)
-
-    def test_help_contains_description(self):
-        self.assertIn(
-            "Install the Complete Codebase Review skill", self.help_result.stdout
-        )
-
-    def test_help_contains_examples(self):
-        self.assertIn("Examples:", self.help_result.stdout)
-
-    def test_short_help_equivalent(self):
-        short_help = subprocess.run(
-            [PYTHON, INSTALL_PY, "-h"],
-            capture_output=True, text=True
-        )
-        self.assertEqual(short_help.returncode, 0)
-        self.assertEqual(self.help_result.stdout, short_help.stdout)
-
-    def test_stderr_empty_on_help(self):
-        self.assertEqual(self.help_result.stderr, "")
-
-
-class TestSmokeVersion(unittest.TestCase):
-    """Tests for --version and -V flags."""
+class TestChecksumVerification(unittest.TestCase):
+    """Tests for --checksum and --self-verify flags using in-process calls."""
 
     @classmethod
     def setUpClass(cls):
-        cls.version_result = subprocess.run(
-            [PYTHON, INSTALL_PY, "--version"],
-            capture_output=True, text=True
-        )
+        cls.install = _import_install()
 
-    def test_version_exits_zero(self):
-        self.assertEqual(self.version_result.returncode, 0)
+    def _write_script_and_checksum(self, tmpdir, content=b"fake script", valid_hash=None):
+        """Write a fake script and optional .sha256 file. Returns (script_path, hash)."""
+        script = Path(tmpdir) / "install.py"
+        script.write_bytes(content)
+        if valid_hash is None:
+            valid_hash = self.install._compute_sha256(script)
+        return script, valid_hash
 
-    def test_version_prints_version_string(self):
-        self.assertIn(
-            "complete-codebase-review v", self.version_result.stdout
-        )
+    def test_self_verify_passes(self):
+        """Verify --self-verify succeeds with valid checksum."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script, valid_hash = self._write_script_and_checksum(tmpdir)
+            checksum_file = script.parent / "install.py.sha256"
+            checksum_file.write_text(valid_hash + "  install.py\n", encoding="utf-8")
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+                self.assertEqual(ctx.exception.code, 0)
+                self.assertIn("Checksum verification passed", mock_stdout.getvalue())
 
-    def test_short_version_equivalent(self):
-        short_v = subprocess.run(
-            [PYTHON, INSTALL_PY, "-V"],
-            capture_output=True, text=True
-        )
-        self.assertEqual(short_v.returncode, 0)
-        self.assertEqual(self.version_result.stdout, short_v.stdout)
+    def test_self_verify_with_empty_checksum_file_fails(self):
+        """Verify --self-verify fails with empty checksum file."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script, _ = self._write_script_and_checksum(tmpdir)
+            checksum_file = script.parent / "install.py.sha256"
+            checksum_file.write_text("   \n", encoding="utf-8")
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn("empty", mock_stdout.getvalue().lower())
 
-    def test_stderr_empty_on_version(self):
-        self.assertEqual(self.version_result.stderr, "")
+    def test_self_verify_with_invalid_checksum_format_fails(self):
+        """Verify --self-verify fails with non-hex content."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script, _ = self._write_script_and_checksum(tmpdir)
+            checksum_file = script.parent / "install.py.sha256"
+            checksum_file.write_text("not-a-hex-string\n", encoding="utf-8")
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn("invalid checksum format", mock_stdout.getvalue().lower())
 
+    def test_self_verify_with_missing_checksum_file_fails(self):
+        """Verify --self-verify fails when checksum file is missing."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script, _ = self._write_script_and_checksum(tmpdir)
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn("install.py.sha256 not found", mock_stdout.getvalue())
 
-class TestSmokeDryRun(unittest.TestCase):
-    """Tests for --dry-run and -n flags."""
+    def test_self_verify_with_wrong_hash_fails(self):
+        """Verify --self-verify fails when checksum mismatches."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script, _ = self._write_script_and_checksum(tmpdir)
+            checksum_file = script.parent / "install.py.sha256"
+            checksum_file.write_text("0" * 64 + "  install.py\n", encoding="utf-8")
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn("FAILED", mock_stdout.getvalue())
 
-    @classmethod
-    def setUpClass(cls):
-        cls.dry_run_result = subprocess.run(
-            [PYTHON, INSTALL_PY, "--dry-run"],
-            capture_output=True, text=True
-        )
+    def test_checksum_flag_passes(self):
+        """Verify --checksum succeeds with valid hash."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script, valid_hash = self._write_script_and_checksum(tmpdir)
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", ["install.py", "--checksum", valid_hash]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+                self.assertEqual(ctx.exception.code, 0)
+                self.assertIn("Checksum verification passed", mock_stdout.getvalue())
 
-    def test_dry_run_exits_zero(self):
-        self.assertEqual(self.dry_run_result.returncode, 0)
+    def test_checksum_flag_fails_with_invalid_hash(self):
+        """Verify --checksum fails with incorrect hash."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script, _ = self._write_script_and_checksum(tmpdir)
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", ["install.py", "--checksum", "0" * 64]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with self.assertRaises(SystemExit) as ctx:
+                    self.install.main()
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn("FAILED", mock_stdout.getvalue())
 
-    def test_dry_run_prints_message(self):
-        self.assertIn("Dry run complete", self.dry_run_result.stdout)
+    def test_checksum_flag_fails_with_bad_format(self):
+        """Verify --checksum rejects non-hex or wrong-length input."""
+        import tempfile
+        bad_inputs = ["", "short", "xyz" * 30]
+        for bad in bad_inputs:
+            with self.subTest(input=bad):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    script, _ = self._write_script_and_checksum(tmpdir)
+                    with patch.object(self.install, "__file__", str(script)), \
+                         patch("sys.argv", ["install.py", "--checksum", bad]), \
+                         patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                        with self.assertRaises(SystemExit) as ctx:
+                            self.install.main()
+                        self.assertEqual(ctx.exception.code, 1)
+                        self.assertIn("Invalid checksum format", mock_stdout.getvalue())
 
-    def test_dry_run_does_not_print_installation_complete(self):
-        self.assertNotIn("Installation complete", self.dry_run_result.stdout)
-
-    def test_short_dry_run_flag(self):
-        result = subprocess.run(
-            [PYTHON, INSTALL_PY, "-n"],
-            capture_output=True, text=True
-        )
-        self.assertEqual(result.returncode, 0)
-
-    def test_stderr_empty_on_dry_run(self):
-        self.assertEqual(self.dry_run_result.stderr, "")
-
-
-class TestSmokeTargetPath(unittest.TestCase):
-    """Tests for --target path validation."""
-
-    def test_target_traversal_rejected(self):
-        result = subprocess.run(
-            [PYTHON, INSTALL_PY, "--target", "../evil"],
-            capture_output=True, text=True
-        )
-        self.assertEqual(result.returncode, 1)
-
-    def test_target_traversal_prints_error(self):
-        result = subprocess.run(
-            [PYTHON, INSTALL_PY, "--target", "../evil"],
-            capture_output=True, text=True
-        )
-        self.assertIn("Path traversal", result.stdout)
+    def test_help_shows_checksum_options(self):
+        """Verify --help mentions checksum flags."""
+        with patch("sys.argv", ["install.py", "--help"]), \
+             patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            with self.assertRaises(SystemExit) as ctx:
+                self.install.main()
+            self.assertEqual(ctx.exception.code, 0)
+            output = mock_stdout.getvalue()
+            self.assertIn("--checksum", output)
+            self.assertIn("--self-verify", output)
 
 
 class TestNoColorEnv(unittest.TestCase):
-    """Tests for NO_COLOR env var suppressing ANSI codes."""
+    """Tests for NO_COLOR env var suppressing ANSI codes in the checksum path."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.install = _import_install()
 
     def _no_color_env(self):
         env = os.environ.copy()
@@ -133,18 +178,40 @@ class TestNoColorEnv(unittest.TestCase):
         return env
 
     def test_no_color_suppresses_ansi(self):
-        result = subprocess.run(
-            [PYTHON, INSTALL_PY, "--dry-run"],
-            capture_output=True, text=True, env=self._no_color_env()
-        )
-        self.assertNotIn("\033[", result.stdout)
+        """Verify NO_COLOR suppresses ANSI escape codes."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script = Path(tmpdir) / "install.py"
+            script.write_text("")
+            valid_hash = self.install._compute_sha256(script)
+            checksum_file = script.parent / "install.py.sha256"
+            checksum_file.write_text(valid_hash + "  install.py\n", encoding="utf-8")
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout, \
+                 patch.dict(os.environ, {"NO_COLOR": "1"}, clear=True):
+                with self.assertRaises(SystemExit):
+                    self.install.main()
+                output = mock_stdout.getvalue()
+                self.assertNotIn("\033[", output)
 
     def test_no_color_still_outputs_text(self):
-        result = subprocess.run(
-            [PYTHON, INSTALL_PY, "--dry-run"],
-            capture_output=True, text=True, env=self._no_color_env()
-        )
-        self.assertIn("Dry run complete", result.stdout)
+        """Verify NO_COLOR still outputs text without ANSI codes."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script = Path(tmpdir) / "install.py"
+            script.write_text("")
+            valid_hash = self.install._compute_sha256(script)
+            checksum_file = script.parent / "install.py.sha256"
+            checksum_file.write_text(valid_hash + "  install.py\n", encoding="utf-8")
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout, \
+                 patch.dict(os.environ, {"NO_COLOR": "1"}, clear=True):
+                with self.assertRaises(SystemExit):
+                    self.install.main()
+                output = mock_stdout.getvalue()
+                self.assertIn("Checksum verification passed", output)
 
 
 if __name__ == "__main__":

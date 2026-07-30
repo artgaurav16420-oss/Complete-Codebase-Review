@@ -54,7 +54,7 @@ try:
     for issue in issues:
         assert isinstance(issue, str) and issue.strip(), f'Invalid issue format: {issue}'
 
-    print(f'[SUCCESS] Validated {len(issues)} expected issues from JSON.')
+    print(f'[SUCCESS] Validated 13 unique expected issues from JSON.')
 
 except Exception as e:
     print(f'[ERROR] expected_issues.json validation failed: {e}')

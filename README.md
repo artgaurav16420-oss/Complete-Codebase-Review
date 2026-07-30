@@ -160,23 +160,21 @@ The full report includes a 3-phase improvement roadmap, tech debt breakdown by d
 ## 🚀 Quick Start
 
 ```bash
-# Install (one command)
-curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
+# Clone the repository (authenticated via git, not raw HTTPS)
+git clone --depth 1 https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git
+cd Complete-Codebase-Review
+
+# Self-verify script integrity (detects accidental corruption)
+python3 install.py --self-verify
+
+# Install
+python3 install.py
 
 # Run a review
 /complete-codebase-review .
-
-# Quick mode (3 agents, 120s timeout)
-export CODE_REVIEW_EFFORT=min
-/complete-codebase-review src/
 ```
 
-> **Security note:** The one-liner pipes from HTTPS. For production use, verify the script checksum after download:
-> ```bash
-> curl -fsSL -o install.py https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py
-> # Review the script, then run:
-> python3 install.py
-> ```
+> **Release-based verification:** For production environments, download the installer from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify its SHA-256 checksum published alongside the release notes — never rely on a checksum downloaded from the same source as the script.
 
 That's it. You'll get a full health report in 5-15 minutes.
 
@@ -184,15 +182,23 @@ That's it. You'll get a full health report in 5-15 minutes.
 
 ## 📦 Installation
 
-### One-line Install (Recommended)
+### Recommended: Clone + Self-Verify
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/artgaurav16420-oss/Complete-Codebase-Review/main/install.py | python3
+# Clone the repository (authenticated via git)
+git clone --depth 1 https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git
+cd Complete-Codebase-Review
+
+# Self-verify script integrity (detects accidental corruption)
+python3 install.py --self-verify
+
+# Install to detected agent configs
+python3 install.py
 ```
 
-The installer detects your environment (Claude Code, OpenCode, Cursor, Continue) and places the skill in the correct directory. See [install.py](install.py) for details.
+The `--self-verify` flag detects accidental corruption of the installer, but does not authenticate the source. For production environments, download from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify the checksum published alongside the release notes.
 
-### Manual Install
+### Alternative: Clone Repository
 
 ```bash
 git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git ~/.claude/skills/complete-codebase-review

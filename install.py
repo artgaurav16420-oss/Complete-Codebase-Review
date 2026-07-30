@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import os
 import re
 import shutil
@@ -21,6 +22,43 @@ import stat
 import sys
 import platform
 from pathlib import Path
+
+
+def _compute_sha256(file_path):
+    """Compute SHA-256 hash of a file.
+    
+    Args:
+        file_path: Path to the file to hash.
+        
+    Returns:
+        Hexadecimal string of the SHA-256 hash.
+    """
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    return sha256_hash.hexdigest()
+
+
+def _verify_checksum(file_path, expected_hash):
+    """Verify a file's SHA-256 hash matches the expected value.
+    
+    Args:
+        file_path: Path to the file to verify.
+        expected_hash: Expected SHA-256 hash (hex string).
+        
+    Returns:
+        True if hash matches, False otherwise.
+        
+    Raises:
+        FileNotFoundError: If file_path does not exist.
+    """
+    if not Path(file_path).exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    
+    actual_hash = _compute_sha256(file_path)
+    return actual_hash.lower() == expected_hash.lower()
+
 
 _SKILL_EXCLUDED = {
     # VCS and build artifacts — never ship these
@@ -389,7 +427,9 @@ def main():
             "  python install.py\n"
             "  python install.py --target ~/my-skills\n"
             "  python install.py --dry-run\n"
-            "  python install.py --version"
+            "  python install.py --version\n"
+            "  python install.py --self-verify\n"
+            "  python install.py --checksum <SHA256_HASH>"
         ),
     )
     parser.add_argument(
@@ -409,11 +449,66 @@ def main():
         action="store_true",
         help="Show version and exit.",
     )
+    verify_group = parser.add_mutually_exclusive_group()
+    verify_group.add_argument(
+        "--checksum",
+        metavar="HASH",
+        default=None,
+        help="Verify the script's SHA-256 checksum before running.",
+    )
+    verify_group.add_argument(
+        "--self-verify",
+        action="store_true",
+        default=False,
+        help="Verify this script against install.py.sha256 (if present) and exit.",
+    )
     args = parser.parse_args()
 
     if args.version:
         print(f"complete-codebase-review v{get_version()}")
         return
+
+    if args.self_verify:
+        script_path = Path(__file__).resolve()
+        checksum_file = script_path.parent / "install.py.sha256"
+        if not checksum_file.exists():
+            print_error("install.py.sha256 not found")
+            sys.exit(1)
+        checksum_content = checksum_file.read_text(encoding="utf-8").strip()
+        if not checksum_content:
+            print_error("install.py.sha256 is empty — verification failed")
+            sys.exit(1)
+        expected_hash = checksum_content.split()[0]
+        if len(expected_hash) != 64 or not all(
+            c in "0123456789abcdefABCDEF" for c in expected_hash
+        ):
+            print_error(
+                "install.py.sha256 contains invalid checksum format"
+                " (expected 64 hex characters)"
+            )
+            sys.exit(1)
+        if _verify_checksum(script_path, expected_hash):
+            print_success("Checksum verification passed")
+            sys.exit(0)
+        else:
+            print_error("Checksum verification FAILED — script may be corrupted")
+            sys.exit(1)
+
+    if args.checksum is not None:
+        script_path = Path(__file__).resolve()
+        if len(args.checksum) != 64 or not all(
+            c in "0123456789abcdefABCDEF" for c in args.checksum
+        ):
+            print_error(
+                "Invalid checksum format (expected 64 hexadecimal characters)"
+            )
+            sys.exit(1)
+        if _verify_checksum(script_path, args.checksum):
+            print_success("Checksum verification passed")
+            sys.exit(0)
+        else:
+            print_error("Checksum verification FAILED")
+            sys.exit(1)
 
     print_info(f"Starting Universal Installer on {platform.system()}")
 
