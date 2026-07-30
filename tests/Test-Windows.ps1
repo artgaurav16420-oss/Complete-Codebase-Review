@@ -84,7 +84,16 @@ $mockLines = @(
     'CWE-798',
     'CWE-78',
     'CWE-200',
-    'unused-import'
+    'CWE-477',
+    'command-injection-shell-true',
+    'circular-dependency',
+    'n-plus-one-query',
+    'missing-error-handling',
+    'high-cyclomatic-complexity',
+    'unused-import',
+    'dead-code',
+    'missing-test-assertions',
+    'hardcoded-secret-config'
 )
 
 foreach ($issue in $expectedIssues) {
