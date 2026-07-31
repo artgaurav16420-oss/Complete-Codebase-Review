@@ -367,6 +367,45 @@ class TestPrintFunctions(_BaseInstallTest):
         self.assertTrue(output.endswith("\n"))
 
 
+class TestRunAutoOrLocalInstall(_BaseInstallTest):
+    """Tests for _run_auto_or_local_install()."""
+
+    def test_installed_any_true_skips_local_fallback(self):
+        with patch.object(self.install, "_run_auto_install", return_value=True) as mock_auto, \
+             patch.object(self.install, "_run_local_fallback") as mock_local, \
+             patch.object(self.install, "print_info") as mock_info, \
+             patch.object(self.install, "print_success") as mock_success:
+            self.install._run_auto_or_local_install(Path("/src"), {}, False)
+
+        mock_auto.assert_called_once_with(Path("/src"), {}, False)
+        mock_local.assert_not_called()
+        mock_info.assert_not_called()
+        mock_success.assert_called_once_with("Installation complete!")
+
+    def test_installed_any_false_calls_local_fallback(self):
+        with patch.object(self.install, "_run_auto_install", return_value=False) as mock_auto, \
+             patch.object(self.install, "_run_local_fallback") as mock_local, \
+             patch.object(self.install, "print_info") as mock_info, \
+             patch.object(self.install, "print_success") as mock_success:
+            self.install._run_auto_or_local_install(Path("/src"), {}, False)
+
+        mock_auto.assert_called_once_with(Path("/src"), {}, False)
+        mock_local.assert_called_once_with(Path("/src"), False)
+        mock_info.assert_called_once_with("No existing global tool configurations")
+        mock_success.assert_called_once_with("Installation complete!")
+
+    def test_dry_run_prints_dry_run_complete(self):
+        with patch.object(self.install, "_run_auto_install", return_value=True) as mock_auto, \
+             patch.object(self.install, "_run_local_fallback") as mock_local, \
+             patch.object(self.install, "print_info") as mock_info, \
+             patch.object(self.install, "print_success") as mock_success:
+            self.install._run_auto_or_local_install(Path("/src"), {}, True)
+
+        mock_auto.assert_called_once_with(Path("/src"), {}, True)
+        mock_local.assert_not_called()
+        mock_info.assert_not_called()
+        mock_success.assert_called_once_with("Dry run complete.")
+
 class TestMainArgparse(_BaseInstallTest):
 
     def test_dry_run_does_not_call_copy_skill(self):
