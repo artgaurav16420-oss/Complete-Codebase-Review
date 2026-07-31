@@ -591,6 +591,60 @@ class TestGitignoreWarning(_BaseInstallTestWithArgv):
         self.assertNotIn("gitignore", output.lower())
 
 
+class TestRunTargetInstall(_BaseInstallTest):
+    """Tests for _run_target_install()."""
+
+    @patch('install._validate_target_path')
+    @patch('install.print_error')
+    @patch('install.sys.exit')
+    def test_validation_error(self, mock_exit, mock_print_error, mock_validate):
+        mock_validate.side_effect = ValueError("Invalid path")
+        mock_exit.side_effect = SystemExit(1)
+        with self.assertRaises(SystemExit) as cm:
+            self.install._run_target_install(Path("/src"), "/target", dry_run=False)
+        self.assertEqual(cm.exception.code, 1)
+        mock_print_error.assert_called_once_with("Invalid path")
+        mock_exit.assert_called_once_with(1)
+
+    @patch('install._validate_target_path')
+    @patch('install.print_info')
+    @patch('install.print_success')
+    @patch('install.copy_skill')
+    def test_dry_run(self, mock_copy, mock_print_success, mock_print_info, mock_validate):
+        mock_validate.return_value = Path("/resolved/target")
+        self.install._run_target_install(Path("/src"), "/target", dry_run=True)
+        mock_print_info.assert_called_once()
+        self.assertIn("[DRY-RUN]", mock_print_info.call_args[0][0])
+        mock_print_success.assert_called_once_with("Dry run complete.")
+        mock_copy.assert_not_called()
+
+    @patch('install._validate_target_path')
+    @patch('install.copy_skill')
+    @patch('install.print_success')
+    def test_successful_installation(self, mock_print_success, mock_copy, mock_validate):
+        mock_validate.return_value = Path("/resolved/target")
+        mock_copy.return_value = Path("/resolved/target/complete-codebase-review")
+        self.install._run_target_install(Path("/src"), "/target", dry_run=False)
+        mock_copy.assert_called_once_with(Path("/src"), Path("/resolved/target"))
+        mock_print_success.assert_any_call(f"Installed to: {Path('/resolved/target/complete-codebase-review')}")
+        mock_print_success.assert_any_call("Installation complete!")
+
+    @patch('install._validate_target_path')
+    @patch('install.copy_skill')
+    @patch('install.print_error')
+    @patch('install.sys.exit')
+    def test_copy_error(self, mock_exit, mock_print_error, mock_copy, mock_validate):
+        mock_validate.return_value = Path("/resolved/target")
+        mock_copy.side_effect = PermissionError("Permission denied")
+        mock_exit.side_effect = SystemExit(1)
+        with self.assertRaises(SystemExit) as cm:
+            self.install._run_target_install(Path("/src"), "/target", dry_run=False)
+        self.assertEqual(cm.exception.code, 1)
+        mock_print_error.assert_called_once()
+        self.assertIn("Install failed:", mock_print_error.call_args[0][0])
+        mock_exit.assert_called_once_with(1)
+
+
 class TestValidateTargetPath(_BaseInstallTest):
     """Tests for _validate_target_path()."""
 
