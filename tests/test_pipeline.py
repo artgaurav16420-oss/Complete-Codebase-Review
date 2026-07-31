@@ -291,6 +291,8 @@ WEASEL_PATTERNS = [
     r'\bin\s+most\s+cases\b',
 ]
 
+COMPILED_WEASEL_PATTERNS = [re.compile(p, re.IGNORECASE) for p in WEASEL_PATTERNS]
+
 
 def validate_findings_have_evidence(md):
     """Check findings contain file:line anchors and no weasel words."""
@@ -307,8 +309,8 @@ def validate_findings_have_evidence(md):
                 f"{finding[:60]}"
             )
         finding_desc = re.sub(r'^\[[^\]]+\]\s*—\s*', '', finding)
-        for pattern in WEASEL_PATTERNS:
-            if re.search(pattern, finding_desc, re.IGNORECASE):
+        for pattern in COMPILED_WEASEL_PATTERNS:
+            if pattern.search(finding_desc):
                 errors.append(f"Finding contains weasel word: {finding[:60]}")
     return errors
 
