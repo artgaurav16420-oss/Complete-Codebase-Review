@@ -591,6 +591,60 @@ class TestGitignoreWarning(_BaseInstallTestWithArgv):
         self.assertNotIn("gitignore", output.lower())
 
 
+class TestValidateNoEscapedSymlinks(_BaseInstallTest):
+    """Tests for _validate_no_escaped_symlinks()."""
+
+    def test_valid_internal_symlink_passes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dest = Path(tmpdir) / "skill"
+            skill_dest.mkdir()
+            target_file = skill_dest / "target.txt"
+            target_file.write_text("hello")
+            symlink_file = skill_dest / "link.txt"
+            try:
+                symlink_file.symlink_to(target_file.name)
+            except (OSError, NotImplementedError):
+                self.skipTest("Symlinks not supported on this platform")
+
+            # Should not raise
+            from install import _validate_no_escaped_symlinks
+            _validate_no_escaped_symlinks(skill_dest)
+
+    def test_escaped_symlink_raises_value_error_and_deletes_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dest = Path(tmpdir) / "skill"
+            skill_dest.mkdir()
+            escaped_target = Path(tmpdir) / "escaped.txt"
+            escaped_target.write_text("evil")
+            symlink_file = skill_dest / "link.txt"
+            try:
+                symlink_file.symlink_to(escaped_target)
+            except (OSError, NotImplementedError):
+                self.skipTest("Symlinks not supported on this platform")
+
+            with self.assertRaises(ValueError) as ctx:
+                from install import _validate_no_escaped_symlinks
+                _validate_no_escaped_symlinks(skill_dest)
+            self.assertIn("points outside skill dir", str(ctx.exception))
+            self.assertFalse(skill_dest.exists())
+
+    def test_broken_symlink_raises_value_error_and_deletes_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_dest = Path(tmpdir) / "skill"
+            skill_dest.mkdir()
+            symlink_file = skill_dest / "link.txt"
+            try:
+                symlink_file.symlink_to("non_existent.txt")
+            except (OSError, NotImplementedError):
+                self.skipTest("Symlinks not supported on this platform")
+
+            with self.assertRaises(ValueError) as ctx:
+                from install import _validate_no_escaped_symlinks
+                _validate_no_escaped_symlinks(skill_dest)
+            self.assertIn("Broken symlink", str(ctx.exception))
+            self.assertFalse(skill_dest.exists())
+
+
 class TestValidateTargetPath(_BaseInstallTest):
     """Tests for _validate_target_path()."""
 
