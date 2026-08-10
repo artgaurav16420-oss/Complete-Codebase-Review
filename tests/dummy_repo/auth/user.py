@@ -7,3 +7,6 @@ def create_user(name, email):
 
 def get_user_profile(user_id):
     return {"id": user_id, "name": "test", "email": "test@example.com"}
+
+def get_user_profiles(user_ids):
+    return {user_id: {"id": user_id, "name": "test", "email": "test@example.com"} for user_id in user_ids}
