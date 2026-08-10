@@ -245,9 +245,8 @@ def copy_skill(src_dir, dest_dir):
                     resolved.unlink()
 
         shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
-        _validate_no_escaped_symlinks(skill_dest)
+        copied = _validate_no_escaped_symlinks(skill_dest)
 
-        copied = sum(len(files) for _, _, files in os.walk(skill_dest))
         print_info(f"Copied {copied} file(s) to {skill_dest}")
         return skill_dest
     except PermissionError:
@@ -269,7 +268,9 @@ def _validate_no_escaped_symlinks(skill_dest):
     """
     root_resolved = skill_dest.resolve(strict=False)
     errors = []
+    file_count = 0
     for dirpath, dirnames, filenames in os.walk(skill_dest):
+        file_count += len(filenames)
         for name in dirnames + filenames:
             full_path = Path(dirpath) / name
             try:
@@ -297,6 +298,7 @@ def _validate_no_escaped_symlinks(skill_dest):
         if cause:
             raise ValueError(msg) from cause
         raise ValueError(msg)
+    return file_count
 
 
 def _validate_target_path(path):
