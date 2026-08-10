@@ -34,3 +34,8 @@ class TestAuth(unittest.TestCase):
             mock_run.return_value.returncode = 0
             result = ping_host("127.0.0.1")
             self.assertTrue(result)
+
+    def test_delete_user_path_traversal(self):
+        from auth.login import delete_user
+        result = delete_user("../another_dir")
+        self.assertFalse(result)
