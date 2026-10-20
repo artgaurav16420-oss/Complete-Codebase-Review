@@ -940,5 +940,26 @@ class TestMainEntryPoint(unittest.TestCase):
         self.assertIn("complete-codebase-review v", result.stdout)
 
 
+class TestIgnoreSkillFiles(unittest.TestCase):
+    """Installer copy filter drops artifacts and dev-only paths."""
+
+    def test_skips_artifacts(self):
+        install_mod = _import_install()
+        names = [
+            "SKILL.md", "install.py", "tools", "tests", "__pycache__",
+            "x.pyc", "pkg.egg-info", ".coverage", ".git",
+        ]
+        kept = install_mod._ignore_skill_files(".", names)
+        self.assertNotIn("SKILL.md", kept)
+        for ignored in ("install.py", "tools", "tests", "__pycache__",
+                        "x.pyc", "pkg.egg-info", ".coverage", ".git"):
+            self.assertIn(ignored, kept)
+
+    def test_keeps_runtime_content(self):
+        install_mod = _import_install()
+        names = ["SKILL.md", "karpathy-guidelines.md", "helpers", "skills", "ccr"]
+        self.assertEqual(install_mod._ignore_skill_files(".", names), [])
+
+
 if __name__ == "__main__":
     unittest.main()

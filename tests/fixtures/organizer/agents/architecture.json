@@ -1,0 +1,54 @@
+{
+  "agent": "architecture",
+  "score": 66,
+  "findings": [
+    {
+      "finding": "[fermi_organizer/runmodes.py:794] \u2014 copies adopted child folders with an unstaged shutil.copytree guarded only by except OSError \u2192 an interrupted copy leaves a partially written PDF that the next incremental run counts as organized",
+      "severity": "HIGH",
+      "est_hours": 24,
+      "tags": ["god-module", "layering", "duplicated-engine", "non-atomic-write"],
+      "evidence": "runmodes.py 2329 lines / 72 defs; copytree at 794 and 922; fsops._copy_atomic at 388 stages and os.replace",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/runmodes.py:2274] \u2014 normalize_folder_names runs before the placement-refusal branch \u2192 a run that logs placement_refused=True and exits 2 still renames live folders",
+      "severity": "HIGH",
+      "est_hours": 4,
+      "tags": ["refusal-contract", "state-ownership", "partial-mutation"],
+      "evidence": "refusal branch at 2218 skips supersede only; normalize call at 2274 precedes _incremental_place; probe with MAX_PLANNED_COPIES=1 renamed a folder while refusing",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/extraction.py:415] \u2014 run-scoped OCR singleton is reset only by cli.main \u2192 calling run_full/run_incremental twice in one process makes the second run's scanned list contain the first run's drawings",
+      "severity": "MEDIUM",
+      "est_hours": 6,
+      "tags": ["global-state", "state-ownership", "library-reuse"],
+      "evidence": "OCR.reset has one production caller (cli.py:123); tests reset by hand; runmodes reads OCR.scanned for ctx",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/fsops.py:16] \u2014 filesystem layer imports the PDF-extraction layer and retire_adopted_orphans reopens each candidate PDF \u2192 watermark facts are re-derived per incremental run and every path helper transitively imports pymupdf",
+      "severity": "MEDIUM",
+      "est_hours": 8,
+      "tags": ["layering-inversion", "redundant-io"],
+      "evidence": "from .extraction import detect_watermark; _pdf_watermarked opens per call at fsops.py:66; called at 1189-1191",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/cli.py:71] \u2014 RunContext and WorkbookContext duplicate run state and are joined by a hand-written 16-keyword mapping under a blanket except Exception \u2192 a renamed key degrades to a warning with exit 0 and no workbook",
+      "severity": "MEDIUM",
+      "est_hours": 6,
+      "tags": ["schema-drift", "duplicated-state", "swallowed-error"],
+      "evidence": "RunContext keys vs WorkbookContext keys; refresh_from_run keyword mapping at cli.py:72-83; except Exception at cli.py:86",
+      "da_verdict": "PLAUSIBLE"
+    },
+    {
+      "finding": "[fermi_organizer/runmodes.py:2158] \u2014 15 heterogeneous values cross a function boundary as a bare positional tuple and are unpacked over three lines \u2192 reordering adjacent set-valued fields silently swaps the placement scope",
+      "severity": "MEDIUM",
+      "est_hours": 6,
+      "tags": ["implicit-contract", "coupling", "god-module"],
+      "evidence": "15-value return at runmodes.py:1748-1751; unpack at 2158-2160 binds new_stems and org_stems adjacently",
+      "da_verdict": "PLAUSIBLE"
+    }
+  ]
+}

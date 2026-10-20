@@ -37,29 +37,22 @@ else
     echo "[SUCCESS] karpathy-guidelines.md exists"
 fi
 
-echo "[INFO] Validating expected issues JSON..."
+echo "[INFO] Checking generated docs are current..."
+if "$PYTHON" tools/generate.py --check; then
+    echo "[SUCCESS] Generated docs are current"
+else
+    echo "[ERROR] Generated docs are stale — run: python tools/generate.py"
+    FAIL=1
+fi
 
-"$PYTHON" -c "
-import json
-import sys
+echo "[INFO] Running eval harness against recorded fixtures..."
 
-try:
-    with open('tests/expected_issues.json', encoding='utf-8') as f:
-        issues = json.load(f)
-
-    assert isinstance(issues, list), 'Expected issues must be a list'
-    assert len(issues) == 13, f'Expected 13 issues, got {len(issues)}'
-    assert len(set(issues)) == len(issues), 'Duplicate issue identifiers found'
-
-    for issue in issues:
-        assert isinstance(issue, str) and issue.strip(), f'Invalid issue format: {issue}'
-
-    print(f'[SUCCESS] Validated 13 unique expected issues from JSON.')
-
-except Exception as e:
-    print(f'[ERROR] expected_issues.json validation failed: {e}')
-    sys.exit(1)
-" || FAIL=1
+if "$PYTHON" -m ccr eval; then
+    echo "[SUCCESS] Eval harness covered all expected issues"
+else
+    echo "[ERROR] Eval harness missed expected issues"
+    FAIL=1
+fi
 
 echo "[INFO] Running all unit tests..."
 if "$PYTHON" -c "import coverage" >/dev/null 2>&1; then

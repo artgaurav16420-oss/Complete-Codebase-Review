@@ -11,6 +11,7 @@ Usage:
     python install.py          # Install to detected agent configs
     python install.py --help   # Show this help message
     python install.py --version  # Show version
+    python install.py --uninstall  # Remove installed copies
 """
 
 import argparse
@@ -72,6 +73,8 @@ _SKILL_EXCLUDED = {
     "LICENSE", ".gitignore", ".gitattributes",
     # Project metadata — not consumed at runtime
     "pyproject.toml", "AGENTS.md", "help.md", ".coveragerc",
+    # Dev-only tooling — generators and fixtures never ship
+    "tools",
     # Config/credentials — never shipped
     ".skills", ".env", ".secret", ".credentials",
     # Cache directory — runtime artifact
@@ -89,8 +92,8 @@ def _onerror(func, path, exc_info):
     Uses follow_symlinks=False to prevent permission changes on symlink targets
     outside the expected directory tree.
 
-    NOTE: onerror is deprecated in Python 3.12+ (PEP 632) in favor of onexc,
-    but the callback signature remains stable across Python 3.9--3.13+.
+    Invoked as either an `onerror` (Python 3.9-3.11) or `onexc` (3.12+) callback;
+    the third argument is ignored, so both calling conventions are supported.
     """
     try:
         try:
@@ -105,7 +108,13 @@ def _onerror(func, path, exc_info):
 
 def _ignore_skill_files(path, names):
     """Filter files to exclude from skill copy based on _SKILL_EXCLUDED."""
-    return [n for n in names if n in _SKILL_EXCLUDED or n.endswith(".pyc")]
+    return [
+        n for n in names
+        if n in _SKILL_EXCLUDED
+        or n.endswith(".pyc")
+        or n.endswith(".egg-info")
+        or n == ".coverage"
+    ]
 
 
 def _read_version():
@@ -240,7 +249,10 @@ def copy_skill(src_dir, dest_dir):
                         f"Resolved path {resolved} is outside target {root}"
                     )
                 if resolved.is_dir():
-                    shutil.rmtree(str(resolved), onerror=_onerror)
+                    if sys.version_info >= (3, 12):
+                        shutil.rmtree(str(resolved), onexc=_onerror)
+                    else:
+                        shutil.rmtree(str(resolved), onerror=_onerror)
                 else:
                     resolved.unlink()
 
@@ -292,7 +304,10 @@ def _validate_no_escaped_symlinks(skill_dest):
                         None
                     ))
     if errors:
-        shutil.rmtree(str(skill_dest), onerror=_onerror)
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(str(skill_dest), onexc=_onerror)
+        else:
+            shutil.rmtree(str(skill_dest), onerror=_onerror)
         msg, cause = errors[0]
         if cause:
             raise ValueError(msg) from cause
@@ -377,6 +392,74 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
     return installed_any
 
 
+def remove_skill(dest_dir, dry_run):
+    """Remove an installed skill directory. Returns True if something was removed."""
+    skill_dest = Path(dest_dir) / "complete-codebase-review"
+    if not os.path.lexists(str(skill_dest)):
+        print_info("Not installed: " + str(skill_dest))
+        return False
+    if dry_run:
+        print_info("[DRY-RUN] Would remove " + str(skill_dest))
+        return True
+    root = Path(dest_dir).resolve(strict=False)
+    if os.path.islink(str(skill_dest)):
+        skill_dest.unlink()
+    else:
+        resolved = skill_dest.resolve(strict=False)
+        if not resolved.is_relative_to(root):
+            raise ValueError("Refusing to remove path outside target: " + str(resolved))
+        if resolved.is_dir():
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(str(resolved), onexc=_onerror)
+            else:
+                shutil.rmtree(str(resolved), onerror=_onerror)
+        else:
+            resolved.unlink()
+    print_success("Removed " + str(skill_dest))
+    return True
+
+
+def _run_uninstall(target, dry_run):
+    """Remove the skill from an explicit target or all detected config dirs."""
+    removed = 0
+    if target:
+        try:
+            resolved = _validate_target_path(Path(target))
+        except ValueError as e:
+            print_error(str(e))
+            sys.exit(1)
+        try:
+            removed += int(remove_skill(resolved, dry_run))
+        except (PermissionError, OSError, ValueError) as e:
+            print_error("Uninstall failed: " + str(e))
+            sys.exit(1)
+    else:
+        for tool_name, target_dir in get_target_dirs().items():
+            if not target_dir.parent.exists():
+                continue
+            try:
+                if remove_skill(target_dir, dry_run):
+                    removed += 1
+                    print_info("Removed from " + tool_name)
+            except (PermissionError, OSError, ValueError) as e:
+                print_error("Failed to remove from {}: {}".format(tool_name, e))
+        local = Path.cwd() / ".skills"
+        if local.exists() and not os.path.islink(str(local)):
+            try:
+                if remove_skill(local, dry_run):
+                    removed += 1
+                    print_info("Removed local .skills install")
+            except (PermissionError, OSError, ValueError) as e:
+                print_error("Failed to remove local install: " + str(e))
+    if removed == 0:
+        print_info("Nothing to uninstall.")
+    elif dry_run:
+        print_success("Dry run complete.")
+    else:
+        print_success("Uninstall complete.")
+    return 0
+
+
 def _run_local_fallback(src_dir, dry_run):
     """Install to .skills/ under the current working directory, exiting on error."""
     local_target = Path.cwd() / ".skills"
@@ -429,7 +512,8 @@ def main():
             "  python install.py --dry-run\n"
             "  python install.py --version\n"
             "  python install.py --self-verify\n"
-            "  python install.py --checksum <SHA256_HASH>"
+            "  python install.py --checksum <SHA256_HASH>\n"
+            "  python install.py --uninstall"
         ),
     )
     parser.add_argument(
@@ -448,6 +532,12 @@ def main():
         "--version", "-V",
         action="store_true",
         help="Show version and exit.",
+    )
+    parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        default=False,
+        help="Remove the installed skill from detected or --target directories.",
     )
     verify_group = parser.add_mutually_exclusive_group()
     verify_group.add_argument(
@@ -509,6 +599,10 @@ def main():
         else:
             print_error("Checksum verification FAILED")
             sys.exit(1)
+
+    if args.uninstall:
+        print_info(f"Starting Universal Uninstaller on {platform.system()}")
+        return _run_uninstall(args.target, args.dry_run)
 
     print_info(f"Starting Universal Installer on {platform.system()}")
 

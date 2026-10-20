@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.4.0 (2026-10-20)
+
+- **Single source of truth**: `ccr/pipeline.json` generates the env-var tables, agent tables,
+  version strings, and installer checksum via `tools/generate.py --check` in CI.
+- **Executable core** (`ccr/`): discovery, agent planning, state gates, finding normalization,
+  DA filtering, tech-debt aggregation, roadmap, and Markdown/JSON report rendering.
+- **CLI**: `python -m ccr plan|record|synthesize|eval`.
+- **Eval harness**: recorded agent fixtures replayed through synthesis and scored against
+  `tests/expected_issues.json`; `missing-test-assertions` replaced by `missing-test-coverage`
+  to match the fixture repo.
+- **Completion gate**: `synthesize` uses `ccr-state.json:agents_planned` and refuses to emit a
+  report below 75% (full) / 66% (Quick Mode); `--allow-partial` overrides explicitly.
+- **Organizer benchmark**: first real recorded run with human-verified precision
+  (`tests/fixtures/organizer/`), scored via a benchmark spec with known false positives.
+- **Packaging**: `ccr` console script and declared build backend.
+- **Installer**: `--uninstall`; `onexc` on Python 3.12+ replaces deprecated `onerror`.
+- **CI**: generated-file drift check and release provenance workflow.
+
 ## v2.3.0 (2026-06-26)
 
 - **Input sanitization**: Unicode normalization, shell command stripping, path validation for bot comments

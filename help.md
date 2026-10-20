@@ -10,17 +10,22 @@ You can configure the execution behavior by exporting these environment variable
 
 > **Source of truth:** `SKILL.md` in the installed skill directory is the canonical reference for all environment variables. This page may be a subset.
 
-*   `CODE_REVIEW_EFFORT` (default: `max`): Sets the effort level for AI analysis. Set to `min` for Quick Mode.
-*   `CODE_REVIEW_TIMEOUT_SEC` (default: `900`): Maximum time (in seconds) to wait for individual specialist agents.
-*   `CODE_REVIEW_MAX_FILES` (default: unlimited): Limits the number of files scanned in large codebases.
-*   `CODE_REVIEW_CACHE_DIR` (default: `.code-review-cache`): Directory where phase outputs and agent findings are cached.
-*   `CODE_REVIEW_BASELINE` (default: `ccr-baseline.json`): The filename for saving the baseline snapshot to track health trends across sessions.
-*   `CODE_REVIEW_AGENTS` (default: all applicable): Comma-separated list of agent names to run (e.g. `security,architecture,code-quality`). Full default set (filtered by project dimensions): Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Process Quality (Karpathy Compliance), Standards.
+<!-- BEGIN GENERATED: help-env-vars -->
+
+*   `CODE_REVIEW_EFFORT` (default: `max`): Execution effort. Set to `min` for Quick Mode.
+*   `CODE_REVIEW_TIMEOUT_SEC` (default: `900`): Agent timeout in seconds.
+*   `CODE_REVIEW_MAX_FILES` (default: `(unlimited)`): Max files to scan.
+*   `CODE_REVIEW_CACHE_DIR` (default: `.code-review-cache`): Directory for checkpointing.
+*   `CODE_REVIEW_BASELINE` (default: `ccr-baseline.json`): Baseline JSON file name.
+*   `CODE_REVIEW_AGENTS` (default: `(all applicable)`): Comma-separated agent names to run. Defaults to all 14, filtered by project dimensions.
 *   `CODE_REVIEW_STATUS_INTERVAL` (default: `300`): Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer.
-*   `CODE_REVIEW_FILTER` (default: `all`): Output filter. Set to `critical-high`
-    to show only CRITICAL and HIGH severity findings in the report. Per-Domain
-    Scores still show full counts for context.
+*   `CODE_REVIEW_FILTER` (default: `all`): Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report.
 *   `REVIEW_MAX_ITERATIONS` (default: `3`): Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates.
+*   `CODE_REVIEW_SANITIZE` (default: `true`): Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping).
+*   `CODE_REVIEW_AUTO_APPROVE` (default: `low`): Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all.
+*   `CODE_REVIEW_FORMAT` (default: `markdown`): Output format. `markdown` = human-readable report, `json` = machine-parseable report, `both` = both formats.
+
+<!-- END GENERATED: help-env-vars -->
 
 ## ⚡ Quick Mode
 
@@ -64,6 +69,22 @@ On re-review, the system compares against the previous baseline and reports tren
 
 Domains with zero CRITICAL and zero HIGH open findings are marked `[LOW-ACTIVITY]` on re-review. These domains are excluded from re-analysis — their previous scores carry forward in the trend table, reducing analysis time.
 
+## ⚙️ Deterministic Core (`ccr`)
+
+The pipeline spec is executed by your agent. The `ccr` package covers the parts
+that need no model:
+
+| Command | Purpose |
+|---------|---------|
+| `python -m ccr plan .` | Discovery facts and the agent list that would run |
+| `python -m ccr record . --out .code-review-cache` | Writes one hardened prompt per agent plus `ccr-state.json` |
+| `python -m ccr synthesize --in .code-review-cache --out report` | Dedup, mechanical DA checks, roadmap, Markdown/JSON |
+| `python -m ccr eval` | Scores recorded fixtures against `tests/expected_issues.json` |
+
+Flags: `--effort max|min`, `--agents a,b`, `--max-files N`, `--format markdown|json|both`.
+`synthesize` refuses to emit a report when too few planned agents returned; pass
+`--allow-partial` only when you accept the missing domains.
+
 ## 🚦 Exit Codes
 
 | Code | Meaning |
@@ -73,6 +94,8 @@ Domains with zero CRITICAL and zero HIGH open findings are marked `[LOW-ACTIVITY
 | `1` | Install failed (permission denied, copy error, or path traversal detected) |
 | `1` | Post-fix verification failed (lint, typecheck, or test suite regression) |
 | `1` | Compliance test failed (one or more SKILL.md assertions not met) |
+| `1` | `ccr eval` found expected issues that no fixture reported |
+| `2` | `ccr` usage error, missing manifest, or invalid target |
 
 ## ⚙️ Windows Environment Variables
 

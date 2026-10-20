@@ -1,0 +1,14 @@
+{
+  "agent": "test_health",
+  "score": 5,
+  "findings": [
+    {
+      "finding": "[tests/test_auth.py:1] \u2014 delete_user and create_user have no tests \u2192 path-handling regressions ship without detection",
+      "severity": "MEDIUM",
+      "est_hours": 4,
+      "tags": ["missing-test-coverage"],
+      "evidence": "6 tests cover login and ping only",
+      "da_verdict": "CONFIRMED"
+    }
+  ]
+}

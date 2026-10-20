@@ -6,7 +6,6 @@ $Fail = 0
 
 $SkillFile = Join-Path $ProjectRoot 'SKILL.md'
 $KarpathyFile = Join-Path $ProjectRoot 'karpathy-guidelines.md'
-$ExpectedIssuesFile = Join-Path $ScriptDir 'expected_issues.json'
 
 Write-Host '[INFO] Starting Windows Mock Validation Test Suite'
 
@@ -65,57 +64,27 @@ if ($SkillOk) {
         $Fail = 1
     }
 }
-# --- Check 5: Mock evaluation against expected_issues.json ---
-Write-Host '[INFO] Simulating skill evaluation against expected issues...'
-if (-not (Test-Path $ExpectedIssuesFile)) {
-    Write-Host "[ERROR] expected_issues.json missing at $ExpectedIssuesFile"
-    $Fail = 1
-    $expectedIssues = @()
+# --- Check 5: Generated docs are current ---
+Write-Host '[INFO] Checking generated docs are current...'
+python (Join-Path $ProjectRoot 'tools\generate.py') --check
+if ($LASTEXITCODE -eq 0) {
+    Write-Host '[SUCCESS] Generated docs are current'
 } else {
-    try {
-        $expectedIssues = Get-Content -Path $ExpectedIssuesFile -Raw | ConvertFrom-Json
-    } catch {
-        Write-Host "[ERROR] Failed to parse expected_issues.json: $_"
-        $Fail = 1
-        $expectedIssues = @()
-    }
-}
-$mockLines = @(
-    'CWE-798',
-    'CWE-78',
-    'CWE-200',
-    'CWE-477',
-    'command-injection-shell-true',
-    'circular-dependency',
-    'n-plus-one-query',
-    'missing-error-handling',
-    'high-cyclomatic-complexity',
-    'unused-import',
-    'dead-code',
-    'missing-test-assertions',
-    'hardcoded-secret-config'
-)
-
-foreach ($issue in $expectedIssues) {
-    if ($issue -in $mockLines) {
-        Write-Host "[SUCCESS] Found expected issue: $issue"
-    } else {
-        Write-Host "[ERROR] Expected issue '$issue' not found in mock output"
-        $Fail = 1
-    }
+    Write-Host '[ERROR] Generated docs are stale — run: python tools/generate.py'
+    $Fail = 1
 }
 
-# --- Reverse check: every mock line must be in expected_issues ---
-foreach ($line in $mockLines) {
-    if ($line -in $expectedIssues) {
-        Write-Host "[SUCCESS] Mock output item '$line' matches expected issues"
-    } else {
-        Write-Host "[ERROR] Mock output item '$line' not found in expected_issues.json"
-        $Fail = 1
-    }
+# --- Check 6: Eval harness against recorded fixtures ---
+Write-Host '[INFO] Running eval harness...'
+python -m ccr eval
+if ($LASTEXITCODE -eq 0) {
+    Write-Host '[SUCCESS] Eval harness covered all expected issues'
+} else {
+    Write-Host "[ERROR] Eval harness missed expected issues (exit code: $LASTEXITCODE)"
+    $Fail = 1
 }
 
-# --- Check 6: Run compliance tests ---
+# --- Check 7: Run compliance tests ---
 Write-Host '[INFO] Running compliance tests...'
 python (Join-Path $ScriptDir 'test_compliance.py')
 $complianceExit = $LASTEXITCODE
@@ -126,7 +95,7 @@ if ($complianceExit -eq 0) {
     $Fail = 1
 }
 
-# --- Check 7: Run Python unit tests ---
+# --- Check 8: Run Python unit tests ---
 Write-Host '[INFO] Running Python unit tests...'
 python -m unittest discover -s $ScriptDir -p 'test_*.py'
 $unitTestExit = $LASTEXITCODE

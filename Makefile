@@ -1,6 +1,6 @@
-.PHONY: test test-py test-bash test-windows coverage clean clean-windows lint
+.PHONY: test test-py test-bash test-windows coverage lint clean clean-windows eval generate check
 
-test: test-py test-bash
+test: check test-py test-bash
 	@echo "[SUCCESS] All tests passed!"
 
 test-windows:
@@ -12,6 +12,16 @@ test-py:
 
 test-bash:
 	./test.sh
+
+eval:
+	python -m ccr eval
+
+generate:
+	python tools/generate.py
+
+check:
+	python tools/generate.py --check
+	python -m ccr eval
 
 coverage:
 	python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" -v

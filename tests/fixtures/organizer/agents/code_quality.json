@@ -1,0 +1,70 @@
+{
+  "agent": "code_quality",
+  "score": 68,
+  "findings": [
+    {
+      "finding": "[fermi_organizer/extraction.py:1923] \u2014 bom_task has no production caller and is a hand-copy of org_task \u2192 hardening applied to survey_task/org_task must be duplicated by hand while tests keep exercising the stale clone",
+      "severity": "LOW",
+      "est_hours": 1,
+      "tags": ["dead-code", "duplication"],
+      "evidence": "only definition, docstring mention, tests/test_skip_guards.py:37 and the NODOC_ALLOWLIST reference it",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/runmodes.py:1569] \u2014 the 16-line acquire/abandon/release lock wrapper is duplicated verbatim in run_incremental at 2120 \u2192 a lock-loss fix applied to one copy leaves the other unlinking the stealer's lock or leaking it",
+      "severity": "MEDIUM",
+      "est_hours": 2,
+      "tags": ["duplication", "lock-protocol"],
+      "evidence": "lines 1569-1584 vs 2120-2135 differ only in the _inner call",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/runmodes.py:1024] \u2014 the relocation-follow and collision prelude is a 34-line copy of _copy_org_child_tree at 867 \u2192 a fix to the collision guard in one copy leaves the other adopting into an existing destination folder",
+      "severity": "MEDIUM",
+      "est_hours": 2,
+      "tags": ["duplication", "adoption"],
+      "evidence": "31 of 34 lines identical; only return arity differs before the functions diverge",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/extraction.py:258] \u2014 a timed-out OCR thread is left running with no cancel or second join while the caller closes the document \u2192 the in-flight textpage call fails against a closed document and each timed-out page leaves a thread and an orphaned Tesseract child",
+      "severity": "MEDIUM",
+      "est_hours": 3,
+      "tags": ["resource-leak", "ocr"],
+      "evidence": "worker.join(timeout) at 257; if worker.is_alive() only appends an issue and memoizes an empty list; the in-source comment concedes the process may still finish",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/fsops.py:71] \u2014 _pdf_watermarked returns False for both clean and probe-failed, and the retirement branch reads that False as proof the live copy is clean \u2192 an unreadable live copy lets a parked watermarked orphan be unlinked even though the live copy is watermarked too",
+      "severity": "MEDIUM",
+      "est_hours": 2,
+      "tags": ["exception-swallowing", "data-loss"],
+      "evidence": "False on any exception at 67-68 and 71-72; 1190 treats not-False as clean; 1202 unlinks the orphan",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/fsops.py:534] \u2014 acquire_run_lock never reads its dry_run parameter \u2192 the signature advertises a dry-run exemption the function does not implement",
+      "severity": "LOW",
+      "est_hours": 1,
+      "tags": ["unused-parameter"],
+      "evidence": "ruff ARG001 at 534:30; body never references the name",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/extraction.py:1042] \u2014 ITEM_RE.match is tested again one line after the identical test at 1039 already failed \u2192 the left half of the or is unreachable and the loop's stop rule lives in two places",
+      "severity": "LOW",
+      "est_hours": 1,
+      "tags": ["dead-code", "parser"],
+      "evidence": "1039-1043: identical predicate immediately repeated",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/runmodes.py:1118] \u2014 _adopted_copy_estimate is 92 lines with complexity 24 and three accumulators mutated in one loop \u2192 a missed claimant branch translates directly into copies past MAX_PLANNED_COPIES with no post-copy check",
+      "severity": "MEDIUM",
+      "est_hours": 4,
+      "tags": ["complexity", "fan-out-cap"],
+      "evidence": "ruff C901 24 and PLR0915; copytree at 922 has no count check",
+      "da_verdict": "CONFIRMED"
+    }
+  ]
+}

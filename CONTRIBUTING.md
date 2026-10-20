@@ -9,22 +9,37 @@ This project uses **only Python stdlib**. No `requirements.txt`, no `pip install
 ### Running Tests
 
 ```bash
-# Compliance tests (62 tests)
+# Compliance tests
 python tests/test_compliance.py
 
-# All 6 test suites (246 tests)
+# All test suites
 python -m unittest discover -s tests -p "test_*.py" -v
+
+# Eval harness (fixtures scored against expected issues)
+python -m ccr eval
 
 # With coverage
 python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" -v
 python -m coverage report
 ```
 
+### Generated Files
+
+`ccr/pipeline.json` is the single source of truth for agents, env vars, enums,
+thresholds, and the version. Do not hand-edit the generated blocks in
+`SKILL.md`, `README.md`, `help.md`, or `orchestrator-rules.md`, and do not
+hand-edit `install.py.sha256`. Edit the manifest, then run:
+
+```bash
+python tools/generate.py          # rewrite generated files
+python tools/generate.py --check  # CI mode: fail if stale
+```
+
 ### Writing Tests
 
 | Suite | Framework | When to use |
 |-------|-----------|-------------|
-| `test_compliance.py` | `unittest.TestCase` | SKILL.md string-matching checks (62 tests) |
+| `test_compliance.py` | `unittest.TestCase` | SKILL.md string-matching checks |
 | All other test files | `unittest.TestCase` | All new tests |
 
 **New test files must use `unittest.TestCase`.**

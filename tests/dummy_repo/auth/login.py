@@ -35,3 +35,6 @@ def delete_user(user_id):
         return False
     shutil.rmtree(target, ignore_errors=True)
     return True
+
+def run_backup(path):
+    subprocess.run("tar -czf backup.tgz " + path, shell=True, check=False)

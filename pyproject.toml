@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "complete-codebase-review"
-version = "2.3.0"
+version = "2.4.0"
 description = "Holistic, read-only codebase audit for Claude Code / AI coding agents"
 dependencies = []
 readme = "README.md"
@@ -24,6 +28,15 @@ name = "Gaurav"
 Homepage = "https://github.com/artgaurav16420-oss/Complete-Codebase-Review"
 Repository = "https://github.com/artgaurav16420-oss/Complete-Codebase-Review"
 "Bug Tracker" = "https://github.com/artgaurav16420-oss/Complete-Codebase-Review/issues"
+
+[project.scripts]
+ccr = "ccr.cli:main"
+
+[tool.setuptools]
+packages = ["ccr"]
+
+[tool.setuptools.package-data]
+ccr = ["pipeline.json"]
 
 [tool.pytest.ini_options]
 norecursedirs = [

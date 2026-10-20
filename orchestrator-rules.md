@@ -152,7 +152,15 @@ If you sense the conversation was compacted or you're resuming a stale session:
 
 ## 9. Env Var Integrity
 
-Only these env vars are valid: `CODE_REVIEW_EFFORT`, `CODE_REVIEW_TIMEOUT_SEC`, `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_AGENTS`, `CODE_REVIEW_STATUS_INTERVAL`, `CODE_REVIEW_FILTER`, `REVIEW_MAX_ITERATIONS`. See SKILL.md for SKILL_DIR resolution rules (never via `realpath` from TARGET_DIR). Inventing a new env var is a defect.
+Only these env vars are valid:
+
+<!-- BEGIN GENERATED: orchestrator-env-vars -->
+
+`CODE_REVIEW_EFFORT`, `CODE_REVIEW_TIMEOUT_SEC`, `CODE_REVIEW_MAX_FILES`, `CODE_REVIEW_CACHE_DIR`, `CODE_REVIEW_BASELINE`, `CODE_REVIEW_AGENTS`, `CODE_REVIEW_STATUS_INTERVAL`, `CODE_REVIEW_FILTER`, `REVIEW_MAX_ITERATIONS`, `CODE_REVIEW_SANITIZE`, `CODE_REVIEW_AUTO_APPROVE`, `CODE_REVIEW_FORMAT`
+
+<!-- END GENERATED: orchestrator-env-vars -->
+
+See SKILL.md for SKILL_DIR resolution rules (never via `realpath` from TARGET_DIR). Inventing a new env var is a defect.
 
 ## 10. Sub-Agent Prompt Hardening Template
 
