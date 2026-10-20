@@ -10,6 +10,6 @@
   "high-cyclomatic-complexity",
   "unused-import",
   "dead-code",
-  "missing-test-assertions",
+  "missing-test-coverage",
   "hardcoded-secret-config"
 ]

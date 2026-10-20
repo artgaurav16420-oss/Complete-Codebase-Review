@@ -180,6 +180,25 @@ That's it. You'll get a full health report in 5-15 minutes.
 
 ---
 
+## ⚙️ Deterministic Core (`ccr`)
+
+The five-phase spec runs inside your agent. The `ccr` package is the part that
+runs anywhere, without an LLM:
+
+| Command | What it does |
+|---------|--------------|
+| `python -m ccr plan .` | Discovery facts and which agents would run |
+| `python -m ccr record . --out .code-review-cache` | Writes one hardened prompt per agent plus `ccr-state.json` |
+| `python -m ccr synthesize --in .code-review-cache --out report` | Normalizes, dedups, applies mechanical DA checks, renders Markdown/JSON |
+| `python -m ccr eval` | Replays recorded fixtures and scores coverage against `expected_issues.json` |
+
+`record` / `synthesize` is the integration boundary: the host agent executes
+the prompts, and `ccr` never calls a model itself. That keeps the deterministic
+half testable in CI. `synthesize` enforces the 75% / 66% completion gate; use
+`--allow-partial` to override it deliberately.
+
+---
+
 ## 📦 Installation
 
 ### Recommended: Clone + Self-Verify
@@ -204,6 +223,25 @@ The `--self-verify` flag detects accidental corruption of the installer, but doe
 git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git ~/.claude/skills/complete-codebase-review
 ```
 
+### Uninstall
+
+```bash
+python3 install.py --uninstall --dry-run   # preview
+python3 install.py --uninstall             # remove from detected configs
+```
+
+### Optional: install the CLI
+
+The deterministic core ships as a zero-dependency Python package:
+
+```bash
+pipx install .
+ccr --version
+```
+
+Without installing, every command also works as `python -m ccr ...` from the
+repository root.
+
 ### Verify Installation
 
 ```bash
@@ -220,16 +258,24 @@ python3 tests/test_compliance.py
 
 Customize execution with environment variables:
 
+<!-- BEGIN GENERATED: readme-env-vars -->
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CODE_REVIEW_EFFORT` | `max` | Execution effort. Set to `min` for Quick Mode (3 agents, 120s timeout). |
-| `CODE_REVIEW_TIMEOUT_SEC` | `900` | Per-agent timeout in seconds. |
-| `CODE_REVIEW_MAX_FILES` | unlimited | Max files to scan. Limits runtime on huge codebases. |
-| `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing and caching. |
-| `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline snapshot filename for trend tracking. |
-| `CODE_REVIEW_AGENTS` | all applicable | Comma-separated agent names (e.g. `security,architecture`). |
-| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Logged on agent result receipt, not a background timer. |
-| `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL+HIGH findings. |
+| `CODE_REVIEW_EFFORT` | `max` | Execution effort. Set to `min` for Quick Mode. |
+| `CODE_REVIEW_TIMEOUT_SEC` | `900` | Agent timeout in seconds. |
+| `CODE_REVIEW_MAX_FILES` | `(unlimited)` | Max files to scan. |
+| `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
+| `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
+| `CODE_REVIEW_AGENTS` | `(all applicable)` | Comma-separated agent names to run. Defaults to all 14, filtered by project dimensions. |
+| `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer. |
+| `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
+| `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
+| `CODE_REVIEW_SANITIZE` | `true` | Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping). |
+| `CODE_REVIEW_AUTO_APPROVE` | `low` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
+| `CODE_REVIEW_FORMAT` | `markdown` | Output format. `markdown` = human-readable report, `json` = machine-parseable report, `both` = both formats. |
+
+<!-- END GENERATED: readme-env-vars -->
 
 See [help.md](help.md) for detailed documentation.
 
@@ -351,13 +397,15 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 
 | Suite | Command | Coverage |
 |-------|---------|----------|
-| Python compliance | `python3 tests/test_compliance.py` | 140 assertions across 62 test functions |
-| Python unit tests | `python3 -m unittest discover -s tests -p "test_*.py"` | 6 suites (165 tests) |
-| Install tests | `python3 tests/test_install.py` | 57 tests across 10 classes |
-| Pipeline validation | `python3 tests/test_pipeline.py` | Review output schema validation |
-| Env-var config | `python3 tests/test_env_config.py` | Env-var table completeness checks |
-| Bash integration | `./test.sh` | CLI and cross-platform behavior (Unix only) |
-| Windows test | `powershell tests/Test-Windows.ps1` | Compliance + install + mock (Windows) |
+| Python compliance | `python3 tests/test_compliance.py` | SKILL.md contract checks |
+| Full suite | `python3 -m unittest discover -s tests -p "test_*.py"` | Runs in under a second |
+| Install tests | `python3 tests/test_install.py` | Installer and uninstaller |
+| Pipeline core | `python3 tests/test_pipeline_core.py` | Gates, synthesis, rendering |
+| Eval harness | `python3 -m ccr eval` | Fixture coverage against expected issues |
+| Organizer benchmark | `python3 -m ccr eval --fixtures tests/fixtures/organizer/agents --expected tests/fixtures/organizer/expected.json` | Real recorded run, 94% verified precision |
+| Generated docs | `python3 tools/generate.py --check` | Manifest/doc drift |
+| Bash integration | `./test.sh` | End-to-end (Unix only) |
+| Windows test | `powershell tests/Test-Windows.ps1` | End-to-end (Windows) |
 
 ---
 

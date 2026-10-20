@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[target-directory] — path to the codebase to review. Defaults to current working directory."
 allowed-tools: "Read, Grep, Glob, Bash, Skill, WebSearch, WebFetch, Task"
 effort: ${CODE_REVIEW_EFFORT:-max}
-version: 2.3.0
+version: 2.4.0
 triggers:
   - "review.*codebase"
   - "run.*CCR"
@@ -21,20 +21,24 @@ triggers:
 
 Customize the execution with these environment variables:
 
+<!-- BEGIN GENERATED: skill-env-vars -->
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CODE_REVIEW_EFFORT` | `max` | Execution effort. Set to `min` for Quick Mode. |
 | `CODE_REVIEW_TIMEOUT_SEC` | `900` | Agent timeout in seconds. |
-| `CODE_REVIEW_MAX_FILES` | (unlimited) | Max files to scan. |
+| `CODE_REVIEW_MAX_FILES` | `(unlimited)` | Max files to scan. |
 | `CODE_REVIEW_CACHE_DIR` | `.code-review-cache` | Directory for checkpointing. |
 | `CODE_REVIEW_BASELINE` | `ccr-baseline.json` | Baseline JSON file name. |
-| `CODE_REVIEW_AGENTS` | (all applicable) | Comma-separated agent names to run. Defaults to all 14: Architecture, Code Quality, Security, Tech Debt, Test Health, Dependencies, Documentation, Build & CI, Performance, Database, UI/UX, DevOps, Standards, Process Quality. Filtered by project dimensions. |
+| `CODE_REVIEW_AGENTS` | `(all applicable)` | Comma-separated agent names to run. Defaults to all 14, filtered by project dimensions. |
 | `CODE_REVIEW_STATUS_INTERVAL` | `300` | Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer. |
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 | `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
 | `CODE_REVIEW_SANITIZE` | `true` | Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping). |
 | `CODE_REVIEW_AUTO_APPROVE` | `low` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
-| `CODE_REVIEW_FORMAT` | `markdown` | Output format. `markdown` = human-readable report, `json` = machine-parseable report (see Output Format section), `both` = both formats. |
+| `CODE_REVIEW_FORMAT` | `markdown` | Output format. `markdown` = human-readable report, `json` = machine-parseable report, `both` = both formats. |
+
+<!-- END GENERATED: skill-env-vars -->
 
 
 ## Overview
@@ -143,6 +147,7 @@ If all critical tools pass but optional tools are unavailable, log: `"[ENV_CHECK
 | UI/UX Design & Accessibility | Any project with a user interface |
 | DevOps & Infra | Any deployed project |
 | Standards Compliance | Team projects |
+| Process Quality (Karpathy Compliance) | All projects |
 
 ### Step 3: Write Discovery Manifest
 
@@ -165,6 +170,8 @@ JSON keys use the canonical domain ID (first column). Display names vary by
 context (e.g. "Process Quality (Karpathy Compliance)" in the agent table below,
 "Process Quality" in reports). Mappers convert between form and canonical key.
 
+<!-- BEGIN GENERATED: skill-canonical-domains -->
+
 | Canonical ID | Agent Name | Report Name |
 |-------------|------------|-------------|
 | `architecture` | Architecture Analyzer | Architecture |
@@ -182,6 +189,8 @@ context (e.g. "Process Quality (Karpathy Compliance)" in the agent table below,
 | `standards` | Standards Compliance | Standards |
 | `process_quality` | Process Quality (Karpathy Compliance) | Process Quality |
 
+<!-- END GENERATED: skill-canonical-domains -->
+
 ### Scoped Tool Permissions
 
 Each phase has specific tool access to enforce least-privilege:
@@ -198,6 +207,8 @@ Agents MUST NOT use tools outside their phase's allowed set. Violations are logg
 
 ### Specialist Agents
 
+<!-- BEGIN GENERATED: skill-specialist-agents -->
+
 | Agent | Coverage | Suggested Skill |
 |-------|----------|----------------|
 | Architecture Analyzer | Module coupling, layering violations, circular deps, patterns | *(general)* |
@@ -208,12 +219,14 @@ Agents MUST NOT use tools outside their phase's allowed set. Violations are logg
 | Dependency Auditor | Outdated major/minor/patch, license compliance, supply chain risk | *(general)* |
 | Documentation Auditor | README quality, API docs coverage, architecture docs, inline doc density | *(general)* |
 | Build & CI Auditor | Build time trends, cache effectiveness, CI reliability, config drift | `deployment-patterns` |
-| Performance Baseline | N+1 queries, O(n²) patterns, memory allocation hotspots, bundle size | `benchmark` |
+| Performance Baseline | N+1 queries, O(n^2) patterns, memory allocation hotspots, bundle size | `benchmark` |
 | Database & Schema | Schema design, index health, migration history, raw SQL patterns | `postgres-patterns` |
 | UI/UX Auditor | Visual consistency, accessibility (WCAG 2.2), responsive design, component reuse, UX patterns, form/input ergonomics | `ui-ux-pro-max`, `accessibility` |
 | DevOps & Infra | Dockerfile quality, infra-as-code, secret management, deployment safety | `deployment-patterns`, `docker-patterns` |
 | Standards Compliance | Style guide adherence, naming conventions, file organization | `coding-standards` |
-| Process Quality (Karpathy Compliance) | Evaluate the target codebase's development process and collaboration quality against the Karpathy guidelines. Use the rules defined in karpathy-guidelines.md. Focus on: commit atomicity (surgical changes), evidence of over‑engineering (YAGNI), surfacing of assumptions in documentation, goal‑driven verification (tests that verify behavior), and absence of "vibe coding". Output a compliance score /10 and list specific violations. | *(general)* |
+| Process Quality (Karpathy Compliance) | Commit atomicity, over-engineering (YAGNI), surfaced assumptions, goal-driven verification, absence of vibe coding. Scores /10. | *(general)* |
+
+<!-- END GENERATED: skill-specialist-agents -->
 
 Each agent follows the standard template:
 

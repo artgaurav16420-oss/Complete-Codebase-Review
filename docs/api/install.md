@@ -22,4 +22,5 @@ Minimal module-level reference for `install.py`.
 | `print_error(msg)` | `_print(msg, "ERROR", red)`. |
 | `get_target_dirs()` | Return dict of agent name to skill dir Path. |
 | `copy_skill(src_dir, dest_dir)` | Copy skill files, returns dest Path. |
-| `main()` | CLI entry - argparse, --target/--dry-run/--version. |
+| `main()` | CLI entry - argparse, --target/--dry-run/--version/--self-verify/--checksum/--uninstall. |
+| `remove_skill(dest_dir, dry_run)` | Remove `complete-codebase-review` under a target dir, refusing paths outside it. |

@@ -1,0 +1,214 @@
+{
+  "version": "2.4.0",
+  "python_requires": ">=3.9",
+  "homepage": "https://github.com/artgaurav16420-oss/Complete-Codebase-Review",
+  "env_vars": [
+    {
+      "name": "CODE_REVIEW_EFFORT",
+      "default": "max",
+      "description": "Execution effort. Set to `min` for Quick Mode."
+    },
+    {
+      "name": "CODE_REVIEW_TIMEOUT_SEC",
+      "default": "900",
+      "description": "Agent timeout in seconds."
+    },
+    {
+      "name": "CODE_REVIEW_MAX_FILES",
+      "default": "(unlimited)",
+      "description": "Max files to scan."
+    },
+    {
+      "name": "CODE_REVIEW_CACHE_DIR",
+      "default": ".code-review-cache",
+      "description": "Directory for checkpointing."
+    },
+    {
+      "name": "CODE_REVIEW_BASELINE",
+      "default": "ccr-baseline.json",
+      "description": "Baseline JSON file name."
+    },
+    {
+      "name": "CODE_REVIEW_AGENTS",
+      "default": "(all applicable)",
+      "description": "Comma-separated agent names to run. Defaults to all 14, filtered by project dimensions."
+    },
+    {
+      "name": "CODE_REVIEW_STATUS_INTERVAL",
+      "default": "300",
+      "description": "Minimum seconds between event-driven status log lines ('X/Y agents completed'). Status is emitted on agent result receipt, not on a background timer."
+    },
+    {
+      "name": "CODE_REVIEW_FILTER",
+      "default": "all",
+      "description": "Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report."
+    },
+    {
+      "name": "REVIEW_MAX_ITERATIONS",
+      "default": "3",
+      "description": "Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates."
+    },
+    {
+      "name": "CODE_REVIEW_SANITIZE",
+      "default": "true",
+      "description": "Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping)."
+    },
+    {
+      "name": "CODE_REVIEW_AUTO_APPROVE",
+      "default": "low",
+      "description": "Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all."
+    },
+    {
+      "name": "CODE_REVIEW_FORMAT",
+      "default": "markdown",
+      "description": "Output format. `markdown` = human-readable report, `json` = machine-parseable report, `both` = both formats."
+    }
+  ],
+  "agents": [
+    {
+      "id": "architecture",
+      "name": "Architecture Analyzer",
+      "report": "Architecture",
+      "coverage": "Module coupling, layering violations, circular deps, patterns",
+      "skill": "*(general)*"
+    },
+    {
+      "id": "code_quality",
+      "name": "Code Quality Auditor",
+      "report": "Code Quality",
+      "coverage": "Dead code, complexity (cyclomatic/cognitive), lint density, anti-patterns",
+      "skill": "`coding-standards`"
+    },
+    {
+      "id": "security",
+      "name": "Security Posture",
+      "report": "Security",
+      "coverage": "Secrets in code, dependency CVEs, auth patterns, OWASP checklist",
+      "skill": "`security-review`"
+    },
+    {
+      "id": "tech_debt",
+      "name": "Tech Debt Tracker",
+      "report": "Tech Debt",
+      "coverage": "TODO/FIXME/HACK density, outdated patterns, migration status",
+      "skill": "*(general)*"
+    },
+    {
+      "id": "test_health",
+      "name": "Test Health Auditor",
+      "report": "Test Health",
+      "coverage": "Coverage % by module, test quality (assertions vs snapshots), CI flakiness",
+      "skill": "`python-testing`"
+    },
+    {
+      "id": "dependencies",
+      "name": "Dependency Auditor",
+      "report": "Dependencies",
+      "coverage": "Outdated major/minor/patch, license compliance, supply chain risk",
+      "skill": "*(general)*"
+    },
+    {
+      "id": "documentation",
+      "name": "Documentation Auditor",
+      "report": "Documentation",
+      "coverage": "README quality, API docs coverage, architecture docs, inline doc density",
+      "skill": "*(general)*"
+    },
+    {
+      "id": "build_ci",
+      "name": "Build & CI Auditor",
+      "report": "Build & CI",
+      "coverage": "Build time trends, cache effectiveness, CI reliability, config drift",
+      "skill": "`deployment-patterns`"
+    },
+    {
+      "id": "performance",
+      "name": "Performance Baseline",
+      "report": "Performance",
+      "coverage": "N+1 queries, O(n^2) patterns, memory allocation hotspots, bundle size",
+      "skill": "`benchmark`"
+    },
+    {
+      "id": "database",
+      "name": "Database & Schema",
+      "report": "Database",
+      "coverage": "Schema design, index health, migration history, raw SQL patterns",
+      "skill": "`postgres-patterns`"
+    },
+    {
+      "id": "ui_ux",
+      "name": "UI/UX Auditor",
+      "report": "UI/UX",
+      "coverage": "Visual consistency, accessibility (WCAG 2.2), responsive design, component reuse, UX patterns, form/input ergonomics",
+      "skill": "`ui-ux-pro-max`, `accessibility`"
+    },
+    {
+      "id": "devops",
+      "name": "DevOps & Infra",
+      "report": "DevOps",
+      "coverage": "Dockerfile quality, infra-as-code, secret management, deployment safety",
+      "skill": "`deployment-patterns`, `docker-patterns`"
+    },
+    {
+      "id": "standards",
+      "name": "Standards Compliance",
+      "report": "Standards",
+      "coverage": "Style guide adherence, naming conventions, file organization",
+      "skill": "`coding-standards`"
+    },
+    {
+      "id": "process_quality",
+      "name": "Process Quality (Karpathy Compliance)",
+      "report": "Process Quality",
+      "coverage": "Commit atomicity, over-engineering (YAGNI), surfaced assumptions, goal-driven verification, absence of vibe coding. Scores /10.",
+      "skill": "*(general)*"
+    }
+  ],
+  "severities": [
+    "CRITICAL",
+    "HIGH",
+    "MEDIUM",
+    "LOW",
+    "INFO"
+  ],
+  "da_verdicts": [
+    "CONFIRMED",
+    "PLAUSIBLE",
+    "QUESTIONABLE",
+    "REJECTED",
+    "DA-ESCALATION"
+  ],
+  "health": [
+    "GREEN",
+    "YELLOW",
+    "RED"
+  ],
+  "thresholds": {
+    "full_completion": 0.75,
+    "quick_completion": 0.66,
+    "quick_timeout_sec": 120,
+    "quick_agents": [
+      "security",
+      "code_quality",
+      "architecture"
+    ],
+    "gate_loop_severities": [
+      "CRITICAL",
+      "HIGH",
+      "MEDIUM"
+    ]
+  },
+  "tech_debt_floors": {
+    "missing_test_coverage": 4.0,
+    "cyclomatic_complexity": 2.0,
+    "circular_dependency": 8.0,
+    "missing_api_documentation": 0.5,
+    "outdated_major_dependency": 3.0,
+    "deprecated_api_usage": 1.0,
+    "hardcoded_secret": 2.0,
+    "unused_dead_code": 1.0,
+    "missing_error_handling": 1.0,
+    "n_plus_one_query": 3.0,
+    "accessibility_violation": 2.0
+  }
+}

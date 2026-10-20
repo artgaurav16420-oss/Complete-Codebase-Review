@@ -1,0 +1,38 @@
+{
+  "agent": "security",
+  "score": 6,
+  "findings": [
+    {
+      "finding": "[fermi_organizer/extraction.py:183] \u2014 the Tesseract fallback uses shutil.which(\"tesseract\"), which on Windows searches the current working directory first \u2192 a tesseract.exe planted in the launch directory is executed by the version probe and every OCR pass",
+      "severity": "MEDIUM",
+      "est_hours": 2,
+      "tags": ["CWE-426", "CWE-427"],
+      "evidence": "TESSERACT_EXE is realpath+isfile validated; the which() result is not; verified shutil.which returns .\\tesseract.EXE with a planted file",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/fsops.py:1161] \u2014 the orphan-retirement symlink guard calls opath.is_symlink() instead of the module's _islink() long-path helper \u2192 a symlinked parked orphan at a path of 260+ chars reads as not-a-symlink and is compared through and then unlinked",
+      "severity": "LOW",
+      "est_hours": 1,
+      "tags": ["CWE-59"],
+      "evidence": "only remaining .is_symlink() in the package; 8 other sites use _islink; verified LongPathsEnabled=0 behavior",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_organizer/fsops.py:675] \u2014 release_run_lock unlinks the lock path without re-reading the token it wrote \u2192 a run whose lock was stolen while paused deletes the new holder's live lock and leaves the tree unlocked for a third run",
+      "severity": "LOW",
+      "est_hours": 1,
+      "tags": ["CWE-367"],
+      "evidence": "release_run_lock only stops the heartbeat then unlinks; abandon_run_lock exists for the loss path",
+      "da_verdict": "CONFIRMED"
+    },
+    {
+      "finding": "[fermi_report_xlsx.py:349] \u2014 the run-history sidecar is written through the fixed name <xlsx>.history.json.tmp with write_text and no O_EXCL or islink check \u2192 a pre-existing symlink at that name is followed and its target truncated with run-history JSON",
+      "severity": "LOW",
+      "est_hours": 1,
+      "tags": ["CWE-377", "CWE-59"],
+      "evidence": "constant staging name at 347; write_text at 349; fsops._staged_copy uses O_CREAT|O_EXCL plus an islink re-check",
+      "da_verdict": "PLAUSIBLE"
+    }
+  ]
+}

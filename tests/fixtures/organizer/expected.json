@@ -1,0 +1,49 @@
+{
+  "target": "Organizer 0.2.0 (artgaurav16420-oss/Organizer)",
+  "recorded": "2026-10-21",
+  "mode": "quick",
+  "agents": ["architecture", "code_quality", "security"],
+  "verified": {
+    "findings": 18,
+    "valid": 17,
+    "false_positives": 1,
+    "method": "every cited file:line read; F-012 contradicted by the comment at fsops.py:559"
+  },
+  "expected_issues": [
+    "god-module",
+    "layering",
+    "duplicated-engine",
+    "non-atomic-write",
+    "refusal-contract",
+    "state-ownership",
+    "partial-mutation",
+    "global-state",
+    "library-reuse",
+    "layering-inversion",
+    "redundant-io",
+    "schema-drift",
+    "duplicated-state",
+    "swallowed-error",
+    "implicit-contract",
+    "coupling",
+    "CWE-426",
+    "CWE-427",
+    "CWE-59",
+    "CWE-367",
+    "CWE-377",
+    "dead-code",
+    "duplication",
+    "lock-protocol",
+    "adoption",
+    "resource-leak",
+    "ocr",
+    "exception-swallowing",
+    "data-loss",
+    "parser",
+    "complexity",
+    "fan-out-cap"
+  ],
+  "known_false_positives": [
+    "acquire_run_lock never reads its dry_run parameter"
+  ]
+}

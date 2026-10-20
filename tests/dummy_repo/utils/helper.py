@@ -1,3 +1,6 @@
+from datetime import datetime
+
+
 def read_file_safe(path):
     import os
     if not os.path.exists(path):
@@ -11,6 +14,9 @@ def parse_config(data):
 
 def old_format_string(name):
     return "Hello, %s!" % name
+
+def timestamp_now():
+    return datetime.utcnow().isoformat()
 
 def unused_function():
     pass

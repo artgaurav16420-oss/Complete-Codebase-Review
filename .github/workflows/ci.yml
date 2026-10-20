@@ -26,17 +26,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
@@ -55,6 +55,12 @@ jobs:
           if 'site-packages' not in f and '__pycache__' not in f
           and '.skills' not in f and '.code-review-cache' not in f]"
 
+      - name: Check generated docs are current
+        run: python tools/generate.py --check
+
+      - name: Run eval harness
+        run: python -m ccr eval
+
       - name: Run all unittest suites under coverage
         run: python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" -v
 
@@ -62,7 +68,7 @@ jobs:
         run: python -m coverage report
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-report-${{ matrix.os }}-${{ matrix.python-version }}
           path: .coverage

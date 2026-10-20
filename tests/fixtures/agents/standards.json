@@ -1,0 +1,14 @@
+{
+  "agent": "standards",
+  "score": 6,
+  "findings": [
+    {
+      "finding": "[core/processor.py:1] \u2014 five positional parameters with no defaults \u2192 call sites are unreadable and argument order errors are silent",
+      "severity": "LOW",
+      "est_hours": 1,
+      "tags": ["long-parameter-list"],
+      "evidence": "process_data(data, mode, flag, count, options)",
+      "da_verdict": "CONFIRMED"
+    }
+  ]
+}

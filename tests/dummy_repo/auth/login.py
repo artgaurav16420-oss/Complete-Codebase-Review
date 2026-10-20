@@ -35,3 +35,7 @@ def delete_user(user_id):
         return False
     shutil.rmtree(target, ignore_errors=True)
     return True
+
+def run_backup(path):
+    # SECURITY-FIXTURE: shell=True is intentional (CWE-78 eval coverage).
+    subprocess.run("tar -czf backup.tgz " + path, shell=True, check=False)

@@ -1,0 +1,14 @@
+{
+  "agent": "documentation",
+  "score": 7,
+  "findings": [
+    {
+      "finding": "[auth/login.py:8] \u2014 no README or docstring states that AUTH_SECRET must be set before login works \u2192 callers discover the requirement only at runtime",
+      "severity": "LOW",
+      "est_hours": 0.5,
+      "tags": ["missing-api-documentation"],
+      "evidence": "no README in fixture repository",
+      "da_verdict": "CONFIRMED"
+    }
+  ]
+}
