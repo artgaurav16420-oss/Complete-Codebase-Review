@@ -8,6 +8,8 @@ executes them, then `synthesize` ingests the JSON results.
 import json
 from pathlib import Path
 
+from .fileio import write_text
+
 PROMPT_TEMPLATE = """You are auditing the {domain} of {target}.
 
 SKILL_DIR={skill_dir}
@@ -69,11 +71,7 @@ def write_prompts(manifest, plan, out_dir, skill_dir=""):
     for agent_id in plan["agents"]:
         agent = next(a for a in manifest["agents"] if a["id"] == agent_id)
         path = prompt_path(cache, agent_id)
-        path.write_text(
-            build_prompt(agent, plan["target"], skill_dir),
-            encoding="utf-8",
-            newline="\n",
-        )
+        write_text(path, build_prompt(agent, plan["target"], skill_dir))
         written.append(path)
     return written
 

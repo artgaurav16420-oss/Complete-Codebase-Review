@@ -143,6 +143,12 @@ def render_checksum():
     return digest + "  install.py\n"
 
 
+def _write_text(path, text, newline="\n"):
+    """Write UTF-8 text with explicit newlines (3.9-compatible)."""
+    with open(path, "w", encoding="utf-8", newline=newline) as handle:
+        handle.write(text)
+
+
 def targets(manifest):
     """Return list of (path, expected_text) pairs to compare or write."""
     pairs = []
@@ -166,7 +172,7 @@ def run(check_only):
         if not check_only:
             crlf = b"\r\n" in path.read_bytes()
             newline = "\r\n" if crlf else "\n"
-            path.write_text(expected, encoding="utf-8", newline=newline)
+            _write_text(path, expected, newline=newline)
     if check_only:
         for path in stale:
             print("[STALE] " + str(path.relative_to(REPO_ROOT)))

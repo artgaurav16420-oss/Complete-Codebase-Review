@@ -6,6 +6,7 @@ from pathlib import Path
 
 from . import findings as findings_mod
 from . import report as report_mod
+from .fileio import write_text
 from .providers import RecordedProvider
 
 
@@ -109,10 +110,10 @@ def write_outputs(model, out_path, fmt="markdown"):
         if name == "json":
             target = base.with_suffix(".json")
             payload = json.dumps(text, indent=2, sort_keys=True) + "\n"
-            target.write_text(payload, encoding="utf-8", newline="\n")
+            write_text(target, payload)
         else:
             target = base.with_suffix(".md")
-            target.write_text(text, encoding="utf-8", newline="\n")
+            write_text(target, text)
         written.append(target)
     return written
 
