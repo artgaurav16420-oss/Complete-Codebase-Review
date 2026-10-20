@@ -59,6 +59,12 @@ class TestCompletion(unittest.TestCase):
                 self.manifest, "min", ["a", "b", "c"], ["a"]
             )
 
+    def test_duplicate_ids_do_not_inflate(self):
+        with self.assertRaises(RuntimeError):
+            pipeline.check_completion(
+                self.manifest, "max", ["a", "a", "b", "c"], ["a", "a"]
+            )
+
     def test_empty_plan(self):
         self.assertEqual(
             pipeline.check_completion(self.manifest, "max", [], []), 0.0
@@ -136,7 +142,9 @@ class TestEvaluate(unittest.TestCase):
 
     def _model(self, results=None):
         return pipeline.synthesize(
-            _manifest(), results or _results(), ["security", "code_quality"]
+            _manifest(),
+            _results() if results is None else results,
+            ["security", "code_quality"],
         )
 
     def test_full_coverage(self):

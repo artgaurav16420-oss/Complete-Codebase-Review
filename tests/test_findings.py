@@ -6,9 +6,9 @@ from ccr import findings as f
 
 
 def make(finding, severity="HIGH", domain="Security", hours=2.0,
-         verdict="CONFIRMED", tags=None):
+         verdict="CONFIRMED", tags=None, finding_type=None):
     """Build a finding dict for tests."""
-    return {
+    data = {
         "finding": finding,
         "severity": severity,
         "domain": domain,
@@ -16,6 +16,9 @@ def make(finding, severity="HIGH", domain="Security", hours=2.0,
         "da_verdict": verdict,
         "tags": tags or [],
     }
+    if finding_type:
+        data["finding_type"] = finding_type
+    return data
 
 
 GOOD = "[app.py:1] \u2014 hardcoded key in source \u2192 any reader gets the key"
@@ -87,6 +90,20 @@ class TestReviewFindings(unittest.TestCase):
         kept, _ = f.review_findings([make(GOOD, hours=-5)])
         self.assertEqual(kept[0]["est_hours"], 0.0)
 
+    def test_floor_fills_missing_estimate(self):
+        kept, _ = f.review_findings(
+            [make(GOOD, hours=0, finding_type="hardcoded_secret")],
+            floors={"hardcoded_secret": 2},
+        )
+        self.assertEqual(kept[0]["est_hours"], 2.0)
+
+    def test_floor_respects_half_multiplier(self):
+        kept, _ = f.review_findings(
+            [make(GOOD, hours=1, finding_type="circular_dependency")],
+            floors={"circular_dependency": 8},
+        )
+        self.assertEqual(kept[0]["est_hours"], 4.0)
+
 
 class TestDedup(unittest.TestCase):
     """Findings on the same domain and line collapse."""
@@ -131,6 +148,10 @@ class TestRoadmap(unittest.TestCase):
 
     def test_large_medium_goes_phase_3(self):
         phases = f.place_roadmap([make(GOOD, severity="MEDIUM", hours=10)])
+        self.assertEqual(len(phases[3]), 1)
+
+    def test_low_five_hours_goes_phase_3(self):
+        phases = f.place_roadmap([make(GOOD, severity="LOW", hours=5)])
         self.assertEqual(len(phases[3]), 1)
 
     def test_rejected_excluded(self):

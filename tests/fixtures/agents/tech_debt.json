@@ -3,7 +3,7 @@
   "score": 6,
   "findings": [
     {
-      "finding": "[utils/helper.py:3] \u2014 opens files with no try/except and no encoding \u2192 UnicodeDecodeError crashes the caller on non-UTF8 input",
+      "finding": "[utils/helper.py:8] \u2014 opens files with no try/except and no encoding \u2192 UnicodeDecodeError crashes the caller on non-UTF8 input",
       "severity": "MEDIUM",
       "est_hours": 1,
       "tags": ["missing-error-handling"],
@@ -11,7 +11,7 @@
       "da_verdict": "CONFIRMED"
     },
     {
-      "finding": "[auth/user.py:3] \u2014 uses built-in hash() for user ids \u2192 ids change on every process start because hash randomization is enabled",
+      "finding": "[auth/user.py:4] \u2014 uses built-in hash() for user ids \u2192 ids change on every process start because hash randomization is enabled",
       "severity": "HIGH",
       "est_hours": 2,
       "tags": ["unstable-hash"],

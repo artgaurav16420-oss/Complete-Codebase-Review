@@ -27,6 +27,9 @@ def check_completion(manifest, effort, planned, completed):
     """
     if not planned:
         return 0.0
+    planned = list(dict.fromkeys(planned))
+    completed = list(dict.fromkeys(completed))
+    completed = [agent_id for agent_id in completed if agent_id in planned]
     ratio = len(completed) / len(planned)
     key = "quick_completion" if effort == "min" else "full_completion"
     threshold = manifest["thresholds"][key]
@@ -71,7 +74,9 @@ def synthesize(manifest, results, planned, completed=None, target="",
             copy["agent"] = agent_id
             raw.append(copy)
 
-    kept, rejected = findings_mod.review_findings(raw)
+    kept, rejected = findings_mod.review_findings(
+        raw, floors=manifest.get("tech_debt_floors")
+    )
     kept = findings_mod.assign_ids(findings_mod.dedup(kept))
 
     model = findings_mod.aggregate(

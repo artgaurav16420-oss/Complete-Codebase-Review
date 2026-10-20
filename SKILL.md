@@ -147,6 +147,7 @@ If all critical tools pass but optional tools are unavailable, log: `"[ENV_CHECK
 | UI/UX Design & Accessibility | Any project with a user interface |
 | DevOps & Infra | Any deployed project |
 | Standards Compliance | Team projects |
+| Process Quality (Karpathy Compliance) | All projects |
 
 ### Step 3: Write Discovery Manifest
 

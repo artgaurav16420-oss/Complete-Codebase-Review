@@ -12,6 +12,9 @@
   to match the fixture repo.
 - **Completion gate**: `synthesize` uses `ccr-state.json:agents_planned` and refuses to emit a
   report below 75% (full) / 66% (Quick Mode); `--allow-partial` overrides explicitly.
+- **Review follow-ups**: state gates per phase, deduplicated agent accounting, discovery facts
+  carried into reports, stale-result archiving on re-record, manifest tech-debt floors applied,
+  roadmap phase objects in JSON, uninstall failure exit code, and generated `help.md` version.
 - **Organizer benchmark**: first real recorded run with human-verified precision
   (`tests/fixtures/organizer/`), scored via a benchmark spec with known false positives.
 - **Packaging**: `ccr` console script and declared build backend.

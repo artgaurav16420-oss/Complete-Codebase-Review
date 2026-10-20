@@ -35,7 +35,7 @@
       "da_verdict": "PLAUSIBLE"
     },
     {
-      "finding": "[api/orders.py:3] \u2014 calls _fetch_items inside the order loop \u2192 one query per order, so cost grows linearly with order count",
+      "finding": "[api/orders.py:14] \u2014 calls _fetch_items inside the order loop \u2192 one query per order, so cost grows linearly with order count",
       "severity": "HIGH",
       "est_hours": 3,
       "tags": ["n-plus-one-query"],

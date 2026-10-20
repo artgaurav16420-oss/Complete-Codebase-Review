@@ -66,6 +66,15 @@ class TestGates(unittest.TestCase):
         self.state.advance(2)
         self.assertEqual(self.state.data["current_phase"], 2)
 
+    def test_advance_requires_phase_two_gate(self):
+        self.state.set_gate("p1_discovery", True)
+        self.state.advance(2)
+        with self.assertRaises(ValueError):
+            self.state.advance(3)
+        self.state.set_gate("p2_analysis", True)
+        self.state.advance(3)
+        self.assertEqual(self.state.data["current_phase"], 3)
+
     def test_cannot_skip_phase(self):
         self.state.set_gate("p1_discovery", True)
         with self.assertRaises(ValueError):

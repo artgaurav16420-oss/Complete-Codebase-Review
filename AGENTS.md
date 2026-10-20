@@ -81,6 +81,11 @@ ingests the JSON. `ccr` never calls a model — that is why it is testable.
 - **`synthesize` enforces the completion gate.** Planned agents come from
   `--agents`, then `ccr-state.json:agents_planned`, then the cache files. A
   partial run exits 1 unless `--allow-partial`. Do not bypass it in code.
+- **`record` archives previous results** to `previous-results/<timestamp>/` and
+  refreshes effort/facts in state. `synthesize` carries those facts into the
+  report; without state or `--agents` it warns and skips the gate.
+- **`help.md`'s version line is generated** from the manifest. Do not hand-edit
+  it; `generate.py --check` covers it.
 - **`expected_issues.json` is scored, not self-compared.** `test.sh` and
   `Test-Windows.ps1` no longer hardcode copies of the list — they call
   `python -m ccr eval`. Do not reintroduce a duplicated list.

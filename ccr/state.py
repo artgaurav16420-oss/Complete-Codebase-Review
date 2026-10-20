@@ -6,6 +6,7 @@ cannot leave a half-written ccr-state.json.
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 PHASES = (1, 2, 3, 4, 5)
@@ -20,6 +21,14 @@ GATES = (
     "p5_tests_pass",
     "p5_pr_created",
 )
+
+# Gate that must be true before entering each phase.
+PHASE_GATES = {
+    2: "p1_discovery",
+    3: "p2_analysis",
+    4: "p3_synthesis_da_roadmap",
+    5: "p4_fixplan_approval",
+}
 
 AGENT_STATES = ("completed", "failed")
 
@@ -37,6 +46,7 @@ def new_state(target_dir, skill_dir="", effort="max"):
         "agents_failed": [],
         "completed_count": 0,
         "total_agents": 0,
+        "facts": {},
         "phase_gates": {name: False for name in GATES},
         "re_review_count": 0,
         "local_loop_iterations": 0,
@@ -87,13 +97,23 @@ class State:
             raise ValueError("phase > 1 requires p1_discovery gate")
 
     def save(self):
-        """Write state atomically."""
+        """Write state atomically via a unique temp file."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(self.data, f, indent=2, sort_keys=True)
-            f.write("\n")
-        os.replace(str(tmp), str(self.path))
+        fd, tmp = tempfile.mkstemp(
+            prefix=self.path.name + ".", suffix=".tmp",
+            dir=str(self.path.parent),
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+                json.dump(self.data, f, indent=2, sort_keys=True)
+                f.write("\n")
+            os.replace(tmp, str(self.path))
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def set_step(self, step):
         """Record the current sub-step."""
@@ -106,8 +126,9 @@ class State:
             raise ValueError("invalid phase: " + str(phase))
         if phase > self.data["current_phase"] + 1:
             raise ValueError("cannot skip phases: " + str(self.data["current_phase"]))
-        if phase > 1 and not self.data["phase_gates"].get("p1_discovery"):
-            raise ValueError("p1_discovery gate must pass before advancing")
+        required = PHASE_GATES.get(phase)
+        if required and not self.data["phase_gates"].get(required):
+            raise ValueError(required + " gate must pass before advancing")
         self.data["current_phase"] = phase
         self.save()
 

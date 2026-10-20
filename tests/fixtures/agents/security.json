@@ -11,7 +11,7 @@
       "da_verdict": "CONFIRMED"
     },
     {
-      "finding": "[app.py:5] \u2014 copies the database password into AUTH_SECRET in the process environment \u2192 secrets leak to child processes and crash dumps",
+      "finding": "[app.py:6] \u2014 copies the database password into AUTH_SECRET in the process environment \u2192 secrets leak to child processes and crash dumps",
       "severity": "HIGH",
       "est_hours": 2,
       "tags": ["CWE-200"],
@@ -19,7 +19,7 @@
       "da_verdict": "CONFIRMED"
     },
     {
-      "finding": "[auth/login.py:47] \u2014 concatenates caller input into a shell command with shell=True \u2192 arbitrary command execution as the service account",
+      "finding": "[auth/login.py:41] \u2014 concatenates caller input into a shell command with shell=True \u2192 arbitrary command execution as the service account",
       "severity": "CRITICAL",
       "est_hours": 3,
       "tags": ["CWE-78", "command-injection-shell-true"],
@@ -27,7 +27,7 @@
       "da_verdict": "CONFIRMED"
     },
     {
-      "finding": "[utils/helper.py:16] \u2014 uses %-formatting for user text \u2192 deprecated idiom, inconsistent with the rest of the codebase",
+      "finding": "[utils/helper.py:19] \u2014 calls datetime.utcnow(), deprecated since Python 3.12 \u2192 emits DeprecationWarning and blocks a clean upgrade to future Python versions",
       "severity": "LOW",
       "est_hours": 1,
       "tags": ["CWE-477"],
@@ -35,7 +35,7 @@
       "da_verdict": "PLAUSIBLE"
     },
     {
-      "finding": "[auth/login.py:20] \u2014 password comparison might leak timing \u2192 timing side channel on credential checks",
+      "finding": "[auth/login.py:13] \u2014 password comparison might leak timing \u2192 timing side channel on credential checks",
       "severity": "MEDIUM",
       "est_hours": 1,
       "tags": [],

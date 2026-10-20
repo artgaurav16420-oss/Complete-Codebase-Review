@@ -85,6 +85,31 @@ class TestRunUninstall(unittest.TestCase):
                 code = install_mod._run_uninstall(tmp, False)
             self.assertEqual(code, 0)
 
+    def test_failure_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "tool" / "skills"
+            target.parent.mkdir(parents=True)
+            with patch.object(
+                install_mod, "get_target_dirs", return_value={"Tool": target}
+            ), patch.object(
+                install_mod, "remove_skill", side_effect=OSError("denied")
+            ), patch("sys.stdout", new_callable=io.StringIO):
+                code = install_mod._run_uninstall(None, False)
+            self.assertEqual(code, 1)
+
+    def test_local_skills_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill = root / ".skills" / "complete-codebase-review"
+            skill.mkdir(parents=True)
+            with patch.object(install_mod.Path, "cwd", return_value=root), \
+                 patch.object(
+                     install_mod, "get_target_dirs", return_value={}
+                 ), patch("sys.stdout", new_callable=io.StringIO):
+                code = install_mod._run_uninstall(None, False)
+            self.assertEqual(code, 0)
+            self.assertFalse(skill.exists())
+
     def test_help_lists_uninstall(self):
         with patch("sys.argv", ["install.py", "--help"]), \
              patch("sys.stdout", new_callable=io.StringIO) as out:

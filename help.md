@@ -1,6 +1,6 @@
 # Complete Codebase Review Help
 
-> **Version**: Synced with SKILL.md v2.3.0 — check `pyproject.toml` or run `python install.py --version` for the installed version.
+> **Version**: Synced with SKILL.md v2.4.0 — check `pyproject.toml` or run `python install.py --version` for the installed version.
 
 This skill conducts a complete, multi-dimensional, read-only audit of your codebase and produces an actionable, prioritized roadmap without making immediate changes.
 

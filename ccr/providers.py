@@ -27,6 +27,7 @@ Return your report as JSON with this shape:
       "finding": "[path/file.py:42] \\u2014 concrete flaw \\u2192 exact failure mode",
       "severity": "CRITICAL|HIGH|MEDIUM|LOW|INFO",
       "est_hours": 2,
+      "finding_type": "optional tech-debt floor key",
       "tags": ["optional-issue-id"],
       "evidence": "metric or observation"
     }}
@@ -37,7 +38,8 @@ Rules:
 - Every finding MUST start with [file:line] and contain the arrow separator.
 - No weasel words (might, likely, could potentially, best practice suggests).
 - Only report flaws that CURRENTLY exist. No generic advice.
-- Quantify tech debt in hours per finding.
+- Quantify tech debt in hours per finding. Set finding_type when it matches a
+  floor key (circular_dependency, hardcoded_secret, missing_test_coverage, ...).
 End with "GATE: COMPLETE" only if you actually performed the analysis.
 """
 

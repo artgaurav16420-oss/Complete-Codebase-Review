@@ -48,6 +48,20 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(facts["files"], 3)
         self.assertTrue(facts["truncated"])
 
+    def test_max_files_zero_or_negative_raises(self):
+        for value in (0, -1):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    discovery.discover(DUMMY, max_files=value)
+
+    def test_files_in_tests_dir_count_as_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tests").mkdir()
+            (root / "tests" / "helpers.py").write_text("x = 1\n", encoding="utf-8")
+            facts = discovery.discover(root)
+            self.assertEqual(facts["test_files"], 1)
+
     def test_ignores_vendor_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

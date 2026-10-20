@@ -88,6 +88,12 @@ class TestGeneratedArtifacts(unittest.TestCase):
         names = {agent["name"] for agent in self.manifest["agents"]}
         self.assertEqual(set(_ALL_AGENTS), names)
 
+    def test_help_version_matches_manifest(self):
+        text = (ROOT / "help.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "Synced with SKILL.md v" + self.manifest["version"], text
+        )
+
 
 class TestWritePath(unittest.TestCase):
     """Generation writes files and is idempotent in a temp tree."""

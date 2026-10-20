@@ -63,6 +63,14 @@ class TestPlanCommand(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("unknown agent", output)
 
+    def test_plan_rejects_nonpositive_max_files(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                cli.main([
+                    "plan", "--target", str(DUMMY), "--max-files", "0",
+                ])
+        self.assertEqual(ctx.exception.code, 2)
+
 
 class TestRecordCommand(unittest.TestCase):
     """record subcommand."""
@@ -92,6 +100,52 @@ class TestRecordCommand(unittest.TestCase):
                 "--agents", "security",
             ])
             self.assertEqual(code, 0)
+
+    def test_record_archives_stale_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security",
+            ])
+            result = Path(tmp) / "phase_security.json"
+            result.write_text('{"findings": []}', encoding="utf-8")
+            code, output = run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security",
+            ])
+            self.assertEqual(code, 0)
+            self.assertFalse(result.exists())
+            archived = list(
+                (Path(tmp) / "previous-results").rglob("phase_security.json")
+            )
+            self.assertEqual(len(archived), 1)
+            self.assertIn("archived 1", output)
+
+    def test_record_updates_effort(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security", "--effort", "max",
+            ])
+            run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security", "--effort", "min",
+            ])
+            state = json.loads(
+                (Path(tmp) / "ccr-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["effort"], "min")
+
+    def test_record_stores_discovery_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security",
+            ])
+            state = json.loads(
+                (Path(tmp) / "ccr-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["facts"]["files"], 9)
 
 
 class TestSynthesizeCommand(unittest.TestCase):
@@ -129,6 +183,50 @@ class TestSynthesizeCommand(unittest.TestCase):
             code, output = run_cli(["synthesize", "--in", tmp])
             self.assertEqual(code, 2)
             self.assertIn("no agent results", output)
+
+    def test_agents_flag_strips_spaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security,architecture",
+            ])
+            for agent in ("security", "architecture"):
+                (Path(tmp) / ("phase_" + agent + ".json")).write_text(
+                    json.dumps({"findings": []}), encoding="utf-8"
+                )
+            code, _ = run_cli([
+                "synthesize", "--in", tmp,
+                "--agents", "security, architecture",
+            ])
+            self.assertEqual(code, 0)
+
+    def test_invalid_state_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "ccr-state.json").write_text(
+                "{not json", encoding="utf-8"
+            )
+            code, output = run_cli(["synthesize", "--in", tmp])
+            self.assertEqual(code, 2)
+            self.assertIn("invalid state", output)
+
+    def test_report_carries_discovery_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security",
+            ])
+            (Path(tmp) / "phase_security.json").write_text(
+                '{"findings": []}', encoding="utf-8"
+            )
+            out = str(Path(tmp) / "report")
+            code, _ = run_cli([
+                "synthesize", "--in", tmp, "--out", out, "--format", "json",
+            ])
+            self.assertEqual(code, 0)
+            data = json.loads(
+                Path(out).with_suffix(".json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(data["report"]["codebase_size"]["files"], 9)
 
 
 class TestCompletionGate(unittest.TestCase):

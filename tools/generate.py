@@ -117,6 +117,11 @@ def render_text(path, manifest):
         text = replace_block(text, "readme-env-vars", env_table_section(manifest))
     elif name == "help.md":
         text = replace_block(text, "help-env-vars", env_bullets(manifest))
+        text = re.sub(
+            r"(?m)^(> \*\*Version\*\*: Synced with SKILL\.md v)\S+",
+            lambda match: match.group(1) + manifest["version"],
+            text,
+        )
     elif name == "orchestrator-rules.md":
         text = replace_block(
             text, "orchestrator-env-vars", env_inline_list(manifest)

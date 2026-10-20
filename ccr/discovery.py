@@ -94,7 +94,7 @@ BASE_AGENTS = [
 
 def _is_test_file(rel_parts, name):
     """Return True when a path looks like a test file."""
-    if any(part.lower() in TEST_DIR_NAMES for part in rel_parts[:-1]):
+    if any(part.lower() in TEST_DIR_NAMES for part in rel_parts):
         return True
     if name.startswith(TEST_FILE_PREFIXES):
         return True
@@ -118,7 +118,9 @@ def discover(target_dir, max_files=None):
     if not target.is_dir():
         raise ValueError("target is not a directory: " + str(target))
 
-    limit = int(max_files) if max_files else 0
+    limit = int(max_files) if max_files is not None else 0
+    if max_files is not None and limit < 1:
+        raise ValueError("max_files must be >= 1")
     files = 0
     total_bytes = 0
     languages = {}
@@ -128,6 +130,7 @@ def discover(target_dir, max_files=None):
     database = []
     entry_points = []
     ui_files = 0
+    test_files = 0
     truncated = False
 
     for root, dirs, names in os.walk(str(target)):
@@ -144,6 +147,8 @@ def discover(target_dir, max_files=None):
                 continue
             files += 1
             total_bytes += size
+            if _is_test_file(rel_root.parts, name):
+                test_files += 1
 
             ext = full.suffix.lower()
             language = LANGUAGE_BY_EXT.get(ext)
@@ -186,14 +191,6 @@ def discover(target_dir, max_files=None):
                     if f.suffix.lower() in (".yml", ".yaml")
                 )
             )
-
-    test_files = 0
-    for root, dirs, names in os.walk(str(target)):
-        dirs[:] = sorted(d for d in dirs if d not in IGNORED_DIRS)
-        rel_parts = Path(root).relative_to(target).parts
-        for name in sorted(names):
-            if _is_test_file(rel_parts, name):
-                test_files += 1
 
     code_files = sum(
         count for language, count in languages.items()

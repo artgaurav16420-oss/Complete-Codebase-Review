@@ -422,6 +422,7 @@ def remove_skill(dest_dir, dry_run):
 def _run_uninstall(target, dry_run):
     """Remove the skill from an explicit target or all detected config dirs."""
     removed = 0
+    failed = 0
     if target:
         try:
             resolved = _validate_target_path(Path(target))
@@ -442,15 +443,20 @@ def _run_uninstall(target, dry_run):
                     removed += 1
                     print_info("Removed from " + tool_name)
             except (PermissionError, OSError, ValueError) as e:
+                failed += 1
                 print_error("Failed to remove from {}: {}".format(tool_name, e))
         local = Path.cwd() / ".skills"
-        if local.exists() and not os.path.islink(str(local)):
+        if local.exists():
             try:
                 if remove_skill(local, dry_run):
                     removed += 1
                     print_info("Removed local .skills install")
             except (PermissionError, OSError, ValueError) as e:
+                failed += 1
                 print_error("Failed to remove local install: " + str(e))
+    if failed:
+        print_error("Uninstall incomplete: {} location(s) failed".format(failed))
+        return 1
     if removed == 0:
         print_info("Nothing to uninstall.")
     elif dry_run:

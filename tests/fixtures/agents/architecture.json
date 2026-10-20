@@ -3,7 +3,7 @@
   "score": 5,
   "findings": [
     {
-      "finding": "[auth/user.py:1] \u2014 imports notifications.email, which imports auth.user back \u2192 circular import fails at startup once either module gains module-level state",
+      "finding": "[auth/user.py:1] \u2014 imports notifications.email, which imports auth.user back \u2192 the cycle fails at first import because get_user_profile is not defined yet",
       "severity": "HIGH",
       "est_hours": 8,
       "tags": ["circular-dependency"],

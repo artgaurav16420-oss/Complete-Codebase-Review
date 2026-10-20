@@ -109,6 +109,12 @@ class TestJson(unittest.TestCase):
             sorted(self.data["roadmap"]), ["phase_1", "phase_2", "phase_3"]
         )
 
+    def test_roadmap_phase_objects(self):
+        phase = self.data["roadmap"]["phase_1"]
+        self.assertIn("title", phase)
+        self.assertIn("estimated_hours", phase)
+        self.assertIsInstance(phase["tasks"], list)
+
     def test_finding_fields(self):
         for item in self.data["findings"]:
             for field in ("id", "finding", "severity", "domain",

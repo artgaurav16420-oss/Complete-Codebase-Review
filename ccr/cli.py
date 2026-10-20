@@ -2,7 +2,9 @@
 
 import argparse
 import json
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from . import __version__, manifest as manifest_mod
@@ -50,6 +52,20 @@ def cmd_plan(args):
     return 0
 
 
+def _archive_results(cache):
+    """Move previous agent results aside so they cannot be counted again."""
+    stale = sorted(Path(cache).glob("phase_*.json"))
+    if not stale:
+        return 0
+    dest = Path(cache) / "previous-results" / datetime.now().strftime(
+        "%Y%m%d-%H%M%S"
+    )
+    dest.mkdir(parents=True, exist_ok=True)
+    for path in stale:
+        shutil.move(str(path), str(dest / path.name))
+    return len(stale)
+
+
 def cmd_record(args):
     """Write agent prompts and initialize pipeline state."""
     data = _manifest()
@@ -62,19 +78,30 @@ def cmd_record(args):
     except ValueError as exc:
         print("[ERROR] " + str(exc))
         return 2
+    archived = _archive_results(args.out)
     paths = providers.write_prompts(
         data, plan, args.out, skill_dir=args.skill_dir
     )
     cache = Path(args.out)
     state_path = cache / "ccr-state.json"
-    current = state.State.load(state_path)
+    try:
+        current = state.State.load(state_path)
+    except (OSError, ValueError) as exc:
+        print("[ERROR] invalid state in {}: {}".format(cache, exc))
+        return 2
     if current is None or current.data["target_dir"] != plan["target"]:
         current = state.State.create(
             state_path, plan["target"], args.skill_dir, args.effort
         )
+    current.data["effort"] = args.effort
+    current.data["skill_dir"] = args.skill_dir
+    current.data["facts"] = plan["facts"]
+    current.save()
     current.set_gate("p1_discovery", True)
     current.plan_agents(plan["agents"])
     current.set_step("phase2:awaiting_agent_results")
+    if archived:
+        print("[RECORD] archived {} stale result file(s)".format(archived))
     print("[RECORD] wrote {} prompts to {}".format(len(paths), cache))
     print("[RECORD] run them, then: python -m ccr synthesize --in {}".format(cache))
     return 0
@@ -99,9 +126,15 @@ def _cache_state(cache):
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
-    cached = _cache_state(args.cache)
+    try:
+        cached = _cache_state(args.cache)
+    except (OSError, ValueError) as exc:
+        print("[ERROR] invalid state in {}: {}".format(args.cache, exc))
+        return 2
     if args.agents:
-        planned = args.agents.split(",")
+        planned = [
+            token.strip() for token in args.agents.split(",") if token.strip()
+        ]
     elif cached is not None and cached.data["agents_planned"]:
         planned = cached.data["agents_planned"]
     else:
@@ -114,6 +147,13 @@ def cmd_synthesize(args):
     if effort is None:
         effort = cached.data["effort"] if cached is not None else "max"
     target = args.target or (cached.data["target_dir"] if cached else args.cache)
+    facts = cached.data.get("facts") if cached is not None else None
+    gate_known = bool(args.agents) or (
+        cached is not None and bool(cached.data["agents_planned"])
+    )
+    if not gate_known:
+        print("[WARN] planned agent set unknown (no state, no --agents); "
+              "completion gate skipped")
 
     try:
         results = providers.load_results(args.cache, planned, required=False)
@@ -124,7 +164,7 @@ def cmd_synthesize(args):
     if not completed:
         print("[ERROR] no agent results found in " + args.cache)
         return 2
-    if not args.allow_partial:
+    if not args.allow_partial and gate_known:
         try:
             pipeline.check_completion(data, effort, planned, completed)
         except RuntimeError as exc:
@@ -134,7 +174,8 @@ def cmd_synthesize(args):
             return 1
 
     model = pipeline.synthesize(
-        data, results, planned, completed=completed, target=target
+        data, results, planned, completed=completed, target=target,
+        facts=facts,
     )
     if not args.out:
         rendered = pipeline.render(model, args.format)
@@ -157,8 +198,14 @@ def cmd_synthesize(args):
 def cmd_eval(args):
     """Score recorded fixtures against expected issues."""
     data = _manifest()
+    fixtures = args.fixtures or "tests/fixtures/agents"
+    expected = args.expected or "tests/expected_issues.json"
+    if not Path(fixtures).is_dir() or not Path(expected).is_file():
+        print("[ERROR] eval defaults require a source checkout; "
+              "pass --fixtures and --expected")
+        return 2
     try:
-        model, score = pipeline.run_eval(data, args.fixtures, args.expected)
+        model, score = pipeline.run_eval(data, fixtures, expected)
     except (OSError, ValueError) as exc:
         print("[ERROR] " + str(exc))
         return 2
@@ -181,6 +228,14 @@ def cmd_eval(args):
     return 0
 
 
+def _positive_int(value):
+    """argparse type: reject zero and negative counts."""
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return number
+
+
 def build_parser():
     """Build the argparse parser."""
     parser = argparse.ArgumentParser(
@@ -199,7 +254,7 @@ def build_parser():
                       help="Target directory (alternative to positional).")
     plan.add_argument("--effort", choices=["max", "min"], default="max")
     plan.add_argument("--agents", default=None)
-    plan.add_argument("--max-files", type=int, default=None)
+    plan.add_argument("--max-files", type=_positive_int, default=None)
     plan.add_argument("--json", action="store_true")
     plan.set_defaults(func=cmd_plan)
 
@@ -211,7 +266,7 @@ def build_parser():
     record.add_argument("--out", default=".code-review-cache")
     record.add_argument("--effort", choices=["max", "min"], default="max")
     record.add_argument("--agents", default=None)
-    record.add_argument("--max-files", type=int, default=None)
+    record.add_argument("--max-files", type=_positive_int, default=None)
     record.add_argument("--skill-dir", default="")
     record.set_defaults(func=cmd_record)
 
@@ -234,8 +289,14 @@ def build_parser():
     synth.set_defaults(func=cmd_synthesize)
 
     ev = sub.add_parser("eval", help="score fixtures against expected issues")
-    ev.add_argument("--fixtures", default="tests/fixtures/agents")
-    ev.add_argument("--expected", default="tests/expected_issues.json")
+    ev.add_argument(
+        "--fixtures", default=None,
+        help="Default: tests/fixtures/agents (source checkout only).",
+    )
+    ev.add_argument(
+        "--expected", default=None,
+        help="Default: tests/expected_issues.json (source checkout only).",
+    )
     ev.add_argument("--json", action="store_true")
     ev.set_defaults(func=cmd_eval)
     return parser

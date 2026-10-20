@@ -73,8 +73,12 @@ def _as_hours(value):
     return max(0.0, hours)
 
 
-def review_findings(raw_findings):
-    """Apply mechanical DA checks to raw findings.
+def review_findings(raw_findings, floors=None):
+    """Apply mechanical DA checks and calibrate missing estimates.
+
+    Args:
+        raw_findings: Findings from agent reports.
+        floors: Optional tech-debt floors keyed by `finding_type`.
 
     Returns:
         tuple: (kept, rejected). Rejected findings carry `reject_reason`
@@ -87,6 +91,13 @@ def review_findings(raw_findings):
         item["severity"] = normalize_severity(item.get("severity"))
         item["da_verdict"] = normalize_verdict(item.get("da_verdict"))
         item["est_hours"] = _as_hours(item.get("est_hours"))
+        floor = (floors or {}).get(item.get("finding_type", ""))
+        if floor:
+            floor = float(floor)
+            if item["est_hours"] <= 0:
+                item["est_hours"] = floor
+            else:
+                item["est_hours"] = max(item["est_hours"], floor * 0.5)
 
         text = str(item.get("finding", "")).strip()
         item["finding"] = text
@@ -169,7 +180,7 @@ def place_roadmap(findings):
         hours = _as_hours(item.get("est_hours"))
         if severity == "CRITICAL" or hours <= 2:
             phases[1].append(item)
-        elif severity == "HIGH" or hours <= 8:
+        elif severity == "HIGH" or (severity == "MEDIUM" and hours <= 8):
             phases[2].append(item)
         else:
             phases[3].append(item)

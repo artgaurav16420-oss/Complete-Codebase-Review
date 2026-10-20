@@ -211,10 +211,22 @@ def render_json(model):
             "est_hours": item.get("est_hours", 0),
             "da_verdict": item["da_verdict"],
         })
-    roadmap = {
-        "phase_{}".format(phase): [item["id"] for item in model["roadmap"][phase]]
-        for phase in (1, 2, 3)
-    }
+    titles = {1: "Now", 2: "Next Quarter", 3: "Backlog"}
+    roadmap = {}
+    for phase in (1, 2, 3):
+        items = model["roadmap"][phase]
+        roadmap["phase_{}".format(phase)] = {
+            "title": titles[phase],
+            "estimated_hours": model["roadmap_hours"][phase],
+            "tasks": [
+                {
+                    "id": item["id"],
+                    "finding": item["finding"],
+                    "est_hours": item.get("est_hours", 0),
+                }
+                for item in items
+            ],
+        }
     size = model.get("codebase_size") or {}
     return {
         "report": {

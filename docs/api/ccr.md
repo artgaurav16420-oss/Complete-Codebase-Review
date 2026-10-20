@@ -43,6 +43,7 @@ result shape:
       "finding": "[src/db.py:12] — password literal in source → any reader gets it",
       "severity": "CRITICAL",
       "est_hours": 2,
+      "finding_type": "hardcoded_secret",
       "tags": ["CWE-798"],
       "da_verdict": "CONFIRMED",
       "evidence": "literal assignment"
@@ -52,6 +53,9 @@ result shape:
 ```
 
 `tags` are what the eval harness scores against `tests/expected_issues.json`.
+`finding_type` optionally names a `tech_debt_floors` key; a missing estimate
+takes the floor, and an explicit estimate is raised to at least half the floor
+(the documented 0.5x multiplier).
 
 ## CLI
 
