@@ -26,9 +26,11 @@ def check(report, floor=DEFAULT_FLOOR):
     if not files:
         return [("<empty report>", 0.0)]
     failures = []
+    checked = 0
     for path, data in sorted(files.items()):
         if _skipped(path):
             continue
+        checked += 1
         summary = data.get("summary")
         if not summary:
             failures.append((path, 0.0))
@@ -38,6 +40,8 @@ def check(report, floor=DEFAULT_FLOOR):
             failures.append((path, 0.0))
         elif percent < floor:
             failures.append((path, percent))
+    if checked == 0:
+        return [("<no files checked>", 0.0)]
     return failures
 
 

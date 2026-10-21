@@ -536,7 +536,10 @@ def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
     installed_any = _run_auto_install(src_dir, target_dirs, dry_run)
 
     if not installed_any:
-        if target_dirs:
+        detected = any(
+            target_dir.parent.exists() for target_dir in target_dirs.values()
+        )
+        if detected:
             print_info("No detected installations succeeded")
         else:
             print_info("No existing global tool configurations")

@@ -59,6 +59,8 @@ def validate(data):
     if not base_agents:
         raise ValueError("manifest must define base_agents")
     for agent_id in base_agents:
+        if not isinstance(agent_id, str):
+            raise ValueError("base agent id must be a string: " + repr(agent_id))
         if agent_id not in agent_ids:
             raise ValueError("unknown base agent: " + agent_id)
 

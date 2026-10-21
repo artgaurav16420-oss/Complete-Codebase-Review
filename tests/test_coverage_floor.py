@@ -18,12 +18,19 @@ class TestCoverageFloor(unittest.TestCase):
         self.assertEqual(len(failures), 1)
 
     def test_tools_directory_is_excluded(self):
-        self.assertEqual(check({"files": {"tools/x.py": entry(0.0)}}), [])
+        report = {"files": {
+            "tools/x.py": entry(0.0), "src/a.py": entry(90.0),
+        }}
+        self.assertEqual(check(report), [])
 
     def test_windows_tools_path_is_excluded(self):
-        self.assertEqual(
-            check({"files": {"tools\\generate.py": entry(0.0)}}), []
-        )
+        report = {"files": {
+            "tools\\generate.py": entry(0.0), "src/a.py": entry(90.0),
+        }}
+        self.assertEqual(check(report), [])
+
+    def test_all_files_skipped_fails(self):
+        self.assertTrue(check({"files": {"tools/x.py": entry(0.0)}}))
 
     def test_mytests_is_not_excluded(self):
         self.assertEqual(len(check({"files": {"mytests/x.py": entry(0.0)}})), 1)

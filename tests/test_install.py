@@ -445,6 +445,22 @@ class TestMainFunction(_BaseInstallTestWithArgv):
         self.assertIn("SUCCESS", output)
         self.assertIn("Installation complete!", output)
 
+    def test_detected_but_failed_reports_failure_message(self):
+        fake_dirs = {"Claude Code": Path("/home/user/.claude/skills")}
+        existing = {p.parent for p in fake_dirs.values()}
+
+        with patch.object(self.install, "get_target_dirs",
+                          return_value=fake_dirs), \
+             patch.object(self.install, "copy_skill",
+                          side_effect=OSError("boom")), \
+             patch.object(self.install, "_run_local_fallback"), \
+             patch.object(self.install.sys, "stdout",
+                          new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", lambda p: p in existing):
+                self.install.main()
+
+        self.assertIn("No detected installations succeeded", mock_stdout.getvalue())
+
     def test_no_agent_configs_falls_back_to_local(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
@@ -462,7 +478,7 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                 self.install.main()
 
         output = mock_stdout.getvalue()
-        self.assertIn("No detected installations succeeded", output)
+        self.assertIn("No existing global tool configurations", output)
         self.assertIn("Installed to local directory", output)
 
     def test_local_fallback_when_parent_exists_but_target_missing(self):
@@ -481,7 +497,7 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                 self.install.main()
 
         output = mock_stdout.getvalue()
-        self.assertIn("No detected installations succeeded", output)
+        self.assertIn("No existing global tool configurations", output)
 
     def test_copy_skill_failure_continues_to_next_agent(self):
         fake_dirs = {

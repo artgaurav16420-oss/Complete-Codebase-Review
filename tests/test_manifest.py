@@ -126,6 +126,12 @@ class TestBaseAgents(unittest.TestCase):
         with self.assertRaises(ValueError):
             manifest_mod.validate(manifest)
 
+    def test_non_string_base_agent_rejected(self):
+        manifest = copy.deepcopy(manifest_mod.load())
+        manifest["base_agents"] = [1]
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(manifest)
+
 
 if __name__ == "__main__":
     unittest.main()
