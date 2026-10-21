@@ -186,4 +186,10 @@ python install.py --dry-run
 
 # Show version
 python install.py --version
+
+# Verify the installer has not been modified
+python install.py --self-verify
 ```
+
+`--self-verify` checks `install.py` against the SHA-256 recorded in
+`install.py.sha256`. Run it before installing from an untrusted checkout.

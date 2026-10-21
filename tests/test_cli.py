@@ -390,5 +390,18 @@ class TestEmitSynthesisOutput(unittest.TestCase):
             cli.pipeline.render = orig_render
 
 
+class TestModuleEntrypoint(unittest.TestCase):
+    def test_python_dash_m_ccr(self):
+        import runpy
+        import sys
+        from unittest import mock
+        argv = ["ccr", "--help"]
+        with mock.patch.object(sys, "argv", argv):
+            with contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as ctx:
+                    runpy.run_module("ccr", run_name="__main__")
+        self.assertEqual(ctx.exception.code, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

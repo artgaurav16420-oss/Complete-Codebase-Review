@@ -327,5 +327,13 @@ class TestTrend(unittest.TestCase):
         self.assertIn("-20%", t)
 
 
+class TestRoadmapEligible(unittest.TestCase):
+    def test_rejected_excluded(self):
+        self.assertFalse(f.roadmap_eligible({"da_verdict": "REJECTED"}))
+
+    def test_confirmed_included(self):
+        self.assertTrue(f.roadmap_eligible({"da_verdict": "CONFIRMED"}))
+
+
 if __name__ == "__main__":
     unittest.main()

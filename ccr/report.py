@@ -39,13 +39,13 @@ def _executive_summary(model):
         "",
         "| Field | Value |",
         "|-------|-------|",
-        "| **Overall Health** | {} |".format(model["overall_health"]),
+        f"| **Overall Health** | {model['overall_health']} |",
         "| **Codebase Size** | {} files, {} languages, {} top-level modules |".format(
             files, languages, modules
         ),
-        "| **Critical Issues** | {} |".format(model["critical_issues"]),
-        "| **Tech Debt** | {} |".format(fmt_hours(model["tech_debt_hours"])),
-        "| **Priority Areas** | {} |".format(priority),
+        f"| **Critical Issues** | {model['critical_issues']} |",
+        f"| **Tech Debt** | {fmt_hours(model['tech_debt_hours'])} |",
+        f"| **Priority Areas** | {priority} |",
         "",
     ]
     return "\n".join(lines)
@@ -132,15 +132,15 @@ def _tech_debt(model):
     """Render the Tech Debt Summary section."""
     debt = model["tech_debt"]
     parts = [
-        "{}: {}".format(domain, fmt_hours(hours))
+        f"{domain}: {fmt_hours(hours)}"
         for domain, hours in debt["by_domain"].items()
     ]
     lines = [
         "## Tech Debt Summary",
         "",
-        "**Total estimated**: {}".format(fmt_hours_long(debt["total_hours"])),
+        f"**Total estimated**: {fmt_hours_long(debt['total_hours'])}",
         "",
-        "**Trend**: {}".format(debt["trend"]),
+        f"**Trend**: {debt['trend']}",
         "",
         "**By domain**: " + ("; ".join(parts) if parts else "none"),
         "",
@@ -158,7 +158,7 @@ def _agent_status(model):
     lines = [
         "## Agent Status",
         "",
-        "Completed: {}/{} agents".format(status["completed"], status["total"]),
+        f"Completed: {status['completed']}/{status['total']} agents",
         "",
         "DA verdicts: " + (tally if tally else "none"),
         "",
@@ -184,7 +184,7 @@ def _rejected(model):
 def render_markdown(model):
     """Render the full health report as Markdown."""
     sections = [
-        "# Codebase Health Report - {}".format(model.get("target") or "."),
+        f"# Codebase Health Report - {model.get('target') or '.'}",
         "",
         _executive_summary(model),
         _per_domain(model),
