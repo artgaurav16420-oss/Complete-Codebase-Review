@@ -78,10 +78,6 @@ def cmd_record(args):
     except ValueError as exc:
         print("[ERROR] " + str(exc))
         return 2
-    archived = _archive_results(args.out)
-    paths = providers.write_prompts(
-        data, plan, args.out, skill_dir=args.skill_dir
-    )
     cache = Path(args.out)
     state_path = cache / "ccr-state.json"
     try:
@@ -89,6 +85,10 @@ def cmd_record(args):
     except (OSError, ValueError) as exc:
         print("[ERROR] invalid state in {}: {}".format(cache, exc))
         return 2
+    archived = _archive_results(args.out)
+    paths = providers.write_prompts(
+        data, plan, args.out, skill_dir=args.skill_dir
+    )
     if current is None or current.data["target_dir"] != plan["target"]:
         current = state.State.create(
             state_path, plan["target"], args.skill_dir, args.effort
@@ -173,10 +173,14 @@ def cmd_synthesize(args):
                   "you accept the missing domains")
             return 1
 
-    model = pipeline.synthesize(
-        data, results, planned, completed=completed, target=target,
-        facts=facts,
-    )
+    try:
+        model = pipeline.synthesize(
+            data, results, planned, completed=completed, target=target,
+            facts=facts,
+        )
+    except ValueError as exc:
+        print("[ERROR] " + str(exc))
+        return 2
     if not args.out:
         rendered = pipeline.render(model, args.format)
         if "markdown" in rendered:

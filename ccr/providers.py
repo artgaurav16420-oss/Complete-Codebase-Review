@@ -143,12 +143,13 @@ class RecordedProvider:
             stem = path.stem
             if stem.startswith("phase_"):
                 stem = stem[len("phase_"):]
-            ids.append(stem)
+            if stem not in ids:
+                ids.append(stem)
         return ids
 
     def get(self, agent_id):
         """Return the recorded result for an agent."""
-        path = self.dir / (agent_id + ".json")
+        path = self.dir / ("phase_" + agent_id + ".json")
         if not path.exists():
-            path = self.dir / ("phase_" + agent_id + ".json")
+            path = self.dir / (agent_id + ".json")
         return load_result(path, agent_id)
