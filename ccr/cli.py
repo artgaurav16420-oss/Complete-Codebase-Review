@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import __version__, manifest as manifest_mod
-from . import discovery, pipeline, providers, state
+from . import discovery, findings as findings_mod, pipeline, providers, state
 
 
 def _manifest():
@@ -247,6 +247,75 @@ def cmd_synthesize(args):
     return _emit_synthesis_output(model, args)
 
 
+def cmd_validate_results(args):
+    """Check agent result files without synthesizing a report."""
+    data = _manifest()
+    agents = {agent["id"]: agent for agent in data["agents"]}
+    if args.agents:
+        planned = [
+            token.strip() for token in args.agents.split(",") if token.strip()
+        ]
+    else:
+        planned = _planned_from_cache(
+            args.cache, valid_ids=set(agents)
+        )
+    if not planned:
+        print("[ERROR] no agent results found in " + args.cache)
+        return 2
+    try:
+        results = providers.load_results(
+            args.cache, planned, required=False
+        )
+    except (OSError, ValueError) as exc:
+        print("[ERROR] " + str(exc))
+        return 2
+    if not results:
+        print("[ERROR] no agent results found in " + args.cache)
+        return 2
+    rows = []
+    total_valid = 0
+    total_malformed = 0
+    for agent_id in planned:
+        result = results.get(agent_id)
+        if result is None:
+            continue
+        if agent_id not in agents:
+            print("[ERROR] unknown agent id: " + agent_id)
+            return 2
+        domain = agents[agent_id]["report"]
+        raw = []
+        for item in result.get("findings", []):
+            copy = dict(item)
+            copy.setdefault("domain", domain)
+            copy["agent"] = agent_id
+            raw.append(copy)
+        kept, rejected = findings_mod.review_findings(
+            raw, floors=data.get("tech_debt_floors")
+        )
+        malformed = findings_mod.malformed_rejections(rejected)
+        total_valid += len(kept)
+        total_malformed += len(malformed)
+        rows.append({
+            "agent": agent_id,
+            "valid": len(kept),
+            "malformed": len(malformed),
+        })
+    if args.json:
+        print(json.dumps({
+            "agents": rows,
+            "valid": total_valid,
+            "malformed": total_malformed,
+        }, indent=2, sort_keys=True))
+    else:
+        for row in rows:
+            print("[VALIDATE] {agent}: {valid} valid, {malformed} malformed"
+                  .format(**row))
+        print("[VALIDATE] {} valid, {} malformed".format(
+            total_valid, total_malformed
+        ))
+    return 1 if total_malformed else 0
+
+
 def cmd_eval(args):
     """Score recorded fixtures against expected issues."""
     data = _manifest()
@@ -342,6 +411,14 @@ def build_parser():
         "--format", choices=["markdown", "json", "both"], default="markdown"
     )
     synth.set_defaults(func=cmd_synthesize)
+
+    val = sub.add_parser(
+        "validate-results", help="check agent results without synthesizing"
+    )
+    val.add_argument("--in", dest="cache", default=".code-review-cache")
+    val.add_argument("--agents", default=None)
+    val.add_argument("--json", action="store_true")
+    val.set_defaults(func=cmd_validate_results)
 
     ev = sub.add_parser("eval", help="score fixtures against expected issues")
     ev.add_argument(

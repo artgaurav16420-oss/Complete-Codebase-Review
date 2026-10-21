@@ -249,6 +249,8 @@ Each agent MUST:
   report them with `finding_type: design_note`, severity `INFO`, `0` hours.
 - **CRITICAL/HIGH need a reproduction path**: the exact input, call path, or
   command that triggers the failure. Without one, use MEDIUM at most.
+  Documentation-only findings are at most MEDIUM; test-only reliability
+  findings are at most MEDIUM unless they disable a release gate.
 - **Stay in domain**: flag only your own dimension; adjacent-domain findings
   belong to the specialist who owns them and inflate the report.
 - **Web Verify**: CVE lookups, framework best-practices checks
@@ -438,7 +440,7 @@ Input: synthesized report + DA-verified findings (including DA-ESCALATION items)
 Actions:
 - Prioritize findings by impact vs effort
 - Produce phased roadmap:
-  - **Phase 1** (now): CRITICAL + quick wins
+  - **Phase 1** (now): CRITICAL + HIGH security findings + quick wins
   - **Phase 2** (next quarter): HIGH + medium-effort items
   - **Phase 3** (backlog): MEDIUM/LOW + aspirational
 - Estimate total tech debt in engineering hours

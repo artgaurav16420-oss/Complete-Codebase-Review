@@ -41,6 +41,17 @@ class TestPrompt(unittest.TestCase):
         prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
         self.assertIn("reproduction path", prompt)
 
+    def test_prompt_includes_domain_checks(self):
+        agents = {a["id"]: a for a in self.manifest["agents"]}
+        build = providers.build_prompt(
+            agents["build_ci"], "/tmp/repo", "/skills/ccr"
+        )
+        self.assertIn("mocha 11 needs Node", build)
+        quality = providers.build_prompt(
+            agents["code_quality"], "/tmp/repo", "/skills/ccr"
+        )
+        self.assertIn("RegExp.exec without /g", quality)
+
     def test_prompt_contains_contract(self):
         prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
         self.assertIn("[path/file.py:42]", prompt)

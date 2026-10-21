@@ -83,13 +83,7 @@ def synthesize(manifest, results, planned, completed=None, target="",
     kept, rejected = findings_mod.review_findings(
         raw, floors=manifest.get("tech_debt_floors")
     )
-    malformed = [
-        item for item in rejected
-        if any(
-            reason in str(item.get("reject_reason", ""))
-            for reason in ("anchor", "empty finding")
-        )
-    ]
+    malformed = findings_mod.malformed_rejections(rejected)
     if (len(malformed) > 3
             and len(malformed) / max(len(raw), 1) > 0.2):
         raise ValueError(

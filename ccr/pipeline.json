@@ -70,21 +70,33 @@
       "name": "Architecture Analyzer",
       "report": "Architecture",
       "coverage": "Module coupling, layering violations, circular deps, patterns",
-      "skill": "*(general)*"
+      "skill": "*(general)*",
+      "checks": [
+        "Before claiming a bundler includes a module, inspect package.json browser/exports and the bundler resolve config.",
+        "Distinguish a layering violation from a real import cycle."
+      ]
     },
     {
       "id": "code_quality",
       "name": "Code Quality Auditor",
       "report": "Code Quality",
       "coverage": "Dead code, complexity (cyclomatic/cognitive), lint density, anti-patterns",
-      "skill": "`coding-standards`"
+      "skill": "`coding-standards`",
+      "checks": [
+        "Inspect loops whose termination depends on external mutation (RegExp.exec without /g, lastIndex).",
+        "Check exported helpers for reachable edge cases, not just internal callers."
+      ]
     },
     {
       "id": "security",
       "name": "Security Posture",
       "report": "Security",
       "coverage": "Secrets in code, dependency CVEs, auth patterns, OWASP checklist",
-      "skill": "`security-review`"
+      "skill": "`security-review`",
+      "checks": [
+        "For allowlists and redaction, check whether the value comes from the same merged config an attacker can override.",
+        "Treat opt-in safety controls as design notes unless the default has no safe path."
+      ]
     },
     {
       "id": "tech_debt",
@@ -98,14 +110,21 @@
       "name": "Test Health Auditor",
       "report": "Test Health",
       "coverage": "Coverage % by module, test quality (assertions vs snapshots), CI flakiness",
-      "skill": "`python-testing`"
+      "skill": "`python-testing`",
+      "checks": [
+        "Flag live-network tests and fixed ports; they make CI non-deterministic.",
+        "Check that coverage thresholds exist and are enforced."
+      ]
     },
     {
       "id": "dependencies",
       "name": "Dependency Auditor",
       "report": "Dependencies",
       "coverage": "Outdated major/minor/patch, license compliance, supply chain risk",
-      "skill": "*(general)*"
+      "skill": "*(general)*",
+      "checks": [
+        "Check lockfile and update policy for security-patch lag."
+      ]
     },
     {
       "id": "documentation",
@@ -119,14 +138,21 @@
       "name": "Build & CI Auditor",
       "report": "Build & CI",
       "coverage": "Build time trends, cache effectiveness, CI reliability, config drift",
-      "skill": "`deployment-patterns`"
+      "skill": "`deployment-patterns`",
+      "checks": [
+        "Compare every CI matrix entry against the runtime the tooling requires (e.g. mocha 11 needs Node >=18).",
+        "Confirm release and publish jobs depend on every test job."
+      ]
     },
     {
       "id": "performance",
       "name": "Performance Baseline",
       "report": "Performance",
       "coverage": "N+1 queries, O(n^2) patterns, memory allocation hotspots, bundle size",
-      "skill": "`benchmark`"
+      "skill": "`benchmark`",
+      "checks": [
+        "Any performance claim needs a measured or structurally derivable cost."
+      ]
     },
     {
       "id": "database",
@@ -154,7 +180,10 @@
       "name": "Standards Compliance",
       "report": "Standards",
       "coverage": "Style guide adherence, naming conventions, file organization",
-      "skill": "`coding-standards`"
+      "skill": "`coding-standards`",
+      "checks": [
+        "Only report a style violation when the repository config enforces it."
+      ]
     },
     {
       "id": "process_quality",

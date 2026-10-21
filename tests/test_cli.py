@@ -427,6 +427,40 @@ class TestPlannedFromCache(unittest.TestCase):
             self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
 
 
+class TestValidateResults(unittest.TestCase):
+    def test_reports_malformed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "security.json").write_text(json.dumps({
+                "findings": [
+                    {"finding": "[a.py:1] \u2014 flaw \u2192 failure",
+                     "severity": "LOW", "est_hours": 1},
+                    {"finding": "no anchor", "severity": "LOW",
+                     "est_hours": 1},
+                ]
+            }), encoding="utf-8")
+            code, output = run_cli(["validate-results", "--in", tmp])
+            self.assertEqual(code, 1)
+            self.assertIn("security: 1 valid, 1 malformed", output)
+
+    def test_clean_results_exit_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "security.json").write_text(json.dumps({
+                "findings": [
+                    {"finding": "[a.py:1] \u2014 flaw \u2192 failure",
+                     "severity": "LOW", "est_hours": 1},
+                ]
+            }), encoding="utf-8")
+            code, output = run_cli(["validate-results", "--in", tmp])
+            self.assertEqual(code, 0)
+            self.assertIn("1 valid, 0 malformed", output)
+
+    def test_no_results_exit_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, output = run_cli(["validate-results", "--in", tmp])
+            self.assertEqual(code, 2)
+            self.assertIn("no agent results", output)
+
+
 class TestModuleEntrypoint(unittest.TestCase):
     def test_python_dash_m_ccr(self):
         import runpy
