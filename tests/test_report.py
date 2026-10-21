@@ -63,6 +63,39 @@ class TestMarkdown(unittest.TestCase):
         broken = self.md.replace("| Security |", "| Security | N/A |", 1)
         self.assertTrue(report_mod.validate_markdown(broken))
 
+    def test_na_in_finding_text_is_not_a_score(self):
+        model = pipeline.synthesize(
+            _manifest(),
+            {"security": result("security", [
+                {"finding": "[a.py:1] \u2014 value N/A in config \u2192 bad",
+                 "severity": "LOW", "est_hours": 1,
+                 "da_verdict": "CONFIRMED"},
+            ])},
+            ["security"], target="na",
+        )
+        md = report_mod.render_markdown(model)
+        self.assertEqual(report_mod.validate_markdown(md), [])
+
+    def test_half_hour_mismatch_is_rejected(self):
+        import re
+        broken = re.sub(
+            r"\*\*Total estimated\*\*: ([0-9.]+) hours",
+            lambda m: "**Total estimated**: {:.1f} hours".format(
+                float(m.group(1)) + 0.5),
+            self.md,
+        )
+        self.assertTrue(report_mod.validate_markdown(broken))
+
+    def test_truncated_scan_is_surfaced(self):
+        model = pipeline.synthesize(
+            _manifest(), {}, [], target="sampled",
+            facts={"files": 5, "truncated": True},
+        )
+        md = report_mod.render_markdown(model)
+        self.assertIn("Sampled", md)
+        js = report_mod.render_json(model)
+        self.assertTrue(js["report"]["codebase_size"]["truncated"])
+
     def test_has_required_sections(self):
         for section in (
             "## Executive Summary", "## Per-Domain Scores",

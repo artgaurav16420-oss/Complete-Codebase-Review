@@ -390,6 +390,25 @@ class TestEmitSynthesisOutput(unittest.TestCase):
             cli.pipeline.render = orig_render
 
 
+class TestPlannedFromCache(unittest.TestCase):
+    def test_ignores_non_result_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            (cache / "security.json").write_text(
+                json.dumps({"findings": []}), encoding="utf-8")
+            (cache / "report.json").write_text(
+                json.dumps({"report": {}}), encoding="utf-8")
+            (cache / "ccr-state.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
+
+    def test_accepts_phase_prefixed_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            (cache / "phase_security.json").write_text(
+                json.dumps({"findings": []}), encoding="utf-8")
+            self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
+
+
 class TestModuleEntrypoint(unittest.TestCase):
     def test_python_dash_m_ccr(self):
         import runpy

@@ -155,7 +155,7 @@ def dedup(findings):
         parts = anchor_parts(item.get("finding", ""))
         if parts is None:
             continue
-        path = parts[0].replace("\\", "/").lower()
+        path = parts[0].replace("\\", "/")
         key = (item.get("domain", ""), path, parts[1])
         existing = chosen.get(key)
         if existing is None:

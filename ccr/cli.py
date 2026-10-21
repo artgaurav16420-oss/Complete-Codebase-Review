@@ -113,6 +113,13 @@ def _planned_from_cache(cache):
         stem = path.stem
         if stem in ("ccr-state", "ccr-baseline"):
             continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or not isinstance(
+                data.get("findings"), list):
+            continue
         if stem.startswith("phase_"):
             stem = stem[len("phase_"):]
         if stem and stem not in ids:

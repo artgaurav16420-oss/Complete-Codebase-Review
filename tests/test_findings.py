@@ -352,6 +352,13 @@ class TestDedupSeparators(unittest.TestCase):
         ]
         self.assertEqual(len(f.dedup(items)), 1)
 
+    def test_case_sensitive_paths_stay_distinct(self):
+        items = [
+            make("[src/Foo.py:1] \u2014 flaw \u2192 failure"),
+            make("[src/foo.py:1] \u2014 flaw \u2192 failure"),
+        ]
+        self.assertEqual(len(f.dedup(items)), 2)
+
 
 class TestPromptShapeRegression(unittest.TestCase):
     """A finding shaped like the prompt output must reach the roadmap."""
