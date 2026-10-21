@@ -6,6 +6,7 @@ without judgment, deduplication, tech-debt totals, roadmap placement, and
 per-domain scoring.
 """
 
+import math
 import re
 
 SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
@@ -17,8 +18,12 @@ SEVERITY_WEIGHT = {
     "CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4,
 }
 
-ANCHOR_RE = re.compile(r"^\[[^:]+:\d+\]\s+\u2014\s+.+?\s+\u2192\s+.+$")
-ANCHOR_PARTS_RE = re.compile(r"^\[([^:]+):(\d+)\]\s+\u2014\s+(.+?)\s+\u2192\s+(.+)$")
+ANCHOR_RE = re.compile(
+    r"^\[(.+):(\d+)(?:-\d+)?\]\s+\u2014\s+.+?\s+\u2192\s+.+$"
+)
+ANCHOR_PARTS_RE = re.compile(
+    r"^\[(.+):(\d+)(?:-\d+)?\]\s+\u2014\s+(.+?)\s+\u2192\s+(.+)$"
+)
 
 WEASEL_PATTERNS = [
     re.compile(r"\bmight\b", re.IGNORECASE),
@@ -41,9 +46,14 @@ def normalize_severity(value):
 
 
 def normalize_verdict(value):
-    """Return an uppercase verdict, defaulting to QUESTIONABLE."""
+    """Return an uppercase verdict, defaulting missing values to PLAUSIBLE.
+
+    A missing verdict means the finding has not been challenged, not that it
+    is dubious. Defaulting to QUESTIONABLE silently removed every prompt-shaped
+    finding from the roadmap and zeroed tech debt.
+    """
     if not value:
-        return "QUESTIONABLE"
+        return "PLAUSIBLE"
     cleaned = str(value).strip().upper().replace("_", "-")
     aliases = {"ESCALATION": "DA-ESCALATION", "DA ESCALATION": "DA-ESCALATION"}
     cleaned = aliases.get(cleaned, cleaned)
@@ -73,6 +83,8 @@ def _as_hours(value):
     try:
         hours = float(value)
     except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(hours):
         return 0.0
     return max(0.0, hours)
 
@@ -143,7 +155,8 @@ def dedup(findings):
         parts = anchor_parts(item.get("finding", ""))
         if parts is None:
             continue
-        key = (item.get("domain", ""), parts[0], parts[1])
+        path = parts[0].replace("\\", "/")
+        key = (item.get("domain", ""), path, parts[1])
         existing = chosen.get(key)
         if existing is None:
             chosen[key] = item

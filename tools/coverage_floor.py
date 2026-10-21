@@ -7,19 +7,41 @@ regressing while the total stays green.
 
 import json
 import sys
+from pathlib import Path
 
 DEFAULT_FLOOR = 80.0
-EXCLUDED = ("__main__.py", "tests/", "tools/")
+EXCLUDED_DIRS = {"tests", "tools"}
+EXCLUDED_NAMES = {"__main__.py"}
+
+
+def _skipped(path):
+    parts = Path(path.replace("\\", "/")).parts
+    if parts and parts[-1] in EXCLUDED_NAMES:
+        return True
+    return any(part in EXCLUDED_DIRS for part in parts)
 
 
 def check(report, floor=DEFAULT_FLOOR):
+    files = report.get("files") or {}
+    if not files:
+        return [("<empty report>", 0.0)]
     failures = []
-    for path, data in sorted(report.get("files", {}).items()):
-        if any(token in path for token in EXCLUDED):
+    checked = 0
+    for path, data in sorted(files.items()):
+        if _skipped(path):
             continue
-        percent = data.get("summary", {}).get("percent_covered", 100.0)
-        if percent < floor:
+        checked += 1
+        summary = data.get("summary")
+        if not summary:
+            failures.append((path, 0.0))
+            continue
+        percent = summary.get("percent_covered")
+        if percent is None:
+            failures.append((path, 0.0))
+        elif percent < floor:
             failures.append((path, percent))
+    if checked == 0:
+        return [("<no files checked>", 0.0)]
     return failures
 
 

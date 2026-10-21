@@ -118,5 +118,39 @@ class TestRunUninstall(unittest.TestCase):
             self.assertIn("--uninstall", out.getvalue())
 
 
+@unittest.skipUnless(sys.platform == "win32", "junctions are Windows-only")
+class TestJunctionSelfReference(unittest.TestCase):
+    """A junction at the skill path must never delete the target root."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dest = Path(self.tmp.name) / "dest"
+        self.dest.mkdir()
+        self.keep = self.dest / "other-skill"
+        self.keep.mkdir()
+        (self.keep / "keep.txt").write_text("keep", encoding="utf-8")
+        self.link = self.dest / "complete-codebase-review"
+        import subprocess
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(self.link), str(self.dest)],
+            check=True, capture_output=True,
+        )
+
+    def tearDown(self):
+        if self.link.exists() and install_mod._is_link_like(self.link):
+            install_mod._remove_link_like(self.link)
+        self.tmp.cleanup()
+
+    def test_is_link_like_detects_junction(self):
+        self.assertTrue(install_mod._is_link_like(self.link))
+
+    def test_remove_skill_unlinks_without_touching_root(self):
+        with patch("sys.stdout", new_callable=io.StringIO):
+            removed = install_mod.remove_skill(self.dest, False)
+        self.assertTrue(removed)
+        self.assertTrue((self.keep / "keep.txt").exists())
+        self.assertFalse(self.link.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

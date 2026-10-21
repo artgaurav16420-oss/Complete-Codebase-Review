@@ -112,5 +112,26 @@ class TestManifestValidation(unittest.TestCase):
             manifest_mod.load(ROOT / "does-not-exist.json")
 
 
+class TestBaseAgents(unittest.TestCase):
+    def test_manifest_lists_base_agents(self):
+        manifest = manifest_mod.load()
+        self.assertTrue(manifest["base_agents"])
+        ids = manifest_mod.agent_ids(manifest)
+        for agent_id in manifest["base_agents"]:
+            self.assertIn(agent_id, ids)
+
+    def test_unknown_base_agent_rejected(self):
+        manifest = copy.deepcopy(manifest_mod.load())
+        manifest["base_agents"].append("does_not_exist")
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(manifest)
+
+    def test_non_string_base_agent_rejected(self):
+        manifest = copy.deepcopy(manifest_mod.load())
+        manifest["base_agents"] = [1]
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(manifest)
+
+
 if __name__ == "__main__":
     unittest.main()

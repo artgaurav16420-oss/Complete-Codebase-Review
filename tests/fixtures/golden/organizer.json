@@ -11,23 +11,23 @@
     "critical_count": 0,
     "health_score": "YELLOW",
     "per_domain_open_findings": {
-      "Architecture": {
+      "architecture": {
         "critical": 0,
         "high": 2
       },
-      "Code Quality": {
+      "code_quality": {
         "critical": 0,
         "high": 0
       },
-      "Security": {
+      "security": {
         "critical": 0,
         "high": 0
       }
     },
     "per_domain_scores": {
-      "Architecture": 6.0,
-      "Code Quality": 6.8,
-      "Security": 8.8
+      "architecture": 6.0,
+      "code_quality": 6.8,
+      "security": 8.8
     },
     "re_review_count": 0,
     "target": ".",
@@ -38,7 +38,8 @@
   "codebase_size": {
     "files": 0,
     "languages": 0,
-    "modules": 0
+    "modules": 0,
+    "truncated": false
   },
   "counts": {
     "CRITICAL": 0,

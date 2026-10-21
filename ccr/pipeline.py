@@ -93,8 +93,19 @@ def synthesize(manifest, results, planned, completed=None, target="",
         "files": (facts or {}).get("files", 0),
         "languages": len((facts or {}).get("languages", {})),
         "modules": len((facts or {}).get("top_dirs", {})),
+        "truncated": bool((facts or {}).get("truncated", False)),
     }
     model["codebase_size"] = size
+    display_to_id = {a["report"]: a["id"] for a in manifest["agents"]}
+    baseline = model["baseline"]
+    baseline["per_domain_scores"] = {
+        display_to_id.get(name, name): value
+        for name, value in baseline["per_domain_scores"].items()
+    }
+    baseline["per_domain_open_findings"] = {
+        display_to_id.get(name, name): value
+        for name, value in baseline["per_domain_open_findings"].items()
+    }
     model["baseline"]["timestamp"] = timestamp or datetime.now(
         timezone.utc
     ).isoformat(timespec="seconds")
@@ -117,13 +128,25 @@ def write_outputs(model, out_path, fmt="markdown"):
     """Write rendered output next to out_path. Returns written paths."""
     written = []
     base = Path(out_path)
+    base.parent.mkdir(parents=True, exist_ok=True)
+
+    def _target(suffix):
+        if base.suffix in ("", ".md", ".json"):
+            return base.with_suffix(suffix)
+        return Path(str(base) + suffix)
+
     for name, text in render(model, fmt).items():
         if name == "json":
-            target = base.with_suffix(".json")
+            target = _target(".json")
             payload = json.dumps(text, indent=2, sort_keys=True) + "\n"
             write_text(target, payload)
         else:
-            target = base.with_suffix(".md")
+            errors = report_mod.validate_markdown(text)
+            if errors:
+                raise ValueError(
+                    "report failed validation: " + "; ".join(errors)
+                )
+            target = _target(".md")
             write_text(target, text)
         written.append(target)
     return written

@@ -24,7 +24,7 @@ check:
 	python -m ccr eval
 
 coverage:
-	python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" -v
+	python -m coverage run -m unittest discover -s tests -p "test_*.py" -v
 	python -m coverage report
 	python -m coverage json -o coverage.json
 	python tools/coverage_floor.py coverage.json

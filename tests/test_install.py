@@ -445,6 +445,22 @@ class TestMainFunction(_BaseInstallTestWithArgv):
         self.assertIn("SUCCESS", output)
         self.assertIn("Installation complete!", output)
 
+    def test_detected_but_failed_reports_failure_message(self):
+        fake_dirs = {"Claude Code": Path("/home/user/.claude/skills")}
+        existing = {p.parent for p in fake_dirs.values()}
+
+        with patch.object(self.install, "get_target_dirs",
+                          return_value=fake_dirs), \
+             patch.object(self.install, "copy_skill",
+                          side_effect=OSError("boom")), \
+             patch.object(self.install, "_run_local_fallback"), \
+             patch.object(self.install.sys, "stdout",
+                          new_callable=io.StringIO) as mock_stdout:
+            with patch.object(Path, "exists", lambda p: p in existing):
+                self.install.main()
+
+        self.assertIn("No detected installations succeeded", mock_stdout.getvalue())
+
     def test_no_agent_configs_falls_back_to_local(self):
         fake_dirs = {
             "Claude Code": Path("/home/user/.claude/skills"),
@@ -957,8 +973,19 @@ class TestIgnoreSkillFiles(unittest.TestCase):
 
     def test_keeps_runtime_content(self):
         install_mod = _import_install()
-        names = ["SKILL.md", "karpathy-guidelines.md", "helpers", "skills", "ccr"]
+        names = ["SKILL.md", "karpathy-guidelines.md", "helpers", "skills", "ccr",
+                 "LICENSE"]
         self.assertEqual(install_mod._ignore_skill_files(".", names), [])
+
+    def test_skips_audit_and_coverage_artifacts(self):
+        install_mod = _import_install()
+        names = [
+            "CCR_REPORT.md", "ARCH_QUALITY_FINDINGS.md", "coverage.json",
+            "coverage_report.txt", "coverage_run.txt", ".gitmessage",
+        ]
+        kept = install_mod._ignore_skill_files(".", names)
+        for name in names:
+            self.assertIn(name, kept)
 
 
 if __name__ == "__main__":

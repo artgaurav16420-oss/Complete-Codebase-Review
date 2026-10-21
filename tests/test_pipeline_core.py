@@ -169,5 +169,16 @@ class TestEvaluate(unittest.TestCase):
         self.assertEqual(score["coverage"], 0.0)
 
 
+class TestBaselineDomainIds(unittest.TestCase):
+    def test_baseline_uses_canonical_ids(self):
+        model = pipeline.synthesize(
+            _manifest(), _results(), ["security", "code_quality"],
+        )
+        keys = set(model["baseline"]["per_domain_open_findings"])
+        self.assertIn("security", keys)
+        self.assertIn("code_quality", keys)
+        self.assertNotIn("Security", keys)
+
+
 if __name__ == "__main__":
     unittest.main()

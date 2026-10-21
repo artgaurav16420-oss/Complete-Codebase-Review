@@ -12,43 +12,43 @@
     "critical_count": 2,
     "health_score": "RED",
     "per_domain_open_findings": {
-      "Architecture": {
+      "architecture": {
         "critical": 0,
         "high": 1
       },
-      "Code Quality": {
+      "code_quality": {
         "critical": 0,
         "high": 2
       },
-      "Documentation": {
+      "documentation": {
         "critical": 0,
         "high": 0
       },
-      "Security": {
+      "security": {
         "critical": 2,
         "high": 1
       },
-      "Standards": {
+      "standards": {
         "critical": 0,
         "high": 0
       },
-      "Tech Debt": {
+      "tech_debt": {
         "critical": 0,
         "high": 1
       },
-      "Test Health": {
+      "test_health": {
         "critical": 0,
         "high": 0
       }
     },
     "per_domain_scores": {
-      "Architecture": 9.0,
-      "Code Quality": 7.2,
-      "Documentation": 9.8,
-      "Security": 4.8,
-      "Standards": 9.8,
-      "Tech Debt": 8.5,
-      "Test Health": 9.5
+      "architecture": 9.0,
+      "code_quality": 7.2,
+      "documentation": 9.8,
+      "security": 4.8,
+      "standards": 9.8,
+      "tech_debt": 8.5,
+      "test_health": 9.5
     },
     "re_review_count": 0,
     "target": ".",
@@ -59,7 +59,8 @@
   "codebase_size": {
     "files": 0,
     "languages": 0,
-    "modules": 0
+    "modules": 0,
+    "truncated": false
   },
   "counts": {
     "CRITICAL": 2,

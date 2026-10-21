@@ -42,11 +42,18 @@ def _executive_summary(model):
         f"| **Overall Health** | {model['overall_health']} |",
         f"| **Codebase Size** | {files} files, {languages} languages, "
         f"{modules} top-level modules |",
+    ]
+    if size.get("truncated"):
+        lines.append(
+            "| **Scope** | Sampled \u2014 file cap reached; findings cover a "
+            "subset of the codebase |"
+        )
+    lines.extend([
         f"| **Critical Issues** | {model['critical_issues']} |",
         f"| **Tech Debt** | {fmt_hours(model['tech_debt_hours'])} |",
         f"| **Priority Areas** | {priority} |",
         "",
-    ]
+    ])
     return "\n".join(lines)
 
 
@@ -188,6 +195,74 @@ def render_markdown(model):
     return "\n".join(sections).rstrip() + "\n"
 
 
+REQUIRED_SECTIONS = (
+    "## Executive Summary",
+    "## Per-Domain Scores",
+    "## Detailed Findings",
+    "## Improvement Roadmap",
+    "## Tech Debt Summary",
+    "## Agent Status",
+)
+
+
+def _num(text):
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _section_text(md, header):
+    """Return the text of one '## ' section, excluding later sections."""
+    start = md.find(header)
+    if start == -1:
+        return ""
+    start += len(header)
+    end = md.find("\n## ", start)
+    return md[start:end if end != -1 else len(md)]
+
+
+def validate_markdown(md):
+    """Return a list of contract violations in a rendered report.
+
+    Enforces the section contract, numeric domain scores, and the tech-debt
+    reconciliation the orchestrator rules require.
+    """
+    errors = []
+    for section in REQUIRED_SECTIONS:
+        if section not in md:
+            errors.append("missing section: " + section)
+
+    scores_text = _section_text(md, "## Per-Domain Scores")
+    for line in scores_text.splitlines():
+        if line.startswith("|") and (" N/A " in line or " n/a " in line):
+            errors.append("non-numeric domain score: " + line.strip())
+
+    total = None
+    domain_sum = 0.0
+    found_domain = False
+    for line in md.splitlines():
+        if line.startswith("**Total estimated**"):
+            total = _num(line.split(":", 1)[1].strip().split(" ")[0])
+        if "**By domain**" in line:
+            for part in line.split(":", 1)[1].split(";"):
+                if ":" not in part:
+                    continue
+                value = _num(part.rsplit(":", 1)[1].strip().rstrip("h"))
+                if value is None:
+                    errors.append("non-numeric domain hours: " + part.strip())
+                else:
+                    domain_sum += value
+                    found_domain = True
+    if total is not None and found_domain and abs(domain_sum - total) >= 0.5:
+        errors.append(
+            "tech-debt mismatch: by-domain {:.2f}h != total {:.2f}h".format(
+                domain_sum, total
+            )
+        )
+    return errors
+
+
 def render_json(model):
     """Render the machine-readable report contract."""
     findings = []
@@ -228,6 +303,7 @@ def render_json(model):
                 "files": size.get("files", 0),
                 "languages": size.get("languages", 0),
                 "modules": size.get("modules", 0),
+                "truncated": bool(size.get("truncated", False)),
             },
             "critical_issues": model["critical_issues"],
             "tech_debt_hours": model["tech_debt_hours"],

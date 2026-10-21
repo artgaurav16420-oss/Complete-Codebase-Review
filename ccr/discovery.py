@@ -9,7 +9,7 @@ from pathlib import Path
 
 IGNORED_DIRS = frozenset({
     ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv",
-    ".tox", ".mypy_cache", ".pytest_cache", ".code-review-cache", "dist",
+    ".tox", ".mypy_cache", ".pytest_cache", ".code-review-cache", ".skills", "dist",
     "build", ".idea", ".vscode", ".eggs", ".next", "target",
 })
 
@@ -236,7 +236,6 @@ def discover(target_dir, max_files=None):
         "ui_files": 0,
         "test_files": 0,
     }
-    database = []
     truncated = _scan_tree(target, limit, state)
 
     return _build_facts(target, state, truncated)
@@ -244,7 +243,7 @@ def discover(target_dir, max_files=None):
 
 def active_agents(manifest, facts):
     """Return the agent ids whose health dimensions apply to the target."""
-    active = list(BASE_AGENTS)
+    active = list(manifest.get("base_agents") or BASE_AGENTS)
     if facts.get("test_files"):
         active.append("test_health")
     if facts.get("dependency_manifests"):
