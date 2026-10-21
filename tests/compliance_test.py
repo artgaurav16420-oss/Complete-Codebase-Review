@@ -241,6 +241,20 @@ class TestContentQuality(_BaseComplianceTest):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.content)
 
+    def test_synthesis_requires_json_and_cli_report(self):
+        self.assertIn("phase_<agent_id>.json", self.content)
+        self.assertIn("python -m ccr synthesize", self.content)
+        self.assertIn("do not hand-assemble", self.content)
+
+    def test_orchestrator_requires_cli_report(self):
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "orchestrator-rules.md"
+        )
+        with open(path, "r", encoding="utf-8") as handle:
+            rules = handle.read()
+        self.assertIn("The report came from `ccr synthesize`", rules)
+        self.assertIn("prose-only report", rules)
+
     def test_strict_evidence_rule(self):
         self.assertIn('Strict Evidence Rule', self.content)
 
@@ -425,7 +439,7 @@ class TestIntegration(_BaseComplianceTest):
         self.assertIn('impact vs effort', self.content)
 
     def test_output_and_cleanup(self):
-        self.assertIn('Print the full health report to stdout', self.content)
+        self.assertIn('Print the `ccr synthesize` report to stdout', self.content)
         self.assertIn('Delete', self.content)
         self.assertIn('temp', self.content)
         self.assertIn('Executive Summary', self.content)

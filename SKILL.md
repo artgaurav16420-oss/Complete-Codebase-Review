@@ -253,6 +253,10 @@ Each agent MUST:
   belong to the specialist who owns them and inflate the report.
 - **Web Verify**: CVE lookups, framework best-practices checks
 - **Output Format**: Standard severity-grouped findings
+- **Write machine-readable results**: in addition to the Markdown report, write
+  `$RESOLVED_CACHE_DIR/phase_<agent_id>.json` in the CLI result shape
+  (`agent`, `score`, `findings[]`). The JSON is the report source; the
+  Markdown is commentary. Without it, synthesis cannot run.
 
 ### Strict Evidence Rule
 Every finding MUST satisfy ALL of:
@@ -373,7 +377,15 @@ prompt: "You are auditing the Security Posture of {TARGET_DIR}.
 
 ### 3a. Synthesis Agent
 
-Input: all N specialist reports
+Input: all N specialist reports and their `phase_<agent_id>.json` results.
+
+**Canonical report (mandatory):** before writing any prose, run
+`python -m ccr synthesize --in $RESOLVED_CACHE_DIR --out <report> --format both`.
+The CLI owns severity normalization, DA rejection, dedup, overlap candidates,
+the roadmap cap, and tech-debt totals. If it exits non-zero (missing or
+invalid JSON results), **halt** — do not hand-assemble a report from Markdown.
+The prose synthesis below reconciles to that report; it does not replace it.
+
 Actions:
 - Deduplicate redundant observations: if two agents describe the same root cause in the same file/component → deduplicate
 - Retain cross-domain impact: if two agents describe different observable consequences of the same underlying issue → retain both with a `Cross-domain impact` tag
@@ -430,7 +442,9 @@ Actions:
 
 ### 3d. Output + Cleanup
 
-1. Print the full health report to stdout
+1. Print the `ccr synthesize` report to stdout. If synthesis did not run or
+   exited non-zero, stop and report the failure — never print a prose-only
+   substitute.
 2. Proceed directly to Phase 4 — no user input needed
 3. Cleanup:
    - Delete `$RESOLVED_CACHE_DIR/ccr-manifest.md`, where `$RESOLVED_CACHE_DIR` is the cache directory confirmed writable in Phase 1 Step 3 (may be OS temp dir, not the default `.code-review-cache`).

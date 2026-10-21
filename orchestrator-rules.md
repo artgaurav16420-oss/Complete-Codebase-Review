@@ -131,6 +131,11 @@ Normalize on ingress. Never emit values outside these sets.
 
 Mentally run the checks `tests/test_pipeline.py` would run, before printing anything:
 
+0. **The report came from `ccr synthesize`.** All planned `phase_<agent_id>.json`
+   results exist and `python -m ccr synthesize --in $RESOLVED_CACHE_DIR` exited 0.
+   A prose-only report assembled from Markdown is a hard failure: it bypasses
+   DA rejection, the quarantine of QUESTIONABLE verdicts, overlap candidates,
+   and the roadmap cap.
 1. `## Executive Summary` has `**Overall Health**` (GREEN/YELLOW/RED only), `**Codebase Size**`, `**Critical Issues**`, `**Tech Debt**`, `**Priority Areas**`
 2. `## Per-Domain Scores` table header exactly `| Domain | Score (/10) | Critical | High | Medium | Low |` — every score in [0,10], `**Overall**` row present
 3. `## Detailed Findings` table header exactly `| Finding | Severity | Domain | Est. Hours | DA Verdict |` — every severity/verdict in the closed enums above
