@@ -308,6 +308,7 @@
   ],
   "overall_health": "YELLOW",
   "overall_score": 7.2,
+  "overlap_candidates": [],
   "per_domain_scores": [
     {
       "critical": 0,

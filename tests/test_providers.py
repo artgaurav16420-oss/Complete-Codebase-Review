@@ -27,6 +27,20 @@ class TestPrompt(unittest.TestCase):
         prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
         self.assertIn('"da_verdict"', prompt)
 
+    def test_prompt_scopes_to_one_domain(self):
+        prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
+        self.assertIn("Focus ONLY on", prompt)
+        self.assertIn("Do NOT flag adjacent domains", prompt)
+
+    def test_prompt_defines_hours_and_design_notes(self):
+        prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
+        self.assertIn("cost of the FIX", prompt)
+        self.assertIn("design_note", prompt)
+
+    def test_prompt_requires_reproduction_for_high(self):
+        prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
+        self.assertIn("reproduction path", prompt)
+
     def test_prompt_contains_contract(self):
         prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
         self.assertIn("[path/file.py:42]", prompt)

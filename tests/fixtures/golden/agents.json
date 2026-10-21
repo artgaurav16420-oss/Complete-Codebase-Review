@@ -258,6 +258,7 @@
   ],
   "overall_health": "RED",
   "overall_score": 8.4,
+  "overlap_candidates": [],
   "per_domain_scores": [
     {
       "critical": 0,
@@ -348,16 +349,31 @@
   "roadmap": {
     "1": [
       {
-        "agent": "code_quality",
+        "agent": "security",
         "da_verdict": "CONFIRMED",
-        "domain": "Code Quality",
+        "domain": "Security",
         "est_hours": 2.0,
-        "evidence": "12 branches, nesting depth 4",
-        "finding": "[core/processor.py:1] — process_data has 12 branches across 4 nesting levels → untestable paths and regression risk in every change",
-        "id": "F-002",
-        "severity": "HIGH",
+        "evidence": "literal assignment at module scope",
+        "finding": "[config.py:1] — DB_PASSWORD is a hardcoded credential in source → every repository reader obtains the database password",
+        "id": "F-007",
+        "severity": "CRITICAL",
         "tags": [
-          "high-cyclomatic-complexity"
+          "CWE-798",
+          "hardcoded-secret-config"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 3.0,
+        "evidence": "subprocess.run(\"tar ... \" + path, shell=True)",
+        "finding": "[auth/login.py:41] — concatenates caller input into a shell command with shell=True → arbitrary command execution as the service account",
+        "id": "F-009",
+        "severity": "CRITICAL",
+        "tags": [
+          "CWE-78",
+          "command-injection-shell-true"
         ]
       },
       {
@@ -401,47 +417,6 @@
       },
       {
         "agent": "security",
-        "da_verdict": "CONFIRMED",
-        "domain": "Security",
-        "est_hours": 2.0,
-        "evidence": "literal assignment at module scope",
-        "finding": "[config.py:1] — DB_PASSWORD is a hardcoded credential in source → every repository reader obtains the database password",
-        "id": "F-007",
-        "severity": "CRITICAL",
-        "tags": [
-          "CWE-798",
-          "hardcoded-secret-config"
-        ]
-      },
-      {
-        "agent": "security",
-        "da_verdict": "CONFIRMED",
-        "domain": "Security",
-        "est_hours": 2.0,
-        "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
-        "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
-        "id": "F-008",
-        "severity": "HIGH",
-        "tags": [
-          "CWE-200"
-        ]
-      },
-      {
-        "agent": "security",
-        "da_verdict": "CONFIRMED",
-        "domain": "Security",
-        "est_hours": 3.0,
-        "evidence": "subprocess.run(\"tar ... \" + path, shell=True)",
-        "finding": "[auth/login.py:41] — concatenates caller input into a shell command with shell=True → arbitrary command execution as the service account",
-        "id": "F-009",
-        "severity": "CRITICAL",
-        "tags": [
-          "CWE-78",
-          "command-injection-shell-true"
-        ]
-      },
-      {
-        "agent": "security",
         "da_verdict": "PLAUSIBLE",
         "domain": "Security",
         "est_hours": 1.0,
@@ -478,19 +453,6 @@
         "tags": [
           "missing-error-handling"
         ]
-      },
-      {
-        "agent": "tech_debt",
-        "da_verdict": "CONFIRMED",
-        "domain": "Tech Debt",
-        "est_hours": 2.0,
-        "evidence": "user_id = hash(name)",
-        "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
-        "id": "F-013",
-        "severity": "HIGH",
-        "tags": [
-          "unstable-hash"
-        ]
       }
     ],
     "2": [
@@ -511,6 +473,19 @@
         "agent": "code_quality",
         "da_verdict": "CONFIRMED",
         "domain": "Code Quality",
+        "est_hours": 2.0,
+        "evidence": "12 branches, nesting depth 4",
+        "finding": "[core/processor.py:1] — process_data has 12 branches across 4 nesting levels → untestable paths and regression risk in every change",
+        "id": "F-002",
+        "severity": "HIGH",
+        "tags": [
+          "high-cyclomatic-complexity"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
         "est_hours": 3.0,
         "evidence": "_fetch_items called once per iteration",
         "finding": "[api/orders.py:14] — calls _fetch_items inside the order loop → one query per order, so cost grows linearly with order count",
@@ -518,6 +493,32 @@
         "severity": "HIGH",
         "tags": [
           "n-plus-one-query"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 2.0,
+        "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
+        "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
+        "id": "F-008",
+        "severity": "HIGH",
+        "tags": [
+          "CWE-200"
+        ]
+      },
+      {
+        "agent": "tech_debt",
+        "da_verdict": "CONFIRMED",
+        "domain": "Tech Debt",
+        "est_hours": 2.0,
+        "evidence": "user_id = hash(name)",
+        "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
+        "id": "F-013",
+        "severity": "HIGH",
+        "tags": [
+          "unstable-hash"
         ]
       },
       {
@@ -537,8 +538,8 @@
     "3": []
   },
   "roadmap_hours": {
-    "1": 16.5,
-    "2": 15.0,
+    "1": 10.5,
+    "2": 21.0,
     "3": 0
   },
   "target": ".",

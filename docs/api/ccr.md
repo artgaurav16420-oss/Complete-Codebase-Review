@@ -137,8 +137,10 @@ All return values are plain dicts/lists unless stated otherwise.
 | `review_findings` | `review_findings(raw_findings, floors=None)` | `(kept, rejected)` after mechanical DA checks |
 | `dedup` | `dedup(findings)` | Deduplicated list |
 | `assign_ids` | `assign_ids(findings)` | Same list with `F-001` style ids |
-| `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED` is never eligible |
-| `place_roadmap` | `place_roadmap(findings)` | `{1: [...], 2: [...], 3: [...]}` |
+| `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED` and `INFO` are never eligible |
+| `place_roadmap` | `place_roadmap(findings)` | `{1, 2, 3}` phases; quick wins capped at 40h, HIGH never quick-win |
+| `find_overlaps` | `find_overlaps(findings)` | Near-identical same-file clusters (auto-merged once) |
+| `find_large_file_clusters` | `find_large_file_clusters(findings, min_hours=8.0)` | Advisory same-file clusters of expensive findings |
 | `aggregate` | `aggregate(findings, rejected, agents_planned, agents_completed, target='', baseline=None)` | Report model consumed by the renderers |
 
 ### `ccr.report`

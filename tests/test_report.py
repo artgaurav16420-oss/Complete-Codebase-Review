@@ -113,6 +113,9 @@ class TestMarkdown(unittest.TestCase):
     def test_rejected_section_empty(self):
         self.assertIn("## Rejected Findings", self.md)
 
+    def test_overlap_section_present(self):
+        self.assertIn("## Overlap Candidates", self.md)
+
     def test_clean_report_still_valid(self):
         model = pipeline.synthesize(
             _manifest(), {}, [], target="clean",
@@ -164,6 +167,10 @@ class TestJson(unittest.TestCase):
             for field in ("id", "finding", "severity", "domain",
                           "est_hours", "da_verdict"):
                 self.assertIn(field, item)
+
+    def test_overlap_candidates_in_json(self):
+        self.assertIn("overlap_candidates", self.data)
+        self.assertIsInstance(self.data["overlap_candidates"], list)
 
     def test_rejected_findings_are_serialized(self):
         model = pipeline.synthesize(

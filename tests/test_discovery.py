@@ -181,6 +181,35 @@ class TestProcessFile(unittest.TestCase):
             self.assertIn(".", state["top_dirs"])
 
 
+class TestUiFileClassification(unittest.TestCase):
+    def _state(self):
+        return {
+            "files": 0, "total_bytes": 0, "languages": {},
+            "top_dirs": {}, "dependency_manifests": [], "containers": [],
+            "entry_points": [], "ui_files": 0, "test_files": 0,
+        }
+
+    def test_docs_markup_is_not_ui(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "style.css"
+            f.write_text("body{}", encoding="utf-8")
+            state = self._state()
+            discovery._process_file(f, Path("docs"), "style.css", 7, state)
+            self.assertEqual(state["ui_files"], 0)
+
+    def test_app_markup_is_ui(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "app.css"
+            f.write_text("body{}", encoding="utf-8")
+            state = self._state()
+            discovery._process_file(f, Path("src"), "app.css", 7, state)
+            self.assertEqual(state["ui_files"], 1)
+
+
 class TestScanTree(unittest.TestCase):
     def test_limit_one(self):
         import tempfile

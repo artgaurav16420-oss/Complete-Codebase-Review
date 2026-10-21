@@ -166,6 +166,25 @@ class TestRoadmap(unittest.TestCase):
         phases = f.place_roadmap([make(GOOD, verdict="DA-ESCALATION")])
         self.assertEqual(sum(len(items) for items in phases.values()), 1)
 
+    def test_high_never_quick_win(self):
+        phases = f.place_roadmap([make(GOOD, severity="HIGH", hours=1)])
+        self.assertEqual(len(phases[1]), 0)
+        self.assertEqual(len(phases[2]), 1)
+
+    def test_info_excluded(self):
+        phases = f.place_roadmap([make(GOOD, severity="INFO", hours=0)])
+        self.assertEqual(sum(len(items) for items in phases.values()), 0)
+
+    def test_quick_wins_capped(self):
+        items = [
+            make(f"[f{i}.py:{i}] \u2014 flaw \u2192 failure", severity="MEDIUM",
+                 hours=2, domain=f"D{i}")
+            for i in range(25)
+        ]
+        phases = f.place_roadmap(items)
+        self.assertLessEqual(len(phases[1]), 20)
+        self.assertGreater(len(phases[2]), 0)
+
 
 class TestAggregate(unittest.TestCase):
     """Report model aggregation."""
@@ -376,6 +395,56 @@ class TestPromptShapeRegression(unittest.TestCase):
         self.assertEqual(model["critical_issues"], 1)
         self.assertGreater(model["tech_debt_hours"], 0)
         self.assertTrue(model["roadmap"][1])
+
+
+class TestOverlaps(unittest.TestCase):
+    def test_same_failure_clusters(self):
+        items = f.assign_ids(f.dedup([
+            make("[client.py:10] \u2014 sync and async clients mirror each "
+                 "other \u2192 duplicate maintenance cost", domain="Arch"),
+            make("[client.py:20] \u2014 async client mirrors sync client "
+                 "implementation \u2192 duplicate maintenance", domain="Quality"),
+        ]))
+        clusters = f.find_overlaps(items)
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(len(clusters[0]), 2)
+
+    def test_different_failures_stay_separate(self):
+        items = f.assign_ids(f.dedup([
+            make("[a.py:1] \u2014 unbounded dependency range \u2192 stale "
+                 "bundle risk"),
+            make("[b.py:2] \u2014 missing test coverage \u2192 silent "
+                 "regression"),
+        ]))
+        self.assertEqual(f.find_overlaps(items), [])
+
+    def test_large_same_file_is_advisory_not_merged(self):
+        items = f.assign_ids(f.dedup([
+            make("[client.py:10] \u2014 aaa bbb ccc \u2192 first failure mode",
+                 domain="Arch", hours=10),
+            make("[client.py:20] \u2014 ddd eee fff \u2192 second unrelated "
+                 "failure", domain="Quality", hours=10),
+        ]))
+        model = f.aggregate(items, [], ["arch"], ["arch"])
+        self.assertEqual(model["tech_debt_hours"], 20.0)
+        advisory = [c for c in model["overlap_candidates"]
+                    if c.get("advisory")]
+        self.assertEqual(len(advisory), 1)
+        self.assertEqual(advisory[0]["hours"], 20.0)
+
+    def test_aggregate_counts_cluster_once(self):
+        items = f.assign_ids(f.dedup([
+            make("[client.py:10] \u2014 sync and async clients mirror each "
+                 "other \u2192 duplicate maintenance cost", domain="Arch",
+                 hours=16),
+            make("[client.py:20] \u2014 async client mirrors sync client "
+                 "implementation \u2192 duplicate maintenance", domain="Quality",
+                 hours=16),
+        ]))
+        model = f.aggregate(items, [], ["arch"], ["arch"])
+        self.assertEqual(model["tech_debt_hours"], 16.0)
+        self.assertEqual(len(model["overlap_candidates"]), 1)
+        self.assertEqual(len(model["overlap_candidates"][0]["merged"]), 1)
 
 
 class TestRoadmapEligible(unittest.TestCase):

@@ -243,7 +243,14 @@ Each agent MUST:
 - **Load a relevant skill**: Use the Skill tool to load the domain-specific skill (e.g. `security-review`, `accessibility`, `postgres-patterns`) AND the `karpathy-guidelines` skill before starting analysis
 - **Follow Karpathy Guidelines**: Apply simplicity/YAGNI, surgical changes, verify before done, surface assumptions in all analysis
 - **Include Methodology**: Step-by-step audit process
-- **Quantify findings**: Numeric score or density metric wherever possible
+- **Quantify findings**: Numeric score or density metric wherever possible.
+  `est_hours` is the cost of the fix, not of the observation; a finding that
+  should not be fixed carries `0`. Deliberate design trade-offs are not debt:
+  report them with `finding_type: design_note`, severity `INFO`, `0` hours.
+- **CRITICAL/HIGH need a reproduction path**: the exact input, call path, or
+  command that triggers the failure. Without one, use MEDIUM at most.
+- **Stay in domain**: flag only your own dimension; adjacent-domain findings
+  belong to the specialist who owns them and inflate the report.
 - **Web Verify**: CVE lookups, framework best-practices checks
 - **Output Format**: Standard severity-grouped findings
 
@@ -986,6 +993,9 @@ When `CODE_REVIEW_FILTER=critical-high`, omit MEDIUM and LOW findings from all r
 ## Agent Status
 - Completed: X/X agents
 - Report verified by devil's advocate
+
+## Overlap Candidates
+- [advisory] file: Nh across F-002 + F-013 - adjudicate whether one root cause
 ```
 
 ### JSON Output Format
@@ -1041,6 +1051,10 @@ object in addition to (or instead of) the markdown report:
     "failed": ["Performance Baseline", "UI/UX Auditor"],
     "da_verdict_summary": {"confirmed": 24, "plausible": 8, "questionable": 3, "rejected": 1}
   },
+  "overlap_candidates": [
+    {"file": "src/client.py", "kept": "F-002", "merged": ["F-013", "F-021"],
+     "advisory": true, "hours": 52.0}
+  ],
   "baseline": {
     "timestamp": "ISO-8601",
     "target": "$TARGET_DIR",
