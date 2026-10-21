@@ -183,6 +183,13 @@ class TestMalformedResultGuard(unittest.TestCase):
             )
         self.assertIn("malformed", str(ctx.exception))
 
+    def test_blank_findings_raise(self):
+        with self.assertRaises(ValueError) as ctx:
+            pipeline.synthesize(
+                _manifest(), self._malformed(5, finding="   "), ["security"],
+            )
+        self.assertIn("malformed", str(ctx.exception))
+
     def test_small_malformed_set_is_tolerated(self):
         model = pipeline.synthesize(
             _manifest(), self._malformed(3), ["security"],
