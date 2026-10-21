@@ -421,6 +421,12 @@ Actions:
 - DA may escalate severity of existing findings, add confirming evidence, or emit a `DA-ESCALATION` finding if it independently discovers something material the specialists missed. `DA-ESCALATION` findings must fall within an already-active domain (one of the 14 standard dimensions). DA must not open a new domain category that was excluded by Phase 1 dimension selection. All `DA-ESCALATION` findings are included in roadmap prioritization.
 - All DA additions are tagged `DA-ESCALATION` and reviewed separately in the synthesis report
 
+**Dead-code rejection requires reachability analysis.** Before rejecting a
+finding because there are "no callers", check `package.json` exports, public
+entry points (index/module exports), docs, and tests. Exported API is not dead
+code. A rejected CRITICAL must record what was checked in `reject_reason`
+(exports, entry points, callers); a bare "dead code" reason is not acceptable.
+
 **Persist verdicts:** after the DA returns, the orchestrator writes each
 `da_verdict` (and `reject_reason` where rejected) back into the corresponding
 `phase_<agent_id>.json`. Verdicts that exist only in prose are invisible to

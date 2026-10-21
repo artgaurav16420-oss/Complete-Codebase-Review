@@ -83,6 +83,22 @@ def synthesize(manifest, results, planned, completed=None, target="",
     kept, rejected = findings_mod.review_findings(
         raw, floors=manifest.get("tech_debt_floors")
     )
+    malformed = [
+        item for item in rejected
+        if any(
+            reason in str(item.get("reject_reason", ""))
+            for reason in ("anchor", "empty finding")
+        )
+    ]
+    if (len(malformed) > 3
+            and len(malformed) / max(len(raw), 1) > 0.2):
+        raise ValueError(
+            "agent results malformed: {}/{} findings are empty or have no "
+            "[file:line] anchor; re-run the agents with the CLI result shape "
+            "([path:line] \u2014 flaw \u2192 failure)".format(
+                len(malformed), len(raw)
+            )
+        )
     kept = findings_mod.assign_ids(findings_mod.dedup(kept))
 
     model = findings_mod.aggregate(
