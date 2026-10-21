@@ -241,5 +241,91 @@ class TestAggregate(unittest.TestCase):
         self.assertEqual(model["priority_areas"][0], "Security")
 
 
+class TestScoreDomains(unittest.TestCase):
+    def test_empty(self):
+        scores, totals = f._score_domains([])
+        self.assertEqual(scores, [])
+        self.assertEqual(totals["CRITICAL"], 0)
+
+    def test_counts_and_unknown_domain(self):
+        items = [
+            {"severity": "CRITICAL", "domain": None},
+            {"severity": "HIGH", "domain": "Security"},
+        ]
+        scores, totals = f._score_domains(items)
+        self.assertEqual(totals["CRITICAL"], 1)
+        self.assertEqual(totals["HIGH"], 1)
+
+    def test_severity_normalization(self):
+        items = [{"severity": "bogus", "domain": "X"}]
+        _, totals = f._score_domains(items)
+        self.assertEqual(totals["LOW"], 1)
+
+
+class TestRoadmapSummary(unittest.TestCase):
+    def test_empty(self):
+        rh, total, by = f._roadmap_summary({})
+        self.assertEqual(rh, {})
+        self.assertEqual(total, 0)
+        self.assertEqual(by, {})
+
+    def test_hours(self):
+        phases = {"Phase 1": [{"domain": "Sec", "est_hours": 2},
+                               {"domain": "Sec", "est_hours": 1.5}]}
+        rh, total, by = f._roadmap_summary(phases)
+        self.assertEqual(rh["Phase 1"], 3.5)
+        self.assertEqual(total, 3.5)
+        self.assertEqual(by["Sec"], 3.5)
+
+
+class TestVerdictSummary(unittest.TestCase):
+    def test_counts(self):
+        items = [{"da_verdict": "CONFIRMED"}, {"da_verdict": "BOGUS"}]
+        vs = f._verdict_summary(items)
+        self.assertEqual(vs["CONFIRMED"], 1)
+        self.assertEqual(vs["QUESTIONABLE"], 1)
+
+
+class TestPriorityAreas(unittest.TestCase):
+    def test_order_and_limit(self):
+        scores = [
+            {"domain": "A", "critical": 1, "high": 0, "medium": 0},
+            {"domain": "B", "critical": 0, "high": 2, "medium": 0},
+            {"domain": "C", "critical": 0, "high": 0, "medium": 1},
+            {"domain": "D", "critical": 0, "high": 0, "medium": 0},
+        ]
+        self.assertEqual(f._priority_areas(scores), ["A", "B", "C"])
+
+
+class TestHealth(unittest.TestCase):
+    def test_red_yellow_green(self):
+        self.assertEqual(f._health({"CRITICAL": 1, "HIGH": 0}), "RED")
+        self.assertEqual(f._health({"CRITICAL": 0, "HIGH": 1}), "YELLOW")
+        self.assertEqual(f._health({"CRITICAL": 0, "HIGH": 0}), "GREEN")
+
+
+class TestOverallScore(unittest.TestCase):
+    def test_empty_and_rounding(self):
+        self.assertEqual(f._overall_score([]), 10.0)
+        scores = [{"score": 7.0}, {"score": 8.0}]
+        self.assertEqual(f._overall_score(scores), 7.5)
+
+
+class TestTrend(unittest.TestCase):
+    def test_no_baseline(self):
+        self.assertEqual(f._trend(None, 10.0), "no previous baseline")
+
+    def test_previous_none(self):
+        self.assertEqual(f._trend({}, 10.0), "no previous baseline")
+
+    def test_previous_zero(self):
+        self.assertEqual(f._trend({"tech_debt_hours": 0}, 10.0), "0h -> 10.0h")
+
+    def test_positive_change(self):
+        t = f._trend({"tech_debt_hours": 10}, 8.0)
+        self.assertIn("10h -> 8.0h", t)
+        self.assertIn("-20%", t)
+
+
 if __name__ == "__main__":
     unittest.main()

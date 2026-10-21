@@ -152,6 +152,59 @@ def _scan_tree(target, limit, state):
     return truncated
 
 
+def _build_facts(target, state, truncated):
+    files = state["files"]
+    total_bytes = state["total_bytes"]
+    languages = state["languages"]
+    top_dirs = state["top_dirs"]
+    dependency_manifests = state["dependency_manifests"]
+    containers = state["containers"]
+    entry_points = state["entry_points"]
+    ui_files = state["ui_files"]
+    test_files = state["test_files"]
+
+    database = []
+    root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
+    for marker in DB_MARKERS:
+        if marker in root_entries:
+            database.append(marker)
+
+    ci = []
+    for marker in CI_PATHS:
+        candidate = target / marker
+        if candidate.is_file():
+            ci.append(marker)
+        elif candidate.is_dir():
+            ci.extend(
+                sorted(
+                    str((candidate / f.name).relative_to(target)).replace("\\", "/")
+                    for f in candidate.iterdir()
+                    if f.suffix.lower() in (".yml", ".yaml")
+                )
+            )
+
+    code_files = sum(
+        count for language, count in languages.items()
+        if language in CODE_LANGUAGES
+    )
+    return {
+        "target": str(target),
+        "files": files,
+        "bytes": total_bytes,
+        "truncated": truncated,
+        "languages": dict(sorted(languages.items())),
+        "code_files": code_files,
+        "top_dirs": dict(sorted(top_dirs.items())),
+        "dependency_manifests": sorted(set(dependency_manifests)),
+        "ci": ci,
+        "test_files": test_files,
+        "entry_points": sorted(set(entry_points)),
+        "database": sorted(set(database)),
+        "containers": sorted(set(containers)),
+        "ui_files": ui_files,
+    }
+
+
 def discover(target_dir, max_files=None):
     """Map a codebase into a discovery facts dict.
 
@@ -186,56 +239,7 @@ def discover(target_dir, max_files=None):
     database = []
     truncated = _scan_tree(target, limit, state)
 
-    files = state["files"]
-    total_bytes = state["total_bytes"]
-    languages = state["languages"]
-    top_dirs = state["top_dirs"]
-    dependency_manifests = state["dependency_manifests"]
-    containers = state["containers"]
-    entry_points = state["entry_points"]
-    ui_files = state["ui_files"]
-    test_files = state["test_files"]
-
-    root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
-    for marker in DB_MARKERS:
-        if marker in root_entries:
-            database.append(marker)
-
-    ci = []
-    for marker in CI_PATHS:
-        candidate = target / marker
-        if candidate.is_file():
-            ci.append(marker)
-        elif candidate.is_dir():
-            ci.extend(
-                sorted(
-                    str((candidate / f.name).relative_to(target)).replace("\\", "/")
-                    for f in candidate.iterdir()
-                    if f.suffix.lower() in (".yml", ".yaml")
-                )
-            )
-
-    code_files = sum(
-        count for language, count in languages.items()
-        if language in CODE_LANGUAGES
-    )
-    facts = {
-        "target": str(target),
-        "files": files,
-        "bytes": total_bytes,
-        "truncated": truncated,
-        "languages": dict(sorted(languages.items())),
-        "code_files": code_files,
-        "top_dirs": dict(sorted(top_dirs.items())),
-        "dependency_manifests": sorted(set(dependency_manifests)),
-        "ci": ci,
-        "test_files": test_files,
-        "entry_points": sorted(set(entry_points)),
-        "database": sorted(set(database)),
-        "containers": sorted(set(containers)),
-        "ui_files": ui_files,
-    }
-    return facts
+    return _build_facts(target, state, truncated)
 
 
 def active_agents(manifest, facts):

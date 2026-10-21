@@ -162,5 +162,58 @@ class TestPlan(unittest.TestCase):
         self.assertEqual(len(plan["agent_names"]), 3)
 
 
+class TestProcessFile(unittest.TestCase):
+    def test_updates_state(self):
+        import tempfile, os
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            f = root / "main.py"
+            f.write_text("x", encoding="utf-8")
+            state = {
+                "files": 0, "total_bytes": 0, "languages": {},
+                "top_dirs": {}, "dependency_manifests": [], "containers": [],
+                "entry_points": [], "ui_files": 0, "test_files": 0,
+            }
+            discovery._process_file(f, Path("."), "main.py", f.stat().st_size, state)
+            self.assertEqual(state["files"], 1)
+            self.assertEqual(state["languages"].get("Python"), 1)
+            self.assertIn(".", state["top_dirs"])
+
+
+class TestScanTree(unittest.TestCase):
+    def test_limit_one(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for i in range(3):
+                (root / ("f%d.txt" % i)).write_text("x", encoding="utf-8")
+            state = {
+                "files": 0, "total_bytes": 0, "languages": {},
+                "top_dirs": {}, "dependency_manifests": [], "containers": [],
+                "entry_points": [], "ui_files": 0, "test_files": 0,
+            }
+            truncated = discovery._scan_tree(root, 1, state)
+            self.assertTrue(truncated)
+            self.assertEqual(state["files"], 1)
+
+    def test_unlimited(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for i in range(3):
+                (root / ("f%d.txt" % i)).write_text("x", encoding="utf-8")
+            state = {
+                "files": 0, "total_bytes": 0, "languages": {},
+                "top_dirs": {}, "dependency_manifests": [], "containers": [],
+                "entry_points": [], "ui_files": 0, "test_files": 0,
+            }
+            truncated = discovery._scan_tree(root, 0, state)
+            self.assertFalse(truncated)
+            self.assertEqual(state["files"], 3)
+
+
 if __name__ == "__main__":
     unittest.main()

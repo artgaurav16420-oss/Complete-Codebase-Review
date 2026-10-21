@@ -311,5 +311,84 @@ class TestParser(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestResolvePlanned(unittest.TestCase):
+    def test_from_agents(self):
+        import argparse
+        args = argparse.Namespace(agents="a,b", cache=".")
+        cached = None
+        self.assertEqual(cli._resolve_planned(args, cached), ["a", "b"])
+
+    def test_empty_agents_string(self):
+        import argparse
+        args = argparse.Namespace(agents=", ,", cache=".")
+        cached = None
+        self.assertEqual(cli._resolve_planned(args, cached), [])
+
+
+class TestCheckCompletionGate(unittest.TestCase):
+    def test_allow_partial(self):
+        import argparse
+        args = argparse.Namespace(allow_partial=True)
+        self.assertIsNone(cli._check_completion_gate({}, "max", [], [], True, args))
+
+    def test_gate_unknown(self):
+        import argparse
+        args = argparse.Namespace(allow_partial=False)
+        self.assertIsNone(cli._check_completion_gate({}, "max", [], [], False, args))
+
+    def test_success(self):
+        import argparse
+        orig = cli.pipeline.check_completion
+        cli.pipeline.check_completion = lambda *a, **k: None
+        try:
+            args = argparse.Namespace(allow_partial=False)
+            self.assertIsNone(cli._check_completion_gate({}, "max", ["a"], ["a"], True, args))
+        finally:
+            cli.pipeline.check_completion = orig
+
+    def test_runtime_error(self):
+        import argparse
+        def boom(*a, **k):
+            raise RuntimeError("boom")
+        orig = cli.pipeline.check_completion
+        cli.pipeline.check_completion = boom
+        try:
+            args = argparse.Namespace(allow_partial=False)
+            exc = cli._check_completion_gate({}, "max", ["a"], [], True, args)
+            self.assertIsInstance(exc, RuntimeError)
+        finally:
+            cli.pipeline.check_completion = orig
+
+
+class TestLoadSynthesisResults(unittest.TestCase):
+    def test_missing(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            import argparse
+            args = argparse.Namespace(cache=tmp)
+            with self.assertRaises(ValueError):
+                cli._load_synthesis_results(args, ["nope"])
+
+
+class TestEmitSynthesisOutput(unittest.TestCase):
+    def test_stdout(self):
+        import argparse
+        from types import SimpleNamespace
+        model = {
+            "overall_health": "GREEN", "critical_issues": 0,
+            "tech_debt_hours": 1.0, "agent_status": {"completed": 1, "total": 1},
+        }
+        args = SimpleNamespace(out=None, format="markdown")
+        # render stub
+        orig_render = cli.pipeline.render
+        cli.pipeline.render = lambda m, f: {"markdown": "MD"}
+        try:
+            code = cli._emit_synthesis_output(model, args)
+            self.assertEqual(code, 0)
+        finally:
+            cli.pipeline.render = orig_render
+
+
 if __name__ == "__main__":
     unittest.main()

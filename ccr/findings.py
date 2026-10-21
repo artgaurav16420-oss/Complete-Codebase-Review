@@ -230,7 +230,7 @@ def _score_domains(open_findings):
     total_counts = _empty_counts()
     for item in open_findings:
         total_counts[normalize_severity(item.get("severity"))] += 1
-    return per_domain, scores, total_counts
+    return scores, total_counts
 
 
 def _roadmap_summary(phases):
@@ -296,35 +296,10 @@ def _trend(baseline, total_hours):
     return trend
 
 
-def aggregate(findings, rejected, agents_planned, agents_completed,
-              target="", baseline=None):
-    """Build the report model consumed by the renderers.
-
-    Args:
-        findings: Kept findings (post-dedup, post-id).
-        rejected: Findings rejected by mechanical DA checks.
-        agents_planned: Agent ids that were planned.
-        agents_completed: Agent ids that reported.
-        target: Target directory string.
-        baseline: Optional previous baseline dict for trend text.
-
-    Returns:
-        dict: Report model.
-    """
-    all_findings = list(findings) + list(rejected)
-    open_findings = [f for f in findings if f.get("da_verdict") != "REJECTED"]
-
-    _per_domain, scores, total_counts = _score_domains(open_findings)
-
-    phases = place_roadmap(findings)
-    roadmap_hours, total_hours, by_domain = _roadmap_summary(phases)
-
-    verdict_summary = _verdict_summary(all_findings)
-    priority_areas = _priority_areas(scores)
-    health = _health(total_counts)
-    overall_score = _overall_score(scores)
-    trend = _trend(baseline, total_hours)
-
+def _assemble_model(findings, rejected, agents_planned, agents_completed,
+                    target, health, total_counts, total_hours, scores,
+                    priority_areas, overall_score, roadmap_hours, by_domain,
+                    phases, verdict_summary, trend):
     return {
         "target": target,
         "overall_health": health,
@@ -367,3 +342,40 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
             "re_review_count": 0,
         },
     }
+
+
+def aggregate(findings, rejected, agents_planned, agents_completed,
+              target="", baseline=None):
+    """Build the report model consumed by the renderers.
+
+    Args:
+        findings: Kept findings (post-dedup, post-id).
+        rejected: Findings rejected by mechanical DA checks.
+        agents_planned: Agent ids that were planned.
+        agents_completed: Agent ids that reported.
+        target: Target directory string.
+        baseline: Optional previous baseline dict for trend text.
+
+    Returns:
+        dict: Report model.
+    """
+    all_findings = list(findings) + list(rejected)
+    open_findings = [f for f in findings if f.get("da_verdict") != "REJECTED"]
+
+    scores, total_counts = _score_domains(open_findings)
+
+    phases = place_roadmap(findings)
+    roadmap_hours, total_hours, by_domain = _roadmap_summary(phases)
+
+    verdict_summary = _verdict_summary(all_findings)
+    priority_areas = _priority_areas(scores)
+    health = _health(total_counts)
+    overall_score = _overall_score(scores)
+    trend = _trend(baseline, total_hours)
+
+    return _assemble_model(
+        findings, rejected, agents_planned, agents_completed,
+        target, health, total_counts, total_hours, scores,
+        priority_areas, overall_score, roadmap_hours, by_domain,
+        phases, verdict_summary, trend,
+    )
