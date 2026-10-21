@@ -163,10 +163,7 @@ def assign_ids(findings):
 
 def roadmap_eligible(finding):
     """Return True when a finding may enter the roadmap."""
-    return (
-        finding.get("da_verdict") in ROADMAP_VERDICTS
-        and finding.get("da_verdict") != "REJECTED"
-    )
+    return finding.get("da_verdict") in ROADMAP_VERDICTS
 
 
 def place_roadmap(findings):
@@ -358,6 +355,11 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
 
     Returns:
         dict: Report model.
+
+    Assumes:
+        ``findings`` already passed through ``review_findings``, ``dedup``,
+        and ``assign_ids``. Calling this on raw agent output will include
+        mechanically rejected items in the roadmap hours.
     """
     all_findings = list(findings) + list(rejected)
     open_findings = [f for f in findings if f.get("da_verdict") != "REJECTED"]
