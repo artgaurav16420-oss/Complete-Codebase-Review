@@ -38,7 +38,7 @@ class TestNormalization(unittest.TestCase):
         self.assertEqual(f.normalize_verdict("confirmed"), "CONFIRMED")
 
     def test_verdict_default(self):
-        self.assertEqual(f.normalize_verdict(None), "QUESTIONABLE")
+        self.assertEqual(f.normalize_verdict(None), "PLAUSIBLE")
 
     def test_verdict_alias(self):
         self.assertEqual(f.normalize_verdict("da escalation"), "DA-ESCALATION")
@@ -325,6 +325,50 @@ class TestTrend(unittest.TestCase):
         t = f._trend({"tech_debt_hours": 10}, 8.0)
         self.assertIn("10h -> 8.0h", t)
         self.assertIn("-20%", t)
+
+
+class TestAnchorParsing(unittest.TestCase):
+    def test_windows_absolute_path(self):
+        parts = f.anchor_parts(
+            "[D:\\src\\a.py:42] \u2014 flaw \u2192 failure"
+        )
+        self.assertEqual(parts[0], "D:\\src\\a.py")
+        self.assertEqual(parts[1], 42)
+
+    def test_line_range(self):
+        parts = f.anchor_parts("[a.py:42-48] \u2014 flaw \u2192 failure")
+        self.assertEqual(parts[0], "a.py")
+        self.assertEqual(parts[1], 42)
+
+    def test_relative_path(self):
+        self.assertTrue(f.ANCHOR_RE.match("[src/a.py:1] \u2014 flaw \u2192 failure"))
+
+
+class TestDedupSeparators(unittest.TestCase):
+    def test_backslash_and_slash_collapse(self):
+        items = [
+            make("[src\\a.py:1] \u2014 flaw \u2192 failure"),
+            make("[src/a.py:1] \u2014 flaw \u2192 failure"),
+        ]
+        self.assertEqual(len(f.dedup(items)), 1)
+
+
+class TestPromptShapeRegression(unittest.TestCase):
+    """A finding shaped like the prompt output must reach the roadmap."""
+
+    def test_missing_verdict_keeps_debt_and_roadmap(self):
+        raw = [{
+            "finding": "[a.py:1] \u2014 flaw \u2192 failure",
+            "severity": "CRITICAL",
+            "domain": "Security",
+            "est_hours": 6,
+        }]
+        kept, rejected = f.review_findings(raw)
+        kept = f.assign_ids(f.dedup(kept))
+        model = f.aggregate(kept, rejected, ["security"], ["security"])
+        self.assertEqual(model["critical_issues"], 1)
+        self.assertGreater(model["tech_debt_hours"], 0)
+        self.assertTrue(model["roadmap"][1])
 
 
 class TestRoadmapEligible(unittest.TestCase):

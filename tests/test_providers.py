@@ -23,6 +23,10 @@ class TestPrompt(unittest.TestCase):
         prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
         self.assertIn("SKILL_DIR=/skills/ccr", prompt)
 
+    def test_prompt_requests_da_verdict(self):
+        prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
+        self.assertIn('"da_verdict"', prompt)
+
     def test_prompt_contains_contract(self):
         prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
         self.assertIn("[path/file.py:42]", prompt)
