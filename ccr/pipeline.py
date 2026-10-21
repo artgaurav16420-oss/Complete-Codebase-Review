@@ -62,11 +62,14 @@ def synthesize(manifest, results, planned, completed=None, target="",
         dict: Report model.
     """
     completed = list(completed if completed is not None else results.keys())
+    agents_by_id = {a["id"]: a for a in manifest["agents"]}
     raw = []
     for agent_id in planned:
         if agent_id not in results:
             continue
-        agent = next(a for a in manifest["agents"] if a["id"] == agent_id)
+        agent = agents_by_id.get(agent_id)
+        if agent is None:
+            raise ValueError("unknown agent id: " + str(agent_id))
         domain = agent["report"]
         for item in results[agent_id].get("findings", []):
             copy = dict(item)

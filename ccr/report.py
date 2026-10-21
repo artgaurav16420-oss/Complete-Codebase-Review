@@ -5,20 +5,21 @@ section names and table headers exactly as written here.
 """
 
 
-def fmt_hours(value):
-    """Format hours without trailing zeros: 2 -> '2h', 2.5 -> '2.5h'."""
+def _fmt_number(value):
     number = float(value)
     if number == int(number):
-        return "{}h".format(int(number))
-    return "{}h".format(round(number, 2))
+        return str(int(number))
+    return str(round(number, 2))
+
+
+def fmt_hours(value):
+    """Format hours without trailing zeros: 2 -> '2h', 2.5 -> '2.5h'."""
+    return _fmt_number(value) + "h"
 
 
 def fmt_hours_long(value):
     """Format hours as words: 2 -> '2 hours', 2.5 -> '2.5 hours'."""
-    number = float(value)
-    if number == int(number):
-        return "{} hours".format(int(number))
-    return "{} hours".format(round(number, 2))
+    return _fmt_number(value) + " hours"
 
 
 def _cell(text):

@@ -21,10 +21,14 @@ ANCHOR_RE = re.compile(r"^\[[^:]+:\d+\]\s+\u2014\s+.+?\s+\u2192\s+.+$")
 ANCHOR_PARTS_RE = re.compile(r"^\[([^:]+):(\d+)\]\s+\u2014\s+(.+?)\s+\u2192\s+(.+)$")
 
 WEASEL_PATTERNS = [
-    r"\bmight\b", r"\blikely\b", r"\bcould\s+potentially\b",
-    r"\bit\s+is\s+recommended\b", r"\bconsider\s+refactoring\b",
-    r"\bbest\s+practice\s+suggests\b", r"\bgenerally\s+speaking\b",
-    r"\bin\s+most\s+cases\b",
+    re.compile(r"\bmight\b", re.IGNORECASE),
+    re.compile(r"\blikely\b", re.IGNORECASE),
+    re.compile(r"\bcould\s+potentially\b", re.IGNORECASE),
+    re.compile(r"\bit\s+is\s+recommended\b", re.IGNORECASE),
+    re.compile(r"\bconsider\s+refactoring\b", re.IGNORECASE),
+    re.compile(r"\bbest\s+practice\s+suggests\b", re.IGNORECASE),
+    re.compile(r"\bgenerally\s+speaking\b", re.IGNORECASE),
+    re.compile(r"\bin\s+most\s+cases\b", re.IGNORECASE),
 ]
 
 
@@ -50,7 +54,7 @@ def weasel_hits(text):
     """Return the weasel phrases present in text."""
     hits = []
     for pattern in WEASEL_PATTERNS:
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = pattern.search(text)
         if match:
             hits.append(match.group(0))
     return hits

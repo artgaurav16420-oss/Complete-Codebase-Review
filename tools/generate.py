@@ -18,10 +18,14 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 MANIFEST = REPO_ROOT / "ccr" / "pipeline.json"
 
 BEGIN = "<!-- BEGIN GENERATED: {} -->"
 END = "<!-- END GENERATED: {} -->"
+
+from ccr.fileio import write_text as _write_text
 
 
 def load_manifest():
@@ -146,12 +150,6 @@ def render_checksum():
     script = REPO_ROOT / "install.py"
     digest = hashlib.sha256(script.read_bytes()).hexdigest()
     return digest + "  install.py\n"
-
-
-def _write_text(path, text, newline="\n"):
-    """Write UTF-8 text with explicit newlines (3.9-compatible)."""
-    with open(path, "w", encoding="utf-8", newline=newline) as handle:
-        handle.write(text)
 
 
 def targets(manifest):
