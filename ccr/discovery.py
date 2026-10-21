@@ -45,6 +45,9 @@ CODE_LANGUAGES = frozenset({
 })
 
 MARKUP_EXTS = frozenset({".html", ".css", ".scss", ".vue", ".svelte"})
+UI_DOC_DIRS = frozenset({
+    "docs", "site", "documentation", "theme", "themes",
+})
 
 DEPENDENCY_MANIFESTS = {
     "pyproject.toml": "Python",
@@ -114,7 +117,9 @@ def _process_file(full, rel_root, name, size, state):
         languages = state["languages"]
         languages[language] = languages.get(language, 0) + 1
     if ext in MARKUP_EXTS:
-        state["ui_files"] += 1
+        top = rel_root.parts[0].lower() if rel_root.parts else ""
+        if top not in UI_DOC_DIRS:
+            state["ui_files"] += 1
 
     if name in DEPENDENCY_MANIFESTS:
         state["dependency_manifests"].append(name)

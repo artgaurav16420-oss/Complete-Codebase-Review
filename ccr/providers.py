@@ -12,6 +12,10 @@ from .fileio import write_text
 
 PROMPT_TEMPLATE = """You are auditing the {domain} of {target}.
 
+Focus ONLY on {domain}. Do NOT flag adjacent domains: another specialist owns
+those, and cross-domain duplicates inflate the report. If a finding is real
+but belongs to another domain, omit it.
+
 SKILL_DIR={skill_dir}
 Load 'karpathy-guidelines' from SKILL_DIR. Follow it: surface assumptions,
 simplicity/YAGNI, surgical changes only, verify before claiming done.
@@ -28,7 +32,7 @@ Return your report as JSON with this shape:
       "severity": "CRITICAL|HIGH|MEDIUM|LOW|INFO",
       "est_hours": 2,
       "da_verdict": "CONFIRMED|PLAUSIBLE|QUESTIONABLE|REJECTED|DA-ESCALATION",
-      "finding_type": "optional tech-debt floor key",
+      "finding_type": "optional tech-debt floor key, or design_note",
       "tags": ["optional-issue-id"],
       "evidence": "metric or observation"
     }}
@@ -39,8 +43,14 @@ Rules:
 - Every finding MUST start with [file:line] and contain the arrow separator.
 - No weasel words (might, likely, could potentially, best practice suggests).
 - Only report flaws that CURRENTLY exist. No generic advice.
-- Quantify tech debt in hours per finding. Set finding_type when it matches a
-  floor key (circular_dependency, hardcoded_secret, missing_test_coverage, ...).
+- est_hours is the cost of the FIX, not of the observation. A finding that
+  should not be fixed carries est_hours 0.
+- Deliberate design trade-offs are not debt: report them with
+  finding_type "design_note", severity INFO, and est_hours 0.
+- CRITICAL and HIGH require a reproduction path: the exact input, call path,
+  or command that triggers the failure. Without one, use MEDIUM at most.
+- Set finding_type when it matches a floor key
+  (circular_dependency, hardcoded_secret, missing_test_coverage, ...).
 - Set da_verdict to CONFIRMED when you reproduced the failure, PLAUSIBLE when
   the evidence is strong but unreproduced, or QUESTIONABLE when uncertain.
   A missing da_verdict is treated as PLAUSIBLE so the finding stays visible.

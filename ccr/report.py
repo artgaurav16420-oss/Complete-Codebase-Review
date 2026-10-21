@@ -179,6 +179,32 @@ def _rejected(model):
     return "\n".join(lines)
 
 
+def _overlap_candidates(model):
+    """Render cross-domain overlap candidates for DA adjudication."""
+    lines = ["## Overlap Candidates", ""]
+    candidates = model.get("overlap_candidates") or []
+    if not candidates:
+        lines.append("None.")
+        lines.append("")
+        return "\n".join(lines)
+    for candidate in candidates:
+        merged = ", ".join(candidate.get("merged", []))
+        if candidate.get("advisory"):
+            lines.append(
+                f"- [advisory] {candidate.get('file', '')}: "
+                f"{candidate.get('hours', 0)}h across "
+                f"{candidate.get('kept', '')} + {merged} \u2014 adjudicate "
+                "whether this is one root cause"
+            )
+        else:
+            lines.append(
+                f"- {candidate.get('file', '')}: kept "
+                f"{candidate.get('kept', '')} (merged: {merged})"
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_markdown(model):
     """Render the full health report as Markdown."""
     sections = [
@@ -190,6 +216,7 @@ def render_markdown(model):
         _roadmap(model),
         _tech_debt(model),
         _agent_status(model),
+        _overlap_candidates(model),
         _rejected(model),
     ]
     return "\n".join(sections).rstrip() + "\n"
@@ -267,9 +294,8 @@ def render_json(model):
     """Render the machine-readable report contract."""
     findings = []
     for item in model["findings"]:
-        severity = item["severity"]
-        if severity == "INFO":
-            severity = "LOW"
+        raw_severity = item["severity"]
+        severity = "LOW" if raw_severity == "INFO" else raw_severity
         findings.append({
             "id": item["id"],
             "finding": item["finding"],
@@ -277,6 +303,8 @@ def render_json(model):
             "domain": item.get("domain", ""),
             "est_hours": item.get("est_hours", 0),
             "da_verdict": item["da_verdict"],
+            "finding_type": item.get("finding_type", ""),
+            "no_fix": raw_severity == "INFO",
         })
     titles = {1: "Now", 2: "Next Quarter", 3: "Backlog"}
     roadmap = {}
@@ -321,6 +349,7 @@ def render_json(model):
         },
         "findings": findings,
         "rejected": model["rejected"],
+        "overlap_candidates": model.get("overlap_candidates", []),
         "roadmap": roadmap,
         "tech_debt": model["tech_debt"],
         "agent_status": model["agent_status"],

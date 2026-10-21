@@ -180,29 +180,160 @@ def assign_ids(findings):
 
 
 def roadmap_eligible(finding):
-    """Return True when a finding may enter the roadmap."""
+    """Return True when a finding may enter the roadmap.
+
+    INFO findings are observations (including deliberate design trade-offs)
+    and carry no fix cost, so they stay out of the roadmap and tech debt.
+    """
+    if normalize_severity(finding.get("severity")) == "INFO":
+        return False
     return finding.get("da_verdict") in ROADMAP_VERDICTS
+
+
+OVERLAP_THRESHOLD = 0.6
+OVERLAP_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "that", "this", "from", "into", "when",
+    "then", "than", "are", "was", "were", "has", "have", "its",
+})
+
+
+NEGATIONS = frozenset({"not", "no", "never", "without"})
+
+
+def _failure_tokens(finding):
+    """Return (tokens, negations) for the failure-mode text."""
+    parts = anchor_parts(finding.get("finding", ""))
+    text = parts[3] if parts else str(finding.get("finding", ""))
+    words = re.findall(r"[a-z0-9_]+", text.lower())
+    negations = frozenset(
+        words[index + 1]
+        for index, word in enumerate(words[:-1])
+        if word in NEGATIONS
+    )
+    tokens = frozenset(
+        token for token in words
+        if token not in OVERLAP_STOPWORDS and token not in NEGATIONS
+        and len(token) > 2
+    )
+    return tokens, negations
+
+
+def find_overlaps(findings):
+    """Cluster findings that describe the same failure in the same file.
+
+    Deterministic: same-file findings whose failure-mode token sets have a
+    Jaccard similarity >= OVERLAP_THRESHOLD join one cluster. Clusters with
+    one member are dropped. Returns a list of member lists.
+    """
+    by_file = {}
+    for item in findings:
+        parts = anchor_parts(item.get("finding", ""))
+        if parts is None:
+            continue
+        by_file.setdefault(parts[0].replace("\\", "/"), []).append(item)
+    clusters = []
+    for _file, items in sorted(by_file.items()):
+        groups = []
+        for item in items:
+            tokens, negations = _failure_tokens(item)
+            joined = False
+            for group in groups:
+                if not tokens or not group["tokens"]:
+                    continue
+                if negations != group["negations"]:
+                    continue
+                inter = len(tokens & group["tokens"])
+                union = len(tokens | group["tokens"])
+                if union and inter / union >= OVERLAP_THRESHOLD:
+                    group["members"].append(item)
+                    group["tokens"] = group["tokens"] | tokens
+                    joined = True
+                    break
+            if not joined:
+                groups.append({
+                    "members": [item], "tokens": tokens,
+                    "negations": negations,
+                })
+        clusters.extend(
+            group["members"] for group in groups if len(group["members"]) > 1
+        )
+    return clusters
+
+
+def _overlap_representative(members):
+    return sorted(
+        members,
+        key=lambda item: (
+            0 if roadmap_eligible(item) else 1,
+            SEVERITY_WEIGHT[normalize_severity(item.get("severity"))],
+            -_as_hours(item.get("est_hours")),
+            item.get("id", ""),
+        ),
+    )[0]
+
+
+LARGE_FIX_HOURS = 8.0
+
+
+def find_large_file_clusters(findings, min_hours=LARGE_FIX_HOURS):
+    """Flag files where several expensive findings may be one root cause.
+
+    Advisory only: same file, at least two eligible findings at or above
+    ``min_hours``. The DA adjudicates; nothing is removed from tech debt.
+    """
+    by_file = {}
+    for item in findings:
+        parts = anchor_parts(item.get("finding", ""))
+        if parts is None:
+            continue
+        if _as_hours(item.get("est_hours")) < min_hours:
+            continue
+        by_file.setdefault(parts[0].replace("\\", "/"), []).append(item)
+    return [
+        members for _file, members in sorted(by_file.items())
+        if len(members) > 1
+    ]
+
+
+QUICK_WIN_CAP_HOURS = 40.0
 
 
 def place_roadmap(findings):
     """Split eligible findings into three phases.
 
-    Phase 1: CRITICAL plus quick wins (<= 2h).
-    Phase 2: HIGH, or MEDIUM at <= 8h.
-    Phase 3: everything else eligible.
+    Phase 1: CRITICAL plus MEDIUM/LOW quick wins (<= 2h), capped at
+    QUICK_WIN_CAP_HOURS so the phase stays discriminating.
+    Phase 2: HIGH, MEDIUM at <= 8h, and quick wins beyond the cap.
+    Phase 3: everything else eligible. INFO is never eligible.
     """
     phases = {1: [], 2: [], 3: []}
+    quick_wins = []
     for item in findings:
         if not roadmap_eligible(item):
             continue
         severity = normalize_severity(item.get("severity"))
         hours = _as_hours(item.get("est_hours"))
-        if severity == "CRITICAL" or hours <= 2:
+        if severity == "CRITICAL":
             phases[1].append(item)
+        elif severity in ("MEDIUM", "LOW") and hours <= 2:
+            quick_wins.append(item)
         elif severity == "HIGH" or (severity == "MEDIUM" and hours <= 8):
             phases[2].append(item)
         else:
             phases[3].append(item)
+    quick_wins.sort(key=lambda item: (
+        SEVERITY_WEIGHT[normalize_severity(item.get("severity"))],
+        _as_hours(item.get("est_hours")),
+        item.get("id", ""),
+    ))
+    used = 0.0
+    for item in quick_wins:
+        hours = _as_hours(item.get("est_hours"))
+        if used + hours <= QUICK_WIN_CAP_HOURS:
+            phases[1].append(item)
+            used += hours
+        else:
+            phases[2].append(item)
     return phases
 
 
@@ -312,7 +443,7 @@ def _trend(baseline, total_hours):
 def _assemble_model(findings, rejected, agents_planned, agents_completed,
                     target, health, total_counts, total_hours, scores,
                     priority_areas, overall_score, roadmap_hours, by_domain,
-                    phases, verdict_summary, trend):
+                    phases, verdict_summary, trend, overlap_candidates=None):
     return {
         "target": target,
         "overall_health": health,
@@ -324,6 +455,7 @@ def _assemble_model(findings, rejected, agents_planned, agents_completed,
         "counts": total_counts,
         "findings": findings,
         "rejected": rejected,
+        "overlap_candidates": overlap_candidates or [],
         "roadmap": phases,
         "roadmap_hours": roadmap_hours,
         "tech_debt": {
@@ -382,7 +514,38 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
 
     scores, total_counts = _score_domains(open_findings)
 
-    phases = place_roadmap(findings)
+    overlap_candidates = []
+    merged_ids = set()
+    for members in find_overlaps(findings):
+        rep = _overlap_representative(members)
+        merged = [item for item in members if item is not rep]
+        for item in merged:
+            item["overlap_of"] = rep.get("id", "")
+            merged_ids.add(id(item))
+        overlap_candidates.append({
+            "file": anchor_parts(rep.get("finding", ""))[0],
+            "kept": rep.get("id", ""),
+            "merged": [item.get("id", "") for item in merged],
+            "advisory": False,
+            "hours": round(sum(_as_hours(m.get("est_hours")) for m in members), 2),
+        })
+    for members in find_large_file_clusters(findings):
+        remaining = [item for item in members if id(item) not in merged_ids]
+        if len(remaining) < 2:
+            continue
+        members = remaining
+        rep = _overlap_representative(members)
+        overlap_candidates.append({
+            "file": anchor_parts(rep.get("finding", ""))[0],
+            "kept": rep.get("id", ""),
+            "merged": [item.get("id", "") for item in members
+                       if item is not rep],
+            "advisory": True,
+            "hours": round(sum(_as_hours(m.get("est_hours")) for m in members), 2),
+        })
+    roadmap_source = [f for f in findings if id(f) not in merged_ids]
+
+    phases = place_roadmap(roadmap_source)
     roadmap_hours, total_hours, by_domain = _roadmap_summary(phases)
 
     verdict_summary = _verdict_summary(all_findings)
@@ -395,5 +558,5 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
         findings, rejected, agents_planned, agents_completed,
         target, health, total_counts, total_hours, scores,
         priority_areas, overall_score, roadmap_hours, by_domain,
-        phases, verdict_summary, trend,
+        phases, verdict_summary, trend, overlap_candidates,
     )

@@ -308,6 +308,7 @@
   ],
   "overall_health": "YELLOW",
   "overall_score": 7.2,
+  "overlap_candidates": [],
   "per_domain_scores": [
     {
       "critical": 0,
@@ -342,20 +343,6 @@
   "rejected": [],
   "roadmap": {
     "1": [
-      {
-        "agent": "code_quality",
-        "da_verdict": "CONFIRMED",
-        "domain": "Code Quality",
-        "est_hours": 1.0,
-        "evidence": "only definition, docstring mention, tests/test_skip_guards.py:37 and the NODOC_ALLOWLIST reference it",
-        "finding": "[fermi_organizer/extraction.py:1923] — bom_task has no production caller and is a hand-copy of org_task → hardening applied to survey_task/org_task must be duplicated by hand while tests keep exercising the stale clone",
-        "id": "F-007",
-        "severity": "LOW",
-        "tags": [
-          "dead-code",
-          "duplication"
-        ]
-      },
       {
         "agent": "code_quality",
         "da_verdict": "CONFIRMED",
@@ -399,6 +386,34 @@
         ]
       },
       {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 2.0,
+        "evidence": "TESSERACT_EXE is realpath+isfile validated; the which() result is not; verified shutil.which returns .\\tesseract.EXE with a planted file",
+        "finding": "[fermi_organizer/extraction.py:183] — the Tesseract fallback uses shutil.which(\"tesseract\"), which on Windows searches the current working directory first → a tesseract.exe planted in the launch directory is executed by the version probe and every OCR pass",
+        "id": "F-015",
+        "severity": "MEDIUM",
+        "tags": [
+          "CWE-426",
+          "CWE-427"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "only definition, docstring mention, tests/test_skip_guards.py:37 and the NODOC_ALLOWLIST reference it",
+        "finding": "[fermi_organizer/extraction.py:1923] — bom_task has no production caller and is a hand-copy of org_task → hardening applied to survey_task/org_task must be duplicated by hand while tests keep exercising the stale clone",
+        "id": "F-007",
+        "severity": "LOW",
+        "tags": [
+          "dead-code",
+          "duplication"
+        ]
+      },
+      {
         "agent": "code_quality",
         "da_verdict": "CONFIRMED",
         "domain": "Code Quality",
@@ -423,20 +438,6 @@
         "tags": [
           "dead-code",
           "parser"
-        ]
-      },
-      {
-        "agent": "security",
-        "da_verdict": "CONFIRMED",
-        "domain": "Security",
-        "est_hours": 2.0,
-        "evidence": "TESSERACT_EXE is realpath+isfile validated; the which() result is not; verified shutil.which returns .\\tesseract.EXE with a planted file",
-        "finding": "[fermi_organizer/extraction.py:183] — the Tesseract fallback uses shutil.which(\"tesseract\"), which on Windows searches the current working directory first → a tesseract.exe planted in the launch directory is executed by the version probe and every OCR pass",
-        "id": "F-015",
-        "severity": "MEDIUM",
-        "tags": [
-          "CWE-426",
-          "CWE-427"
         ]
       },
       {

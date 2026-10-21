@@ -258,6 +258,7 @@
   ],
   "overall_health": "RED",
   "overall_score": 8.4,
+  "overlap_candidates": [],
   "per_domain_scores": [
     {
       "critical": 0,
@@ -348,58 +349,6 @@
   "roadmap": {
     "1": [
       {
-        "agent": "code_quality",
-        "da_verdict": "CONFIRMED",
-        "domain": "Code Quality",
-        "est_hours": 2.0,
-        "evidence": "12 branches, nesting depth 4",
-        "finding": "[core/processor.py:1] — process_data has 12 branches across 4 nesting levels → untestable paths and regression risk in every change",
-        "id": "F-002",
-        "severity": "HIGH",
-        "tags": [
-          "high-cyclomatic-complexity"
-        ]
-      },
-      {
-        "agent": "code_quality",
-        "da_verdict": "CONFIRMED",
-        "domain": "Code Quality",
-        "est_hours": 1.0,
-        "evidence": "no references in repository",
-        "finding": "[utils/helper.py:20] — unused_function is never called anywhere → dead code shipped and maintained without purpose",
-        "id": "F-003",
-        "severity": "LOW",
-        "tags": [
-          "dead-code"
-        ]
-      },
-      {
-        "agent": "code_quality",
-        "da_verdict": "PLAUSIBLE",
-        "domain": "Code Quality",
-        "est_hours": 1.0,
-        "evidence": "duplicate report of the same import line",
-        "finding": "[app.py:2] — imports two unused names from auth.login → reviewer cannot tell which entry points are live",
-        "id": "F-004",
-        "severity": "MEDIUM",
-        "tags": [
-          "unused-import"
-        ]
-      },
-      {
-        "agent": "documentation",
-        "da_verdict": "CONFIRMED",
-        "domain": "Documentation",
-        "est_hours": 0.5,
-        "evidence": "no README in fixture repository",
-        "finding": "[auth/login.py:8] — no README or docstring states that AUTH_SECRET must be set before login works → callers discover the requirement only at runtime",
-        "id": "F-006",
-        "severity": "LOW",
-        "tags": [
-          "missing-api-documentation"
-        ]
-      },
-      {
         "agent": "security",
         "da_verdict": "CONFIRMED",
         "domain": "Security",
@@ -417,19 +366,6 @@
         "agent": "security",
         "da_verdict": "CONFIRMED",
         "domain": "Security",
-        "est_hours": 2.0,
-        "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
-        "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
-        "id": "F-008",
-        "severity": "HIGH",
-        "tags": [
-          "CWE-200"
-        ]
-      },
-      {
-        "agent": "security",
-        "da_verdict": "CONFIRMED",
-        "domain": "Security",
         "est_hours": 3.0,
         "evidence": "subprocess.run(\"tar ... \" + path, shell=True)",
         "finding": "[auth/login.py:41] — concatenates caller input into a shell command with shell=True → arbitrary command execution as the service account",
@@ -438,6 +374,58 @@
         "tags": [
           "CWE-78",
           "command-injection-shell-true"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "PLAUSIBLE",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "duplicate report of the same import line",
+        "finding": "[app.py:2] — imports two unused names from auth.login → reviewer cannot tell which entry points are live",
+        "id": "F-004",
+        "severity": "MEDIUM",
+        "tags": [
+          "unused-import"
+        ]
+      },
+      {
+        "agent": "tech_debt",
+        "da_verdict": "CONFIRMED",
+        "domain": "Tech Debt",
+        "est_hours": 1.0,
+        "evidence": "open(path, \"r\") with no encoding argument",
+        "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
+        "id": "F-012",
+        "severity": "MEDIUM",
+        "tags": [
+          "missing-error-handling"
+        ]
+      },
+      {
+        "agent": "documentation",
+        "da_verdict": "CONFIRMED",
+        "domain": "Documentation",
+        "est_hours": 0.5,
+        "evidence": "no README in fixture repository",
+        "finding": "[auth/login.py:8] — no README or docstring states that AUTH_SECRET must be set before login works → callers discover the requirement only at runtime",
+        "id": "F-006",
+        "severity": "LOW",
+        "tags": [
+          "missing-api-documentation"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "no references in repository",
+        "finding": "[utils/helper.py:20] — unused_function is never called anywhere → dead code shipped and maintained without purpose",
+        "id": "F-003",
+        "severity": "LOW",
+        "tags": [
+          "dead-code"
         ]
       },
       {
@@ -465,32 +453,6 @@
         "tags": [
           "long-parameter-list"
         ]
-      },
-      {
-        "agent": "tech_debt",
-        "da_verdict": "CONFIRMED",
-        "domain": "Tech Debt",
-        "est_hours": 1.0,
-        "evidence": "open(path, \"r\") with no encoding argument",
-        "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
-        "id": "F-012",
-        "severity": "MEDIUM",
-        "tags": [
-          "missing-error-handling"
-        ]
-      },
-      {
-        "agent": "tech_debt",
-        "da_verdict": "CONFIRMED",
-        "domain": "Tech Debt",
-        "est_hours": 2.0,
-        "evidence": "user_id = hash(name)",
-        "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
-        "id": "F-013",
-        "severity": "HIGH",
-        "tags": [
-          "unstable-hash"
-        ]
       }
     ],
     "2": [
@@ -511,6 +473,19 @@
         "agent": "code_quality",
         "da_verdict": "CONFIRMED",
         "domain": "Code Quality",
+        "est_hours": 2.0,
+        "evidence": "12 branches, nesting depth 4",
+        "finding": "[core/processor.py:1] — process_data has 12 branches across 4 nesting levels → untestable paths and regression risk in every change",
+        "id": "F-002",
+        "severity": "HIGH",
+        "tags": [
+          "high-cyclomatic-complexity"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
         "est_hours": 3.0,
         "evidence": "_fetch_items called once per iteration",
         "finding": "[api/orders.py:14] — calls _fetch_items inside the order loop → one query per order, so cost grows linearly with order count",
@@ -518,6 +493,32 @@
         "severity": "HIGH",
         "tags": [
           "n-plus-one-query"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 2.0,
+        "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
+        "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
+        "id": "F-008",
+        "severity": "HIGH",
+        "tags": [
+          "CWE-200"
+        ]
+      },
+      {
+        "agent": "tech_debt",
+        "da_verdict": "CONFIRMED",
+        "domain": "Tech Debt",
+        "est_hours": 2.0,
+        "evidence": "user_id = hash(name)",
+        "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
+        "id": "F-013",
+        "severity": "HIGH",
+        "tags": [
+          "unstable-hash"
         ]
       },
       {
@@ -537,8 +538,8 @@
     "3": []
   },
   "roadmap_hours": {
-    "1": 16.5,
-    "2": 15.0,
+    "1": 10.5,
+    "2": 21.0,
     "3": 0
   },
   "target": ".",
