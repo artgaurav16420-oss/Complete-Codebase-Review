@@ -123,6 +123,53 @@ def _cache_state(cache):
     return state.State.load(Path(cache) / "ccr-state.json")
 
 
+def _resolve_planned(args, cached):
+    if args.agents:
+        return [
+            token.strip() for token in args.agents.split(",") if token.strip()
+        ]
+    if cached is not None and cached.data["agents_planned"]:
+        return cached.data["agents_planned"]
+    return _planned_from_cache(args.cache)
+
+
+def _check_completion_gate(data, effort, planned, completed, gate_known, args):
+    if args.allow_partial or not gate_known:
+        return None
+    try:
+        pipeline.check_completion(data, effort, planned, completed)
+    except RuntimeError as exc:
+        return exc
+    return None
+
+
+def _load_synthesis_results(args, planned):
+    results = providers.load_results(args.cache, planned, required=False)
+    completed = [agent_id for agent_id in planned if agent_id in results]
+    if not completed:
+        raise ValueError("no agent results found in " + args.cache)
+    return results, completed
+
+
+def _emit_synthesis_output(model, args):
+    if not args.out:
+        rendered = pipeline.render(model, args.format)
+        if "markdown" in rendered:
+            sys.stdout.write(rendered["markdown"])
+        if "json" in rendered:
+            print(json.dumps(rendered["json"], indent=2, sort_keys=True))
+        return 0
+    written = pipeline.write_outputs(model, args.out, fmt=args.format)
+    for path in written:
+        print("[SYNTHESIZE] wrote " + str(path))
+    print("[SYNTHESIZE] health={} critical={} debt={}h agents={}/{}".format(
+        model["overall_health"], model["critical_issues"],
+        model["tech_debt_hours"], model["agent_status"]["completed"],
+        model["agent_status"]["total"],
+    ))
+    return 0
+
+
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
@@ -131,14 +178,7 @@ def cmd_synthesize(args):
     except (OSError, ValueError) as exc:
         print("[ERROR] invalid state in {}: {}".format(args.cache, exc))
         return 2
-    if args.agents:
-        planned = [
-            token.strip() for token in args.agents.split(",") if token.strip()
-        ]
-    elif cached is not None and cached.data["agents_planned"]:
-        planned = cached.data["agents_planned"]
-    else:
-        planned = _planned_from_cache(args.cache)
+    planned = _resolve_planned(args, cached)
     if not planned:
         print("[ERROR] no agent results found in " + args.cache)
         return 2
@@ -156,22 +196,18 @@ def cmd_synthesize(args):
               "completion gate skipped")
 
     try:
-        results = providers.load_results(args.cache, planned, required=False)
+        results, completed = _load_synthesis_results(args, planned)
     except (OSError, ValueError) as exc:
         print("[ERROR] " + str(exc))
         return 2
-    completed = [agent_id for agent_id in planned if agent_id in results]
-    if not completed:
-        print("[ERROR] no agent results found in " + args.cache)
-        return 2
-    if not args.allow_partial and gate_known:
-        try:
-            pipeline.check_completion(data, effort, planned, completed)
-        except RuntimeError as exc:
-            print("[ERROR] " + str(exc))
-            print("[ERROR] report blocked; rerun with --allow-partial only if "
-                  "you accept the missing domains")
-            return 1
+    gate_error = _check_completion_gate(
+        data, effort, planned, completed, gate_known, args
+    )
+    if gate_error is not None:
+        print("[ERROR] " + str(gate_error))
+        print("[ERROR] report blocked; rerun with --allow-partial only if "
+              "you accept the missing domains")
+        return 1
 
     try:
         model = pipeline.synthesize(
@@ -181,22 +217,7 @@ def cmd_synthesize(args):
     except ValueError as exc:
         print("[ERROR] " + str(exc))
         return 2
-    if not args.out:
-        rendered = pipeline.render(model, args.format)
-        if "markdown" in rendered:
-            sys.stdout.write(rendered["markdown"])
-        if "json" in rendered:
-            print(json.dumps(rendered["json"], indent=2, sort_keys=True))
-        return 0
-    written = pipeline.write_outputs(model, args.out, fmt=args.format)
-    for path in written:
-        print("[SYNTHESIZE] wrote " + str(path))
-    print("[SYNTHESIZE] health={} critical={} debt={}h agents={}/{}".format(
-        model["overall_health"], model["critical_issues"],
-        model["tech_debt_hours"], model["agent_status"]["completed"],
-        model["agent_status"]["total"],
-    ))
-    return 0
+    return _emit_synthesis_output(model, args)
 
 
 def cmd_eval(args):

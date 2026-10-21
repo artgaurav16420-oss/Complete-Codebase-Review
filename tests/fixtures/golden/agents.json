@@ -1,0 +1,558 @@
+{
+  "agent_status": {
+    "completed": 7,
+    "da_verdict_summary": {
+      "CONFIRMED": 12,
+      "PLAUSIBLE": 2,
+      "REJECTED": 2
+    },
+    "total": 7
+  },
+  "baseline": {
+    "critical_count": 2,
+    "health_score": "RED",
+    "per_domain_open_findings": {
+      "Architecture": {
+        "critical": 0,
+        "high": 1
+      },
+      "Code Quality": {
+        "critical": 0,
+        "high": 2
+      },
+      "Documentation": {
+        "critical": 0,
+        "high": 0
+      },
+      "Security": {
+        "critical": 2,
+        "high": 1
+      },
+      "Standards": {
+        "critical": 0,
+        "high": 0
+      },
+      "Tech Debt": {
+        "critical": 0,
+        "high": 1
+      },
+      "Test Health": {
+        "critical": 0,
+        "high": 0
+      }
+    },
+    "per_domain_scores": {
+      "Architecture": 9.0,
+      "Code Quality": 7.2,
+      "Documentation": 9.8,
+      "Security": 4.8,
+      "Standards": 9.8,
+      "Tech Debt": 8.5,
+      "Test Health": 9.5
+    },
+    "re_review_count": 0,
+    "target": ".",
+    "task_count": 14,
+    "tech_debt_hours": 31.5,
+    "timestamp": "2026-01-01T00:00:00"
+  },
+  "codebase_size": {
+    "files": 0,
+    "languages": 0,
+    "modules": 0
+  },
+  "counts": {
+    "CRITICAL": 2,
+    "HIGH": 5,
+    "INFO": 0,
+    "LOW": 4,
+    "MEDIUM": 3
+  },
+  "critical_issues": 2,
+  "findings": [
+    {
+      "agent": "architecture",
+      "da_verdict": "CONFIRMED",
+      "domain": "Architecture",
+      "est_hours": 8.0,
+      "evidence": "auth.user -> notifications.email -> auth.user",
+      "finding": "[auth/user.py:1] — imports notifications.email, which imports auth.user back → the cycle fails at first import because get_user_profile is not defined yet",
+      "id": "F-001",
+      "severity": "HIGH",
+      "tags": [
+        "circular-dependency"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 2.0,
+      "evidence": "12 branches, nesting depth 4",
+      "finding": "[core/processor.py:1] — process_data has 12 branches across 4 nesting levels → untestable paths and regression risk in every change",
+      "id": "F-002",
+      "severity": "HIGH",
+      "tags": [
+        "high-cyclomatic-complexity"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 1.0,
+      "evidence": "no references in repository",
+      "finding": "[utils/helper.py:20] — unused_function is never called anywhere → dead code shipped and maintained without purpose",
+      "id": "F-003",
+      "severity": "LOW",
+      "tags": [
+        "dead-code"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "PLAUSIBLE",
+      "domain": "Code Quality",
+      "est_hours": 1.0,
+      "evidence": "duplicate report of the same import line",
+      "finding": "[app.py:2] — imports two unused names from auth.login → reviewer cannot tell which entry points are live",
+      "id": "F-004",
+      "severity": "MEDIUM",
+      "tags": [
+        "unused-import"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 3.0,
+      "evidence": "_fetch_items called once per iteration",
+      "finding": "[api/orders.py:14] — calls _fetch_items inside the order loop → one query per order, so cost grows linearly with order count",
+      "id": "F-005",
+      "severity": "HIGH",
+      "tags": [
+        "n-plus-one-query"
+      ]
+    },
+    {
+      "agent": "documentation",
+      "da_verdict": "CONFIRMED",
+      "domain": "Documentation",
+      "est_hours": 0.5,
+      "evidence": "no README in fixture repository",
+      "finding": "[auth/login.py:8] — no README or docstring states that AUTH_SECRET must be set before login works → callers discover the requirement only at runtime",
+      "id": "F-006",
+      "severity": "LOW",
+      "tags": [
+        "missing-api-documentation"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "CONFIRMED",
+      "domain": "Security",
+      "est_hours": 2.0,
+      "evidence": "literal assignment at module scope",
+      "finding": "[config.py:1] — DB_PASSWORD is a hardcoded credential in source → every repository reader obtains the database password",
+      "id": "F-007",
+      "severity": "CRITICAL",
+      "tags": [
+        "CWE-798",
+        "hardcoded-secret-config"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "CONFIRMED",
+      "domain": "Security",
+      "est_hours": 2.0,
+      "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
+      "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
+      "id": "F-008",
+      "severity": "HIGH",
+      "tags": [
+        "CWE-200"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "CONFIRMED",
+      "domain": "Security",
+      "est_hours": 3.0,
+      "evidence": "subprocess.run(\"tar ... \" + path, shell=True)",
+      "finding": "[auth/login.py:41] — concatenates caller input into a shell command with shell=True → arbitrary command execution as the service account",
+      "id": "F-009",
+      "severity": "CRITICAL",
+      "tags": [
+        "CWE-78",
+        "command-injection-shell-true"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "PLAUSIBLE",
+      "domain": "Security",
+      "est_hours": 1.0,
+      "evidence": "\"Hello, %s!\" % name",
+      "finding": "[utils/helper.py:19] — calls datetime.utcnow(), deprecated since Python 3.12 → emits DeprecationWarning and blocks a clean upgrade to future Python versions",
+      "id": "F-010",
+      "severity": "LOW",
+      "tags": [
+        "CWE-477"
+      ]
+    },
+    {
+      "agent": "standards",
+      "da_verdict": "CONFIRMED",
+      "domain": "Standards",
+      "est_hours": 1.0,
+      "evidence": "process_data(data, mode, flag, count, options)",
+      "finding": "[core/processor.py:1] — five positional parameters with no defaults → call sites are unreadable and argument order errors are silent",
+      "id": "F-011",
+      "severity": "LOW",
+      "tags": [
+        "long-parameter-list"
+      ]
+    },
+    {
+      "agent": "tech_debt",
+      "da_verdict": "CONFIRMED",
+      "domain": "Tech Debt",
+      "est_hours": 1.0,
+      "evidence": "open(path, \"r\") with no encoding argument",
+      "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
+      "id": "F-012",
+      "severity": "MEDIUM",
+      "tags": [
+        "missing-error-handling"
+      ]
+    },
+    {
+      "agent": "tech_debt",
+      "da_verdict": "CONFIRMED",
+      "domain": "Tech Debt",
+      "est_hours": 2.0,
+      "evidence": "user_id = hash(name)",
+      "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
+      "id": "F-013",
+      "severity": "HIGH",
+      "tags": [
+        "unstable-hash"
+      ]
+    },
+    {
+      "agent": "test_health",
+      "da_verdict": "CONFIRMED",
+      "domain": "Test Health",
+      "est_hours": 4.0,
+      "evidence": "6 tests cover login and ping only",
+      "finding": "[tests/test_auth.py:1] — delete_user and create_user have no tests → path-handling regressions ship without detection",
+      "id": "F-014",
+      "severity": "MEDIUM",
+      "tags": [
+        "missing-test-coverage"
+      ]
+    }
+  ],
+  "overall_health": "RED",
+  "overall_score": 8.4,
+  "per_domain_scores": [
+    {
+      "critical": 0,
+      "domain": "Architecture",
+      "high": 1,
+      "low": 0,
+      "medium": 0,
+      "score": 9.0
+    },
+    {
+      "critical": 0,
+      "domain": "Code Quality",
+      "high": 2,
+      "low": 1,
+      "medium": 1,
+      "score": 7.2
+    },
+    {
+      "critical": 0,
+      "domain": "Documentation",
+      "high": 0,
+      "low": 1,
+      "medium": 0,
+      "score": 9.8
+    },
+    {
+      "critical": 2,
+      "domain": "Security",
+      "high": 1,
+      "low": 1,
+      "medium": 0,
+      "score": 4.8
+    },
+    {
+      "critical": 0,
+      "domain": "Standards",
+      "high": 0,
+      "low": 1,
+      "medium": 0,
+      "score": 9.8
+    },
+    {
+      "critical": 0,
+      "domain": "Tech Debt",
+      "high": 1,
+      "low": 0,
+      "medium": 1,
+      "score": 8.5
+    },
+    {
+      "critical": 0,
+      "domain": "Test Health",
+      "high": 0,
+      "low": 0,
+      "medium": 1,
+      "score": 9.5
+    }
+  ],
+  "priority_areas": [
+    "Security",
+    "Code Quality",
+    "Tech Debt"
+  ],
+  "rejected": [
+    {
+      "agent": "security",
+      "da_verdict": "REJECTED",
+      "domain": "Security",
+      "est_hours": 1.0,
+      "evidence": "plain equality comparison",
+      "finding": "[auth/login.py:13] — password comparison might leak timing → timing side channel on credential checks",
+      "reject_reason": "weasel word: might",
+      "severity": "MEDIUM",
+      "tags": []
+    },
+    {
+      "agent": "security",
+      "da_verdict": "REJECTED",
+      "domain": "Security",
+      "est_hours": 2.0,
+      "evidence": "no location",
+      "finding": "Password handling is weak",
+      "reject_reason": "missing [file:line] anchor or missing arrow",
+      "severity": "HIGH",
+      "tags": []
+    }
+  ],
+  "roadmap": {
+    "1": [
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 2.0,
+        "evidence": "12 branches, nesting depth 4",
+        "finding": "[core/processor.py:1] — process_data has 12 branches across 4 nesting levels → untestable paths and regression risk in every change",
+        "id": "F-002",
+        "severity": "HIGH",
+        "tags": [
+          "high-cyclomatic-complexity"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "no references in repository",
+        "finding": "[utils/helper.py:20] — unused_function is never called anywhere → dead code shipped and maintained without purpose",
+        "id": "F-003",
+        "severity": "LOW",
+        "tags": [
+          "dead-code"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "PLAUSIBLE",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "duplicate report of the same import line",
+        "finding": "[app.py:2] — imports two unused names from auth.login → reviewer cannot tell which entry points are live",
+        "id": "F-004",
+        "severity": "MEDIUM",
+        "tags": [
+          "unused-import"
+        ]
+      },
+      {
+        "agent": "documentation",
+        "da_verdict": "CONFIRMED",
+        "domain": "Documentation",
+        "est_hours": 0.5,
+        "evidence": "no README in fixture repository",
+        "finding": "[auth/login.py:8] — no README or docstring states that AUTH_SECRET must be set before login works → callers discover the requirement only at runtime",
+        "id": "F-006",
+        "severity": "LOW",
+        "tags": [
+          "missing-api-documentation"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 2.0,
+        "evidence": "literal assignment at module scope",
+        "finding": "[config.py:1] — DB_PASSWORD is a hardcoded credential in source → every repository reader obtains the database password",
+        "id": "F-007",
+        "severity": "CRITICAL",
+        "tags": [
+          "CWE-798",
+          "hardcoded-secret-config"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 2.0,
+        "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
+        "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
+        "id": "F-008",
+        "severity": "HIGH",
+        "tags": [
+          "CWE-200"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 3.0,
+        "evidence": "subprocess.run(\"tar ... \" + path, shell=True)",
+        "finding": "[auth/login.py:41] — concatenates caller input into a shell command with shell=True → arbitrary command execution as the service account",
+        "id": "F-009",
+        "severity": "CRITICAL",
+        "tags": [
+          "CWE-78",
+          "command-injection-shell-true"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "PLAUSIBLE",
+        "domain": "Security",
+        "est_hours": 1.0,
+        "evidence": "\"Hello, %s!\" % name",
+        "finding": "[utils/helper.py:19] — calls datetime.utcnow(), deprecated since Python 3.12 → emits DeprecationWarning and blocks a clean upgrade to future Python versions",
+        "id": "F-010",
+        "severity": "LOW",
+        "tags": [
+          "CWE-477"
+        ]
+      },
+      {
+        "agent": "standards",
+        "da_verdict": "CONFIRMED",
+        "domain": "Standards",
+        "est_hours": 1.0,
+        "evidence": "process_data(data, mode, flag, count, options)",
+        "finding": "[core/processor.py:1] — five positional parameters with no defaults → call sites are unreadable and argument order errors are silent",
+        "id": "F-011",
+        "severity": "LOW",
+        "tags": [
+          "long-parameter-list"
+        ]
+      },
+      {
+        "agent": "tech_debt",
+        "da_verdict": "CONFIRMED",
+        "domain": "Tech Debt",
+        "est_hours": 1.0,
+        "evidence": "open(path, \"r\") with no encoding argument",
+        "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
+        "id": "F-012",
+        "severity": "MEDIUM",
+        "tags": [
+          "missing-error-handling"
+        ]
+      },
+      {
+        "agent": "tech_debt",
+        "da_verdict": "CONFIRMED",
+        "domain": "Tech Debt",
+        "est_hours": 2.0,
+        "evidence": "user_id = hash(name)",
+        "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
+        "id": "F-013",
+        "severity": "HIGH",
+        "tags": [
+          "unstable-hash"
+        ]
+      }
+    ],
+    "2": [
+      {
+        "agent": "architecture",
+        "da_verdict": "CONFIRMED",
+        "domain": "Architecture",
+        "est_hours": 8.0,
+        "evidence": "auth.user -> notifications.email -> auth.user",
+        "finding": "[auth/user.py:1] — imports notifications.email, which imports auth.user back → the cycle fails at first import because get_user_profile is not defined yet",
+        "id": "F-001",
+        "severity": "HIGH",
+        "tags": [
+          "circular-dependency"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 3.0,
+        "evidence": "_fetch_items called once per iteration",
+        "finding": "[api/orders.py:14] — calls _fetch_items inside the order loop → one query per order, so cost grows linearly with order count",
+        "id": "F-005",
+        "severity": "HIGH",
+        "tags": [
+          "n-plus-one-query"
+        ]
+      },
+      {
+        "agent": "test_health",
+        "da_verdict": "CONFIRMED",
+        "domain": "Test Health",
+        "est_hours": 4.0,
+        "evidence": "6 tests cover login and ping only",
+        "finding": "[tests/test_auth.py:1] — delete_user and create_user have no tests → path-handling regressions ship without detection",
+        "id": "F-014",
+        "severity": "MEDIUM",
+        "tags": [
+          "missing-test-coverage"
+        ]
+      }
+    ],
+    "3": []
+  },
+  "roadmap_hours": {
+    "1": 16.5,
+    "2": 15.0,
+    "3": 0
+  },
+  "target": ".",
+  "tech_debt": {
+    "by_domain": {
+      "Architecture": 8.0,
+      "Code Quality": 7.0,
+      "Documentation": 0.5,
+      "Security": 8.0,
+      "Standards": 1.0,
+      "Tech Debt": 3.0,
+      "Test Health": 4.0
+    },
+    "total_hours": 31.5,
+    "trend": "no previous baseline"
+  },
+  "tech_debt_hours": 31.5
+}

@@ -101,6 +101,57 @@ def _is_test_file(rel_parts, name):
     return name.endswith(TEST_FILE_SUFFIXES)
 
 
+def _process_file(full, rel_root, name, size, state):
+    state["files"] += 1
+    state["total_bytes"] += size
+    if _is_test_file(rel_root.parts, name):
+        state["test_files"] += 1
+
+    ext = full.suffix.lower()
+    language = LANGUAGE_BY_EXT.get(ext)
+    if language:
+        languages = state["languages"]
+        languages[language] = languages.get(language, 0) + 1
+    if ext in MARKUP_EXTS:
+        state["ui_files"] += 1
+
+    if name in DEPENDENCY_MANIFESTS:
+        state["dependency_manifests"].append(name)
+    if name in CONTAINER_MARKERS:
+        state["containers"].append(name)
+    if name in ENTRY_POINT_NAMES:
+        state["entry_points"].append(
+            str(Path(rel_root) / name).replace("\\", "/")
+        )
+
+    if rel_root.parts:
+        top = rel_root.parts[0]
+    else:
+        top = "."
+    top_dirs = state["top_dirs"]
+    top_dirs[top] = top_dirs.get(top, 0) + 1
+
+
+def _scan_tree(target, limit, state):
+    truncated = False
+    for root, dirs, names in os.walk(str(target)):
+        dirs[:] = sorted(d for d in dirs if d not in IGNORED_DIRS)
+        rel_root = Path(root).relative_to(target)
+        for name in sorted(names):
+            if limit and state["files"] >= limit:
+                truncated = True
+                break
+            full = Path(root) / name
+            try:
+                size = full.stat().st_size
+            except OSError:
+                continue
+            _process_file(full, rel_root, name, size, state)
+        if truncated:
+            break
+    return truncated
+
+
 def discover(target_dir, max_files=None):
     """Map a codebase into a discovery facts dict.
 
@@ -121,57 +172,29 @@ def discover(target_dir, max_files=None):
     limit = int(max_files) if max_files is not None else 0
     if max_files is not None and limit < 1:
         raise ValueError("max_files must be >= 1")
-    files = 0
-    total_bytes = 0
-    languages = {}
-    top_dirs = {}
-    dependency_manifests = []
-    containers = []
+    state = {
+        "files": 0,
+        "total_bytes": 0,
+        "languages": {},
+        "top_dirs": {},
+        "dependency_manifests": [],
+        "containers": [],
+        "entry_points": [],
+        "ui_files": 0,
+        "test_files": 0,
+    }
     database = []
-    entry_points = []
-    ui_files = 0
-    test_files = 0
-    truncated = False
+    truncated = _scan_tree(target, limit, state)
 
-    for root, dirs, names in os.walk(str(target)):
-        dirs[:] = sorted(d for d in dirs if d not in IGNORED_DIRS)
-        rel_root = Path(root).relative_to(target)
-        for name in sorted(names):
-            if limit and files >= limit:
-                truncated = True
-                break
-            full = Path(root) / name
-            try:
-                size = full.stat().st_size
-            except OSError:
-                continue
-            files += 1
-            total_bytes += size
-            if _is_test_file(rel_root.parts, name):
-                test_files += 1
-
-            ext = full.suffix.lower()
-            language = LANGUAGE_BY_EXT.get(ext)
-            if language:
-                languages[language] = languages.get(language, 0) + 1
-            if ext in MARKUP_EXTS:
-                ui_files += 1
-
-            if name in DEPENDENCY_MANIFESTS:
-                dependency_manifests.append(name)
-            if name in CONTAINER_MARKERS:
-                containers.append(name)
-            if name in ENTRY_POINT_NAMES:
-                entry_points.append(str(Path(rel_root) / name).replace("\\", "/"))
-
-            if rel_root.parts:
-                top = rel_root.parts[0]
-            else:
-                top = "."
-            top_dirs[top] = top_dirs.get(top, 0) + 1
-
-        if truncated:
-            break
+    files = state["files"]
+    total_bytes = state["total_bytes"]
+    languages = state["languages"]
+    top_dirs = state["top_dirs"]
+    dependency_manifests = state["dependency_manifests"]
+    containers = state["containers"]
+    entry_points = state["entry_points"]
+    ui_files = state["ui_files"]
+    test_files = state["test_files"]
 
     root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
     for marker in DB_MARKERS:

@@ -1,0 +1,620 @@
+{
+  "agent_status": {
+    "completed": 3,
+    "da_verdict_summary": {
+      "CONFIRMED": 15,
+      "PLAUSIBLE": 3
+    },
+    "total": 3
+  },
+  "baseline": {
+    "critical_count": 0,
+    "health_score": "YELLOW",
+    "per_domain_open_findings": {
+      "Architecture": {
+        "critical": 0,
+        "high": 2
+      },
+      "Code Quality": {
+        "critical": 0,
+        "high": 0
+      },
+      "Security": {
+        "critical": 0,
+        "high": 0
+      }
+    },
+    "per_domain_scores": {
+      "Architecture": 6.0,
+      "Code Quality": 6.8,
+      "Security": 8.8
+    },
+    "re_review_count": 0,
+    "target": ".",
+    "task_count": 18,
+    "tech_debt_hours": 75.0,
+    "timestamp": "2026-01-01T00:00:00"
+  },
+  "codebase_size": {
+    "files": 0,
+    "languages": 0,
+    "modules": 0
+  },
+  "counts": {
+    "CRITICAL": 0,
+    "HIGH": 2,
+    "INFO": 0,
+    "LOW": 6,
+    "MEDIUM": 10
+  },
+  "critical_issues": 0,
+  "findings": [
+    {
+      "agent": "architecture",
+      "da_verdict": "CONFIRMED",
+      "domain": "Architecture",
+      "est_hours": 24.0,
+      "evidence": "runmodes.py 2329 lines / 72 defs; copytree at 794 and 922; fsops._copy_atomic at 388 stages and os.replace",
+      "finding": "[fermi_organizer/runmodes.py:794] — copies adopted child folders with an unstaged shutil.copytree guarded only by except OSError → an interrupted copy leaves a partially written PDF that the next incremental run counts as organized",
+      "id": "F-001",
+      "severity": "HIGH",
+      "tags": [
+        "god-module",
+        "layering",
+        "duplicated-engine",
+        "non-atomic-write"
+      ]
+    },
+    {
+      "agent": "architecture",
+      "da_verdict": "CONFIRMED",
+      "domain": "Architecture",
+      "est_hours": 4.0,
+      "evidence": "refusal branch at 2218 skips supersede only; normalize call at 2274 precedes _incremental_place; probe with MAX_PLANNED_COPIES=1 renamed a folder while refusing",
+      "finding": "[fermi_organizer/runmodes.py:2274] — normalize_folder_names runs before the placement-refusal branch → a run that logs placement_refused=True and exits 2 still renames live folders",
+      "id": "F-002",
+      "severity": "HIGH",
+      "tags": [
+        "refusal-contract",
+        "state-ownership",
+        "partial-mutation"
+      ]
+    },
+    {
+      "agent": "architecture",
+      "da_verdict": "CONFIRMED",
+      "domain": "Architecture",
+      "est_hours": 6.0,
+      "evidence": "OCR.reset has one production caller (cli.py:123); tests reset by hand; runmodes reads OCR.scanned for ctx",
+      "finding": "[fermi_organizer/extraction.py:415] — run-scoped OCR singleton is reset only by cli.main → calling run_full/run_incremental twice in one process makes the second run's scanned list contain the first run's drawings",
+      "id": "F-003",
+      "severity": "MEDIUM",
+      "tags": [
+        "global-state",
+        "state-ownership",
+        "library-reuse"
+      ]
+    },
+    {
+      "agent": "architecture",
+      "da_verdict": "CONFIRMED",
+      "domain": "Architecture",
+      "est_hours": 8.0,
+      "evidence": "from .extraction import detect_watermark; _pdf_watermarked opens per call at fsops.py:66; called at 1189-1191",
+      "finding": "[fermi_organizer/fsops.py:16] — filesystem layer imports the PDF-extraction layer and retire_adopted_orphans reopens each candidate PDF → watermark facts are re-derived per incremental run and every path helper transitively imports pymupdf",
+      "id": "F-004",
+      "severity": "MEDIUM",
+      "tags": [
+        "layering-inversion",
+        "redundant-io"
+      ]
+    },
+    {
+      "agent": "architecture",
+      "da_verdict": "PLAUSIBLE",
+      "domain": "Architecture",
+      "est_hours": 6.0,
+      "evidence": "RunContext keys vs WorkbookContext keys; refresh_from_run keyword mapping at cli.py:72-83; except Exception at cli.py:86",
+      "finding": "[fermi_organizer/cli.py:71] — RunContext and WorkbookContext duplicate run state and are joined by a hand-written 16-keyword mapping under a blanket except Exception → a renamed key degrades to a warning with exit 0 and no workbook",
+      "id": "F-005",
+      "severity": "MEDIUM",
+      "tags": [
+        "schema-drift",
+        "duplicated-state",
+        "swallowed-error"
+      ]
+    },
+    {
+      "agent": "architecture",
+      "da_verdict": "PLAUSIBLE",
+      "domain": "Architecture",
+      "est_hours": 6.0,
+      "evidence": "15-value return at runmodes.py:1748-1751; unpack at 2158-2160 binds new_stems and org_stems adjacently",
+      "finding": "[fermi_organizer/runmodes.py:2158] — 15 heterogeneous values cross a function boundary as a bare positional tuple and are unpacked over three lines → reordering adjacent set-valued fields silently swaps the placement scope",
+      "id": "F-006",
+      "severity": "MEDIUM",
+      "tags": [
+        "implicit-contract",
+        "coupling",
+        "god-module"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 1.0,
+      "evidence": "only definition, docstring mention, tests/test_skip_guards.py:37 and the NODOC_ALLOWLIST reference it",
+      "finding": "[fermi_organizer/extraction.py:1923] — bom_task has no production caller and is a hand-copy of org_task → hardening applied to survey_task/org_task must be duplicated by hand while tests keep exercising the stale clone",
+      "id": "F-007",
+      "severity": "LOW",
+      "tags": [
+        "dead-code",
+        "duplication"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 2.0,
+      "evidence": "lines 1569-1584 vs 2120-2135 differ only in the _inner call",
+      "finding": "[fermi_organizer/runmodes.py:1569] — the 16-line acquire/abandon/release lock wrapper is duplicated verbatim in run_incremental at 2120 → a lock-loss fix applied to one copy leaves the other unlinking the stealer's lock or leaking it",
+      "id": "F-008",
+      "severity": "MEDIUM",
+      "tags": [
+        "duplication",
+        "lock-protocol"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 2.0,
+      "evidence": "31 of 34 lines identical; only return arity differs before the functions diverge",
+      "finding": "[fermi_organizer/runmodes.py:1024] — the relocation-follow and collision prelude is a 34-line copy of _copy_org_child_tree at 867 → a fix to the collision guard in one copy leaves the other adopting into an existing destination folder",
+      "id": "F-009",
+      "severity": "MEDIUM",
+      "tags": [
+        "duplication",
+        "adoption"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 3.0,
+      "evidence": "worker.join(timeout) at 257; if worker.is_alive() only appends an issue and memoizes an empty list; the in-source comment concedes the process may still finish",
+      "finding": "[fermi_organizer/extraction.py:258] — a timed-out OCR thread is left running with no cancel or second join while the caller closes the document → the in-flight textpage call fails against a closed document and each timed-out page leaves a thread and an orphaned Tesseract child",
+      "id": "F-010",
+      "severity": "MEDIUM",
+      "tags": [
+        "resource-leak",
+        "ocr"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 2.0,
+      "evidence": "False on any exception at 67-68 and 71-72; 1190 treats not-False as clean; 1202 unlinks the orphan",
+      "finding": "[fermi_organizer/fsops.py:71] — _pdf_watermarked returns False for both clean and probe-failed, and the retirement branch reads that False as proof the live copy is clean → an unreadable live copy lets a parked watermarked orphan be unlinked even though the live copy is watermarked too",
+      "id": "F-011",
+      "severity": "MEDIUM",
+      "tags": [
+        "exception-swallowing",
+        "data-loss"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 1.0,
+      "evidence": "ruff ARG001 at 534:30; body never references the name",
+      "finding": "[fermi_organizer/fsops.py:534] — acquire_run_lock never reads its dry_run parameter → the signature advertises a dry-run exemption the function does not implement",
+      "id": "F-012",
+      "severity": "LOW",
+      "tags": [
+        "unused-parameter"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 1.0,
+      "evidence": "1039-1043: identical predicate immediately repeated",
+      "finding": "[fermi_organizer/extraction.py:1042] — ITEM_RE.match is tested again one line after the identical test at 1039 already failed → the left half of the or is unreachable and the loop's stop rule lives in two places",
+      "id": "F-013",
+      "severity": "LOW",
+      "tags": [
+        "dead-code",
+        "parser"
+      ]
+    },
+    {
+      "agent": "code_quality",
+      "da_verdict": "CONFIRMED",
+      "domain": "Code Quality",
+      "est_hours": 4.0,
+      "evidence": "ruff C901 24 and PLR0915; copytree at 922 has no count check",
+      "finding": "[fermi_organizer/runmodes.py:1118] — _adopted_copy_estimate is 92 lines with complexity 24 and three accumulators mutated in one loop → a missed claimant branch translates directly into copies past MAX_PLANNED_COPIES with no post-copy check",
+      "id": "F-014",
+      "severity": "MEDIUM",
+      "tags": [
+        "complexity",
+        "fan-out-cap"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "CONFIRMED",
+      "domain": "Security",
+      "est_hours": 2.0,
+      "evidence": "TESSERACT_EXE is realpath+isfile validated; the which() result is not; verified shutil.which returns .\\tesseract.EXE with a planted file",
+      "finding": "[fermi_organizer/extraction.py:183] — the Tesseract fallback uses shutil.which(\"tesseract\"), which on Windows searches the current working directory first → a tesseract.exe planted in the launch directory is executed by the version probe and every OCR pass",
+      "id": "F-015",
+      "severity": "MEDIUM",
+      "tags": [
+        "CWE-426",
+        "CWE-427"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "CONFIRMED",
+      "domain": "Security",
+      "est_hours": 1.0,
+      "evidence": "only remaining .is_symlink() in the package; 8 other sites use _islink; verified LongPathsEnabled=0 behavior",
+      "finding": "[fermi_organizer/fsops.py:1161] — the orphan-retirement symlink guard calls opath.is_symlink() instead of the module's _islink() long-path helper → a symlinked parked orphan at a path of 260+ chars reads as not-a-symlink and is compared through and then unlinked",
+      "id": "F-016",
+      "severity": "LOW",
+      "tags": [
+        "CWE-59"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "CONFIRMED",
+      "domain": "Security",
+      "est_hours": 1.0,
+      "evidence": "release_run_lock only stops the heartbeat then unlinks; abandon_run_lock exists for the loss path",
+      "finding": "[fermi_organizer/fsops.py:675] — release_run_lock unlinks the lock path without re-reading the token it wrote → a run whose lock was stolen while paused deletes the new holder's live lock and leaves the tree unlocked for a third run",
+      "id": "F-017",
+      "severity": "LOW",
+      "tags": [
+        "CWE-367"
+      ]
+    },
+    {
+      "agent": "security",
+      "da_verdict": "PLAUSIBLE",
+      "domain": "Security",
+      "est_hours": 1.0,
+      "evidence": "constant staging name at 347; write_text at 349; fsops._staged_copy uses O_CREAT|O_EXCL plus an islink re-check",
+      "finding": "[fermi_report_xlsx.py:349] — the run-history sidecar is written through the fixed name <xlsx>.history.json.tmp with write_text and no O_EXCL or islink check → a pre-existing symlink at that name is followed and its target truncated with run-history JSON",
+      "id": "F-018",
+      "severity": "LOW",
+      "tags": [
+        "CWE-377",
+        "CWE-59"
+      ]
+    }
+  ],
+  "overall_health": "YELLOW",
+  "overall_score": 7.2,
+  "per_domain_scores": [
+    {
+      "critical": 0,
+      "domain": "Architecture",
+      "high": 2,
+      "low": 0,
+      "medium": 4,
+      "score": 6.0
+    },
+    {
+      "critical": 0,
+      "domain": "Code Quality",
+      "high": 0,
+      "low": 3,
+      "medium": 5,
+      "score": 6.8
+    },
+    {
+      "critical": 0,
+      "domain": "Security",
+      "high": 0,
+      "low": 3,
+      "medium": 1,
+      "score": 8.8
+    }
+  ],
+  "priority_areas": [
+    "Architecture",
+    "Code Quality",
+    "Security"
+  ],
+  "rejected": [],
+  "roadmap": {
+    "1": [
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "only definition, docstring mention, tests/test_skip_guards.py:37 and the NODOC_ALLOWLIST reference it",
+        "finding": "[fermi_organizer/extraction.py:1923] — bom_task has no production caller and is a hand-copy of org_task → hardening applied to survey_task/org_task must be duplicated by hand while tests keep exercising the stale clone",
+        "id": "F-007",
+        "severity": "LOW",
+        "tags": [
+          "dead-code",
+          "duplication"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 2.0,
+        "evidence": "lines 1569-1584 vs 2120-2135 differ only in the _inner call",
+        "finding": "[fermi_organizer/runmodes.py:1569] — the 16-line acquire/abandon/release lock wrapper is duplicated verbatim in run_incremental at 2120 → a lock-loss fix applied to one copy leaves the other unlinking the stealer's lock or leaking it",
+        "id": "F-008",
+        "severity": "MEDIUM",
+        "tags": [
+          "duplication",
+          "lock-protocol"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 2.0,
+        "evidence": "31 of 34 lines identical; only return arity differs before the functions diverge",
+        "finding": "[fermi_organizer/runmodes.py:1024] — the relocation-follow and collision prelude is a 34-line copy of _copy_org_child_tree at 867 → a fix to the collision guard in one copy leaves the other adopting into an existing destination folder",
+        "id": "F-009",
+        "severity": "MEDIUM",
+        "tags": [
+          "duplication",
+          "adoption"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 2.0,
+        "evidence": "False on any exception at 67-68 and 71-72; 1190 treats not-False as clean; 1202 unlinks the orphan",
+        "finding": "[fermi_organizer/fsops.py:71] — _pdf_watermarked returns False for both clean and probe-failed, and the retirement branch reads that False as proof the live copy is clean → an unreadable live copy lets a parked watermarked orphan be unlinked even though the live copy is watermarked too",
+        "id": "F-011",
+        "severity": "MEDIUM",
+        "tags": [
+          "exception-swallowing",
+          "data-loss"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "ruff ARG001 at 534:30; body never references the name",
+        "finding": "[fermi_organizer/fsops.py:534] — acquire_run_lock never reads its dry_run parameter → the signature advertises a dry-run exemption the function does not implement",
+        "id": "F-012",
+        "severity": "LOW",
+        "tags": [
+          "unused-parameter"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "1039-1043: identical predicate immediately repeated",
+        "finding": "[fermi_organizer/extraction.py:1042] — ITEM_RE.match is tested again one line after the identical test at 1039 already failed → the left half of the or is unreachable and the loop's stop rule lives in two places",
+        "id": "F-013",
+        "severity": "LOW",
+        "tags": [
+          "dead-code",
+          "parser"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 2.0,
+        "evidence": "TESSERACT_EXE is realpath+isfile validated; the which() result is not; verified shutil.which returns .\\tesseract.EXE with a planted file",
+        "finding": "[fermi_organizer/extraction.py:183] — the Tesseract fallback uses shutil.which(\"tesseract\"), which on Windows searches the current working directory first → a tesseract.exe planted in the launch directory is executed by the version probe and every OCR pass",
+        "id": "F-015",
+        "severity": "MEDIUM",
+        "tags": [
+          "CWE-426",
+          "CWE-427"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 1.0,
+        "evidence": "only remaining .is_symlink() in the package; 8 other sites use _islink; verified LongPathsEnabled=0 behavior",
+        "finding": "[fermi_organizer/fsops.py:1161] — the orphan-retirement symlink guard calls opath.is_symlink() instead of the module's _islink() long-path helper → a symlinked parked orphan at a path of 260+ chars reads as not-a-symlink and is compared through and then unlinked",
+        "id": "F-016",
+        "severity": "LOW",
+        "tags": [
+          "CWE-59"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
+        "est_hours": 1.0,
+        "evidence": "release_run_lock only stops the heartbeat then unlinks; abandon_run_lock exists for the loss path",
+        "finding": "[fermi_organizer/fsops.py:675] — release_run_lock unlinks the lock path without re-reading the token it wrote → a run whose lock was stolen while paused deletes the new holder's live lock and leaves the tree unlocked for a third run",
+        "id": "F-017",
+        "severity": "LOW",
+        "tags": [
+          "CWE-367"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "PLAUSIBLE",
+        "domain": "Security",
+        "est_hours": 1.0,
+        "evidence": "constant staging name at 347; write_text at 349; fsops._staged_copy uses O_CREAT|O_EXCL plus an islink re-check",
+        "finding": "[fermi_report_xlsx.py:349] — the run-history sidecar is written through the fixed name <xlsx>.history.json.tmp with write_text and no O_EXCL or islink check → a pre-existing symlink at that name is followed and its target truncated with run-history JSON",
+        "id": "F-018",
+        "severity": "LOW",
+        "tags": [
+          "CWE-377",
+          "CWE-59"
+        ]
+      }
+    ],
+    "2": [
+      {
+        "agent": "architecture",
+        "da_verdict": "CONFIRMED",
+        "domain": "Architecture",
+        "est_hours": 24.0,
+        "evidence": "runmodes.py 2329 lines / 72 defs; copytree at 794 and 922; fsops._copy_atomic at 388 stages and os.replace",
+        "finding": "[fermi_organizer/runmodes.py:794] — copies adopted child folders with an unstaged shutil.copytree guarded only by except OSError → an interrupted copy leaves a partially written PDF that the next incremental run counts as organized",
+        "id": "F-001",
+        "severity": "HIGH",
+        "tags": [
+          "god-module",
+          "layering",
+          "duplicated-engine",
+          "non-atomic-write"
+        ]
+      },
+      {
+        "agent": "architecture",
+        "da_verdict": "CONFIRMED",
+        "domain": "Architecture",
+        "est_hours": 4.0,
+        "evidence": "refusal branch at 2218 skips supersede only; normalize call at 2274 precedes _incremental_place; probe with MAX_PLANNED_COPIES=1 renamed a folder while refusing",
+        "finding": "[fermi_organizer/runmodes.py:2274] — normalize_folder_names runs before the placement-refusal branch → a run that logs placement_refused=True and exits 2 still renames live folders",
+        "id": "F-002",
+        "severity": "HIGH",
+        "tags": [
+          "refusal-contract",
+          "state-ownership",
+          "partial-mutation"
+        ]
+      },
+      {
+        "agent": "architecture",
+        "da_verdict": "CONFIRMED",
+        "domain": "Architecture",
+        "est_hours": 6.0,
+        "evidence": "OCR.reset has one production caller (cli.py:123); tests reset by hand; runmodes reads OCR.scanned for ctx",
+        "finding": "[fermi_organizer/extraction.py:415] — run-scoped OCR singleton is reset only by cli.main → calling run_full/run_incremental twice in one process makes the second run's scanned list contain the first run's drawings",
+        "id": "F-003",
+        "severity": "MEDIUM",
+        "tags": [
+          "global-state",
+          "state-ownership",
+          "library-reuse"
+        ]
+      },
+      {
+        "agent": "architecture",
+        "da_verdict": "CONFIRMED",
+        "domain": "Architecture",
+        "est_hours": 8.0,
+        "evidence": "from .extraction import detect_watermark; _pdf_watermarked opens per call at fsops.py:66; called at 1189-1191",
+        "finding": "[fermi_organizer/fsops.py:16] — filesystem layer imports the PDF-extraction layer and retire_adopted_orphans reopens each candidate PDF → watermark facts are re-derived per incremental run and every path helper transitively imports pymupdf",
+        "id": "F-004",
+        "severity": "MEDIUM",
+        "tags": [
+          "layering-inversion",
+          "redundant-io"
+        ]
+      },
+      {
+        "agent": "architecture",
+        "da_verdict": "PLAUSIBLE",
+        "domain": "Architecture",
+        "est_hours": 6.0,
+        "evidence": "RunContext keys vs WorkbookContext keys; refresh_from_run keyword mapping at cli.py:72-83; except Exception at cli.py:86",
+        "finding": "[fermi_organizer/cli.py:71] — RunContext and WorkbookContext duplicate run state and are joined by a hand-written 16-keyword mapping under a blanket except Exception → a renamed key degrades to a warning with exit 0 and no workbook",
+        "id": "F-005",
+        "severity": "MEDIUM",
+        "tags": [
+          "schema-drift",
+          "duplicated-state",
+          "swallowed-error"
+        ]
+      },
+      {
+        "agent": "architecture",
+        "da_verdict": "PLAUSIBLE",
+        "domain": "Architecture",
+        "est_hours": 6.0,
+        "evidence": "15-value return at runmodes.py:1748-1751; unpack at 2158-2160 binds new_stems and org_stems adjacently",
+        "finding": "[fermi_organizer/runmodes.py:2158] — 15 heterogeneous values cross a function boundary as a bare positional tuple and are unpacked over three lines → reordering adjacent set-valued fields silently swaps the placement scope",
+        "id": "F-006",
+        "severity": "MEDIUM",
+        "tags": [
+          "implicit-contract",
+          "coupling",
+          "god-module"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 3.0,
+        "evidence": "worker.join(timeout) at 257; if worker.is_alive() only appends an issue and memoizes an empty list; the in-source comment concedes the process may still finish",
+        "finding": "[fermi_organizer/extraction.py:258] — a timed-out OCR thread is left running with no cancel or second join while the caller closes the document → the in-flight textpage call fails against a closed document and each timed-out page leaves a thread and an orphaned Tesseract child",
+        "id": "F-010",
+        "severity": "MEDIUM",
+        "tags": [
+          "resource-leak",
+          "ocr"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 4.0,
+        "evidence": "ruff C901 24 and PLR0915; copytree at 922 has no count check",
+        "finding": "[fermi_organizer/runmodes.py:1118] — _adopted_copy_estimate is 92 lines with complexity 24 and three accumulators mutated in one loop → a missed claimant branch translates directly into copies past MAX_PLANNED_COPIES with no post-copy check",
+        "id": "F-014",
+        "severity": "MEDIUM",
+        "tags": [
+          "complexity",
+          "fan-out-cap"
+        ]
+      }
+    ],
+    "3": []
+  },
+  "roadmap_hours": {
+    "1": 14.0,
+    "2": 61.0,
+    "3": 0
+  },
+  "target": ".",
+  "tech_debt": {
+    "by_domain": {
+      "Architecture": 54.0,
+      "Code Quality": 16.0,
+      "Security": 5.0
+    },
+    "total_hours": 75.0,
+    "trend": "no previous baseline"
+  },
+  "tech_debt_hours": 75.0
+}
