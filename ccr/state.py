@@ -192,7 +192,7 @@ def merge_resume(state, cache_dir):
     on_disk = sorted(
         p.stem[len("phase_"):]
         for p in cache.glob("phase_*.json")
-        if p.stem != "phase_"
+        if p.stem.lower() != "phase_"
     )
     completed = set(state.data["agents_completed"])
     return [agent_id for agent_id in on_disk if agent_id not in completed]

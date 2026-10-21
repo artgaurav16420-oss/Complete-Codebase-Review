@@ -173,10 +173,14 @@ def cmd_synthesize(args):
                   "you accept the missing domains")
             return 1
 
-    model = pipeline.synthesize(
-        data, results, planned, completed=completed, target=target,
-        facts=facts,
-    )
+    try:
+        model = pipeline.synthesize(
+            data, results, planned, completed=completed, target=target,
+            facts=facts,
+        )
+    except ValueError as exc:
+        print("[ERROR] " + str(exc))
+        return 2
     if not args.out:
         rendered = pipeline.render(model, args.format)
         if "markdown" in rendered:

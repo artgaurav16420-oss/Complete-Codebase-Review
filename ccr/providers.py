@@ -143,7 +143,8 @@ class RecordedProvider:
             stem = path.stem
             if stem.startswith("phase_"):
                 stem = stem[len("phase_"):]
-            ids.append(stem)
+            if stem not in ids:
+                ids.append(stem)
         return ids
 
     def get(self, agent_id):

@@ -6,10 +6,10 @@ section names and table headers exactly as written here.
 
 
 def _fmt_number(value):
-    number = float(value)
+    number = round(float(value), 2)
     if number == int(number):
         return str(int(number))
-    return str(round(number, 2))
+    return str(number)
 
 
 def fmt_hours(value):
