@@ -26,25 +26,25 @@ if (-not (Test-Path $SkillFile)) {
 }
 
 if ($SkillOk) {
-    # --- Check 2a: '🔧 Environment Variables' section ---
-    if (Select-String -Path $SkillFile -Pattern '🔧 Environment Variables' -SimpleMatch -Quiet) {
-        Write-Host "[SUCCESS] '🔧 Environment Variables' section found"
+    # --- Check 2a: 'Environment Variables' section (ASCII match) ---
+    if (Select-String -Path $SkillFile -Pattern 'Environment Variables' -SimpleMatch -Quiet) {
+        Write-Host "[SUCCESS] 'Environment Variables' section found"
     } else {
-        Write-Host "[ERROR] '🔧 Environment Variables' section missing from SKILL.md"
+        Write-Host "[ERROR] 'Environment Variables' section missing from SKILL.md"
         $Fail = 1
     }
 
-    if (Select-String -Path $SkillFile -Pattern '💾 Checkpointing' -SimpleMatch -Quiet) {
-        Write-Host "[SUCCESS] '💾 Checkpointing' section found"
+    if (Select-String -Path $SkillFile -Pattern 'Checkpointing' -SimpleMatch -Quiet) {
+        Write-Host "[SUCCESS] 'Checkpointing' section found"
     } else {
-        Write-Host "[ERROR] '💾 Checkpointing' section missing from SKILL.md"
+        Write-Host "[ERROR] 'Checkpointing' section missing from SKILL.md"
         $Fail = 1
     }
 
-    if (Select-String -Path $SkillFile -Pattern '⚡ Quick Mode' -SimpleMatch -Quiet) {
-        Write-Host "[SUCCESS] '⚡ Quick Mode' section found"
+    if (Select-String -Path $SkillFile -Pattern 'Quick Mode' -SimpleMatch -Quiet) {
+        Write-Host "[SUCCESS] 'Quick Mode' section found"
     } else {
-        Write-Host "[ERROR] '⚡ Quick Mode' section missing from SKILL.md"
+        Write-Host "[ERROR] 'Quick Mode' section missing from SKILL.md"
         $Fail = 1
     }
 
