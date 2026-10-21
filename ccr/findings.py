@@ -87,6 +87,11 @@ def review_findings(raw_findings, floors=None):
     Returns:
         tuple: (kept, rejected). Rejected findings carry `reject_reason`
         and a REJECTED DA verdict.
+
+    Assumes:
+        ``raw_findings`` are normalised dicts from agent reports. Mutates
+        copies, never the caller's list. Severity/verdict values outside
+        the enums are coerced (LOW / QUESTIONABLE) rather than rejected.
     """
     kept = []
     rejected = []
@@ -157,7 +162,7 @@ def dedup(findings):
 def assign_ids(findings):
     """Assign stable F-001 style identifiers in place and return the list."""
     for index, item in enumerate(findings, start=1):
-        item["id"] = "F-{:03d}".format(index)
+        item["id"] = f"F-{index:03d}"
     return findings
 
 
@@ -285,11 +290,9 @@ def _trend(baseline, total_hours):
         if previous is not None:
             if previous > 0:
                 change = round((total_hours - previous) / previous * 100)
-                trend = "{}h -> {}h ({}%)".format(
-                    previous, total_hours, "{:+d}".format(change)
-                )
+                trend = f"{previous}h -> {total_hours}h ({change:+d}%)"
             else:
-                trend = "{}h -> {}h".format(previous, total_hours)
+                trend = f"{previous}h -> {total_hours}h"
     return trend
 
 
