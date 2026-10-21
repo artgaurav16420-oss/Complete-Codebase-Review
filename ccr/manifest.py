@@ -55,6 +55,12 @@ def validate(data):
         raise ValueError("duplicate agent id in manifest")
     if len(agent_ids) < 12:
         raise ValueError("manifest must define at least 12 agents")
+    base_agents = data.get("base_agents", [])
+    if not base_agents:
+        raise ValueError("manifest must define base_agents")
+    for agent_id in base_agents:
+        if agent_id not in agent_ids:
+            raise ValueError("unknown base agent: " + agent_id)
 
     var_names = [v["name"] for v in data["env_vars"]]
     if len(var_names) != len(set(var_names)):

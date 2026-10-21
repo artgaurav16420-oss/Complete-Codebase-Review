@@ -52,6 +52,17 @@ class TestMarkdown(unittest.TestCase):
     def test_passes_validator(self):
         self.assertEqual(validate_markdown_output(self.md), [])
 
+    def test_internal_validator_accepts(self):
+        self.assertEqual(report_mod.validate_markdown(self.md), [])
+
+    def test_internal_validator_rejects_missing_section(self):
+        broken = self.md.replace("## Agent Status", "")
+        self.assertTrue(report_mod.validate_markdown(broken))
+
+    def test_internal_validator_rejects_non_numeric_score(self):
+        broken = self.md.replace("| Security |", "| Security | N/A |", 1)
+        self.assertTrue(report_mod.validate_markdown(broken))
+
     def test_has_required_sections(self):
         for section in (
             "## Executive Summary", "## Per-Domain Scores",

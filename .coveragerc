@@ -1,5 +1,8 @@
 [run]
-source = .
+source =
+    ccr
+    tools
+    install.py
 omit =
     .skills/*
     .code-review-cache/*

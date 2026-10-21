@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   schedule:
@@ -62,7 +63,7 @@ jobs:
         run: python -m ccr eval
 
       - name: Run all unittest suites under coverage
-        run: python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" -v
+        run: python -m coverage run -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Coverage report
         run: python -m coverage report

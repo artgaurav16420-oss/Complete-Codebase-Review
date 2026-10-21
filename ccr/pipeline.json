@@ -164,6 +164,15 @@
       "skill": "*(general)*"
     }
   ],
+  "base_agents": [
+    "architecture",
+    "code_quality",
+    "security",
+    "tech_debt",
+    "documentation",
+    "standards",
+    "process_quality"
+  ],
   "severities": [
     "CRITICAL",
     "HIGH",

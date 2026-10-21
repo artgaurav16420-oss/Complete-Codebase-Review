@@ -56,10 +56,8 @@ fi
 
 echo "[INFO] Running all unit tests..."
 if "$PYTHON" -c "import coverage" >/dev/null 2>&1; then
-    "$PYTHON" -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" || FAIL=1
-    if [ "$FAIL" -eq 0 ]; then
-        "$PYTHON" -m coverage report
-    fi
+    "$PYTHON" -m coverage run -m unittest discover -s tests -p "test_*.py" || FAIL=1
+    "$PYTHON" -m coverage report || FAIL=1
 else
     echo "[INFO] coverage not available — running without coverage"
     "$PYTHON" -m unittest discover -s tests -p "test_*.py" || FAIL=1

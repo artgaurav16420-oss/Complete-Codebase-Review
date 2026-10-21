@@ -100,7 +100,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `agent_by_id` | `agent_by_id(manifest, agent_id)` | Agent dict or `None` |
 | `report_name` | `report_name(manifest, agent_id)` | Report label; raises `ValueError` for unknown ids |
 | `env_var_names` | `env_var_names(manifest)` | List of env-var names |
-| `floor_for` | `floor_for(manifest, key)` | Float hours, or `None` when no floor is defined |
+| `floor_for` | `floor_for(manifest, key)` | Float hours; defaults to `1.0` when no floor is defined |
 
 ### `ccr.discovery`
 
@@ -109,7 +109,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `discover` | `discover(target_dir, max_files=None)` | Facts dict (`files`, `bytes`, `languages`, `top_dirs`, `ci`, `truncated`, ...) |
 | `active_agents` | `active_agents(manifest, facts)` | Agent ids whose dimensions apply; test health only when tests exist |
 | `select_agents` | `select_agents(manifest, facts, effort='max', override=None)` | Planned ids; precedence is override > Quick Mode > dimensions |
-| `plan` | `plan(manifest, target_dir, effort='max', override=None, max_files=None)` | `{target, facts, agents, effort}` |
+| `plan` | `plan(manifest, target_dir, effort='max', override=None, max_files=None)` | `{target, effort, quick_mode, timeout_sec, agents, agent_names, facts}` |
 
 `discover` raises `ValueError` when the target is not a directory or
 `max_files < 1`.
@@ -165,13 +165,13 @@ All return values are plain dicts/lists unless stated otherwise.
 
 | Function | Signature | Returns |
 |----------|-----------|---------|
-| `check_completion` | `check_completion(manifest, effort, planned, completed)` | `None`; raises `RuntimeError` below the gate |
+| `check_completion` | `check_completion(manifest, effort, planned, completed)` | Float completion ratio; raises `RuntimeError` below the gate |
 | `synthesize` | `synthesize(manifest, results, planned, completed=None, target='', facts=None, baseline=None, timestamp=None)` | Report model |
 | `render` | `render(model, fmt='markdown')` | `{"markdown": ...}`, `{"json": ...}`, or both |
 | `write_outputs` | `write_outputs(model, out_path, fmt='markdown')` | Written paths |
 | `load_spec` | `load_spec(path)` | Benchmark spec (list or object) |
-| `evaluate` | `evaluate(model, expected_issues)` | `(coverage, precision, matched, total)` |
-| `run_eval` | `run_eval(manifest, fixtures_dir, expected_path)` | Eval dict for the CLI |
+| `evaluate` | `evaluate(model, expected_issues)` | Dict: `expected`, `matched`, `missing`, `coverage`, `precision`, `findings_total`, `findings_matched`, `rejected` |
+| `run_eval` | `run_eval(manifest, fixtures_dir, expected_path)` | Tuple `(model, score)` |
 
 ### `ccr.cli` and `ccr.fileio`
 

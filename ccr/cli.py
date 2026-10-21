@@ -109,11 +109,14 @@ def cmd_record(args):
 def _planned_from_cache(cache):
     """Infer planned agent ids from phase_*.json files in the cache."""
     ids = []
-    for path in sorted(Path(cache).glob("phase_*.json")):
+    for path in sorted(Path(cache).glob("*.json")):
         stem = path.stem
+        if stem in ("ccr-state", "ccr-baseline"):
+            continue
         if stem.startswith("phase_"):
             stem = stem[len("phase_"):]
-        ids.append(stem)
+        if stem and stem not in ids:
+            ids.append(stem)
     return ids
 
 
@@ -156,6 +159,8 @@ def _emit_synthesis_output(model, args):
         if "markdown" in rendered:
             sys.stdout.write(rendered["markdown"])
         if "json" in rendered:
+            if "markdown" in rendered:
+                print("---CCR_JSON_START---")
             print(json.dumps(rendered["json"], indent=2, sort_keys=True))
         return 0
     written = pipeline.write_outputs(model, args.out, fmt=args.format)
@@ -186,7 +191,7 @@ def cmd_synthesize(args):
 
     effort = args.effort
     if effort is None:
-        effort = cached.data["effort"] if cached is not None else "max"
+        effort = cached.data.get("effort", "max") if cached is not None else "max"
     target = args.target or (cached.data["target_dir"] if cached else args.cache)
     facts = cached.data.get("facts") if cached is not None else None
     gate_known = bool(args.agents) or (

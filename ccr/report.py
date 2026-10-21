@@ -188,6 +188,63 @@ def render_markdown(model):
     return "\n".join(sections).rstrip() + "\n"
 
 
+REQUIRED_SECTIONS = (
+    "## Executive Summary",
+    "## Per-Domain Scores",
+    "## Detailed Findings",
+    "## Improvement Roadmap",
+    "## Tech Debt Summary",
+    "## Agent Status",
+)
+
+
+def _num(text):
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def validate_markdown(md):
+    """Return a list of contract violations in a rendered report.
+
+    Enforces the section contract, numeric domain scores, and the tech-debt
+    reconciliation the orchestrator rules require.
+    """
+    errors = []
+    for section in REQUIRED_SECTIONS:
+        if section not in md:
+            errors.append("missing section: " + section)
+
+    for line in md.splitlines():
+        if line.startswith("|") and (" N/A " in line or " n/a " in line):
+            errors.append("non-numeric domain score: " + line.strip())
+
+    total = None
+    domain_sum = 0.0
+    found_domain = False
+    for line in md.splitlines():
+        if line.startswith("**Total estimated**"):
+            total = _num(line.split(":", 1)[1].strip().split(" ")[0])
+        if "**By domain**" in line:
+            for part in line.split(":", 1)[1].split(";"):
+                if ":" not in part:
+                    continue
+                value = _num(part.rsplit(":", 1)[1].strip().rstrip("h"))
+                if value is None:
+                    errors.append("non-numeric domain hours: " + part.strip())
+                else:
+                    domain_sum += value
+                    found_domain = True
+    if total is not None and found_domain and abs(domain_sum - total) > 0.5:
+        errors.append(
+            "tech-debt mismatch: by-domain {:.2f}h != total {:.2f}h".format(
+                domain_sum, total
+            )
+        )
+    return errors
+
+
 def render_json(model):
     """Render the machine-readable report contract."""
     findings = []
