@@ -401,6 +401,13 @@ class TestPlannedFromCache(unittest.TestCase):
             (cache / "ccr-state.json").write_text("{}", encoding="utf-8")
             self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
 
+    def test_accepts_bom_prefixed_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            payload = json.dumps({"findings": []}).encode("utf-8")
+            (cache / "security.json").write_bytes(b"\xef\xbb\xbf" + payload)
+            self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
+
     def test_accepts_phase_prefixed_results(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp)

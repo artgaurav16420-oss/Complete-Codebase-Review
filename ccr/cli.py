@@ -117,7 +117,7 @@ def _planned_from_cache(cache):
         if stem in ("ccr-state", "ccr-baseline"):
             continue
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             continue
         if not isinstance(data, dict) or not isinstance(

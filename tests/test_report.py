@@ -165,9 +165,19 @@ class TestJson(unittest.TestCase):
                           "est_hours", "da_verdict"):
                 self.assertIn(field, item)
 
-    def test_rejected_findings_are_in_json(self):
-        self.assertIn("rejected", self.data)
-        self.assertIsInstance(self.data["rejected"], list)
+    def test_rejected_findings_are_serialized(self):
+        model = pipeline.synthesize(
+            _manifest(),
+            {"security": result("security", [
+                {"finding": "[a.py:1] \u2014 flaw \u2192 failure might occur",
+                 "severity": "LOW", "est_hours": 1},
+            ])},
+            ["security"], target="rejected",
+        )
+        data = report_mod.render_json(model)
+        self.assertEqual(len(data["rejected"]), 1)
+        self.assertEqual(data["rejected"][0]["da_verdict"], "REJECTED")
+        self.assertIn("reject_reason", data["rejected"][0])
 
 
 class TestFormatting(unittest.TestCase):

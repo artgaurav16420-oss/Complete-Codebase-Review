@@ -656,7 +656,7 @@ After the local review loop exits cleanly, run the full test suite:
      with ruff/flake8 section), run the configured linter
    - Type checking: if a type checker config exists (`pyrightconfig.json`,
      `mypy.ini`, or pyproject.toml with mypy/pyright section), run it
-   - Compliance/smoke: if a compliance script exists (e.g. `test_compliance.py`,
+   - Compliance/smoke: if a compliance script exists (e.g. `compliance_test.py`,
      `test.sh`, `Test-Windows.ps1`), run it and confirm it passes
 4. If any tests or CI gates fail:
    - Report failures to the user

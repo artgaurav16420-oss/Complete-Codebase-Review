@@ -166,7 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run compliance tests
-        run: python tests/test_compliance.py
+        run: python tests/compliance_test.py
       - name: Run unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
 ```

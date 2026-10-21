@@ -14,7 +14,7 @@ def _cc(node):
                               ast.Lambda)):
             continue
         if isinstance(child, (ast.If, ast.For, ast.While, ast.ExceptHandler,
-                              ast.With, ast.Assert, ast.comprehension)):
+                              ast.Assert, ast.comprehension)):
             count += 1
         elif isinstance(child, ast.BoolOp):
             count += len(child.values) - 1

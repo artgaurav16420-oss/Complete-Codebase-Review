@@ -24,6 +24,14 @@ class TestComplexity(unittest.TestCase):
     def test_boolop_counts_operands(self):
         self.assertEqual(cc("def f(a, b):\n    return a and b\n"), 2)
 
+    def test_with_does_not_add_complexity(self):
+        source = (
+            "def f(path):\n"
+            "    with open(path) as handle:\n"
+            "        return handle.read()\n"
+        )
+        self.assertEqual(cc(source), 1)
+
     def test_nested_def_not_double_counted(self):
         source = (
             "def outer(x):\n"
