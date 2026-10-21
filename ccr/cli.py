@@ -36,17 +36,16 @@ def cmd_plan(args):
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
     facts = plan["facts"]
-    print("[PLAN] {} - {} files, {} languages, {} test files".format(
-        plan["target"], facts["files"], len(facts["languages"]),
-        facts["test_files"],
-    ))
+    print(
+        f"[PLAN] {plan['target']} - {facts['files']} files, "
+        f"{len(facts['languages'])} languages, {facts['test_files']} test files"
+    )
     mode = "quick" if plan["quick_mode"] else "full"
-    print("[PLAN] effort={} ({}) timeout={}s".format(
-        args.effort, mode, plan["timeout_sec"]
-    ))
-    print("[PLAN] agents ({}): {}".format(
-        len(plan["agents"]), ", ".join(plan["agents"])
-    ))
+    print(f"[PLAN] effort={args.effort} ({mode}) timeout={plan['timeout_sec']}s")
+    print(
+        f"[PLAN] agents ({len(plan['agents'])}): "
+        f"{', '.join(plan['agents'])}"
+    )
     if facts["truncated"]:
         print("[WARN] file cap reached; results cover a sample only")
     return 0
@@ -83,7 +82,7 @@ def cmd_record(args):
     try:
         current = state.State.load(state_path)
     except (OSError, ValueError) as exc:
-        print("[ERROR] invalid state in {}: {}".format(cache, exc))
+        print(f"[ERROR] invalid state in {cache}: {exc}")
         return 2
     archived = _archive_results(args.out)
     paths = providers.write_prompts(
@@ -101,9 +100,9 @@ def cmd_record(args):
     current.plan_agents(plan["agents"])
     current.set_step("phase2:awaiting_agent_results")
     if archived:
-        print("[RECORD] archived {} stale result file(s)".format(archived))
-    print("[RECORD] wrote {} prompts to {}".format(len(paths), cache))
-    print("[RECORD] run them, then: python -m ccr synthesize --in {}".format(cache))
+        print(f"[RECORD] archived {archived} stale result file(s)")
+    print(f"[RECORD] wrote {len(paths)} prompts to {cache}")
+    print(f"[RECORD] run them, then: python -m ccr synthesize --in {cache}")
     return 0
 
 
@@ -162,11 +161,13 @@ def _emit_synthesis_output(model, args):
     written = pipeline.write_outputs(model, args.out, fmt=args.format)
     for path in written:
         print("[SYNTHESIZE] wrote " + str(path))
-    print("[SYNTHESIZE] health={} critical={} debt={}h agents={}/{}".format(
-        model["overall_health"], model["critical_issues"],
-        model["tech_debt_hours"], model["agent_status"]["completed"],
-        model["agent_status"]["total"],
-    ))
+    print(
+        f"[SYNTHESIZE] health={model['overall_health']} "
+        f"critical={model['critical_issues']} "
+        f"debt={model['tech_debt_hours']}h "
+        f"agents={model['agent_status']['completed']}/"
+        f"{model['agent_status']['total']}"
+    )
     return 0
 
 
@@ -176,7 +177,7 @@ def cmd_synthesize(args):
     try:
         cached = _cache_state(args.cache)
     except (OSError, ValueError) as exc:
-        print("[ERROR] invalid state in {}: {}".format(args.cache, exc))
+        print(f"[ERROR] invalid state in {args.cache}: {exc}")
         return 2
     planned = _resolve_planned(args, cached)
     if not planned:
@@ -237,15 +238,18 @@ def cmd_eval(args):
     if args.json:
         print(json.dumps(score, indent=2, sort_keys=True))
     else:
-        print("[EVAL] coverage={:.0%} precision={:.0%} matched={}/{} findings={}".format(
-            score["coverage"], score["precision"], score["matched"],
-            score["expected"], score["findings_total"],
-        ))
+        print(
+            f"[EVAL] coverage={score['coverage']:.0%} "
+            f"precision={score['precision']:.0%} "
+            f"matched={score['matched']}/{score['expected']} "
+            f"findings={score['findings_total']}"
+        )
         if "verified_precision" in score:
-            print("[EVAL] verified_precision={:.0%} known_false_positives={}".format(
-                score["verified_precision"],
-                len(score["known_false_positives"]),
-            ))
+            print(
+                f"[EVAL] verified_precision={score['verified_precision']:.0%} "
+                f"known_false_positives="
+                f"{len(score['known_false_positives'])}"
+            )
         if score["missing"]:
             print("[EVAL] missing: " + ", ".join(score["missing"]))
     if score["missing"]:

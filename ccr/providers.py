@@ -57,12 +57,12 @@ def build_prompt(agent, target, skill_dir, manifest_version=""):
 
 def prompt_path(out_dir, agent_id):
     """Return the path of an agent prompt file."""
-    return Path(out_dir) / "phase_{}.prompt.md".format(agent_id)
+    return Path(out_dir) / f"phase_{agent_id}.prompt.md"
 
 
 def result_path(out_dir, agent_id):
     """Return the path of an agent result file."""
-    return Path(out_dir) / "phase_{}.json".format(agent_id)
+    return Path(out_dir) / f"phase_{agent_id}.json"
 
 
 def write_prompts(manifest, plan, out_dir, skill_dir=""):
@@ -89,9 +89,9 @@ def load_result(path, agent_id):
         raise ValueError("agent result missing findings list: " + str(path))
     for index, finding in enumerate(findings):
         if not isinstance(finding, dict):
-            raise ValueError("finding {} must be an object: {}".format(index, path))
+            raise ValueError(f"finding {index} must be an object: {path}")
         if "finding" not in finding:
-            raise ValueError("finding {} missing text: {}".format(index, path))
+            raise ValueError(f"finding {index} missing text: {path}")
     data.setdefault("agent", agent_id)
     return data
 

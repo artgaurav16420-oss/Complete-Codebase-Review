@@ -24,6 +24,10 @@ def check_completion(manifest, effort, planned, completed):
 
     Raises:
         RuntimeError: When the ratio is below the configured threshold.
+
+    Assumes:
+        ``planned`` contains active domains only; callers must exclude
+        LOW-ACTIVITY domains before invoking the gate.
     """
     if not planned:
         return 0.0
@@ -35,9 +39,8 @@ def check_completion(manifest, effort, planned, completed):
     threshold = manifest["thresholds"][key]
     if ratio < threshold:
         raise RuntimeError(
-            "insufficient agent coverage: {}/{} ({:.0%}) below {:.0%}".format(
-                len(completed), len(planned), ratio, threshold
-            )
+            f"insufficient agent coverage: {len(completed)}/{len(planned)} "
+            f"({ratio:.0%}) below {threshold:.0%}"
         )
     return ratio
 

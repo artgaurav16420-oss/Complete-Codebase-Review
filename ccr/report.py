@@ -40,9 +40,8 @@ def _executive_summary(model):
         "| Field | Value |",
         "|-------|-------|",
         f"| **Overall Health** | {model['overall_health']} |",
-        "| **Codebase Size** | {} files, {} languages, {} top-level modules |".format(
-            files, languages, modules
-        ),
+        f"| **Codebase Size** | {files} files, {languages} languages, "
+        f"{modules} top-level modules |",
         f"| **Critical Issues** | {model['critical_issues']} |",
         f"| **Tech Debt** | {fmt_hours(model['tech_debt_hours'])} |",
         f"| **Priority Areas** | {priority} |",
@@ -61,18 +60,15 @@ def _per_domain(model):
     ]
     for row in model["per_domain_scores"]:
         lines.append(
-            "| {domain} | {score} | {critical} | {high} | {medium} | {low} |".format(
-                **row
-            )
+            f"| {row['domain']} | {row['score']} | {row['critical']} | "
+            f"{row['high']} | {row['medium']} | {row['low']} |"
         )
     if not model["per_domain_scores"]:
         lines.append("| none | 10.0 | 0 | 0 | 0 | 0 |")
     counts = model["counts"]
     lines.append(
-        "| **Overall** | {} | {} | {} | {} | {} |".format(
-            model["overall_score"], counts["CRITICAL"], counts["HIGH"],
-            counts["MEDIUM"], counts["LOW"],
-        )
+        f"| **Overall** | {model['overall_score']} | {counts['CRITICAL']} | "
+        f"{counts['HIGH']} | {counts['MEDIUM']} | {counts['LOW']} |"
     )
     lines.append("")
     return "\n".join(lines)
@@ -88,13 +84,9 @@ def _findings(model):
     ]
     for item in model["findings"]:
         lines.append(
-            "| {} | {} | {} | {} | {} |".format(
-                _cell(item["finding"]),
-                item["severity"],
-                item.get("domain", ""),
-                fmt_hours(item.get("est_hours", 0)),
-                item["da_verdict"],
-            )
+            f"| {_cell(item['finding'])} | {item['severity']} | "
+            f"{item.get('domain', '')} | {fmt_hours(item.get('est_hours', 0))} | "
+            f"{item['da_verdict']} |"
         )
     if not model["findings"]:
         lines.append(
@@ -116,7 +108,7 @@ def _roadmap(model):
     for phase in (1, 2, 3):
         hours = model["roadmap_hours"][phase]
         lines.append(
-            "### {} (estimated: {} hours)".format(titles[phase], hours)
+            f"### {titles[phase]} (estimated: {hours} hours)"
         )
         lines.append("")
         items = model["roadmap"][phase]
@@ -152,7 +144,7 @@ def _agent_status(model):
     """Render the Agent Status section."""
     status = model["agent_status"]
     tally = ", ".join(
-        "{} {}".format(count, verdict)
+        f"{count} {verdict}"
         for verdict, count in status["da_verdict_summary"].items()
     )
     lines = [
@@ -173,9 +165,8 @@ def _rejected(model):
         lines.append("None.")
     for item in model["rejected"]:
         lines.append(
-            "- {} (reason: {})".format(
-                _cell(item.get("finding", "")), item.get("reject_reason", "")
-            )
+            f"- {_cell(item.get('finding', ''))} "
+            f"(reason: {item.get('reject_reason', '')})"
         )
     lines.append("")
     return "\n".join(lines)
@@ -216,7 +207,7 @@ def render_json(model):
     roadmap = {}
     for phase in (1, 2, 3):
         items = model["roadmap"][phase]
-        roadmap["phase_{}".format(phase)] = {
+        roadmap[f"phase_{phase}"] = {
             "title": titles[phase],
             "estimated_hours": model["roadmap_hours"][phase],
             "tasks": [
