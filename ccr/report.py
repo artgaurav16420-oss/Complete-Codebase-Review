@@ -294,9 +294,8 @@ def render_json(model):
     """Render the machine-readable report contract."""
     findings = []
     for item in model["findings"]:
-        severity = item["severity"]
-        if severity == "INFO":
-            severity = "LOW"
+        raw_severity = item["severity"]
+        severity = "LOW" if raw_severity == "INFO" else raw_severity
         findings.append({
             "id": item["id"],
             "finding": item["finding"],
@@ -304,6 +303,8 @@ def render_json(model):
             "domain": item.get("domain", ""),
             "est_hours": item.get("est_hours", 0),
             "da_verdict": item["da_verdict"],
+            "finding_type": item.get("finding_type", ""),
+            "no_fix": raw_severity == "INFO",
         })
     titles = {1: "Now", 2: "Next Quarter", 3: "Backlog"}
     roadmap = {}

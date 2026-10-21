@@ -209,6 +209,18 @@ class TestUiFileClassification(unittest.TestCase):
             discovery._process_file(f, Path("src"), "app.css", 7, state)
             self.assertEqual(state["ui_files"], 1)
 
+    def test_theme_under_src_is_ui(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "app.css"
+            f.write_text("body{}", encoding="utf-8")
+            state = self._state()
+            discovery._process_file(
+                f, Path("src") / "theme", "app.css", 7, state
+            )
+            self.assertEqual(state["ui_files"], 1)
+
 
 class TestScanTree(unittest.TestCase):
     def test_limit_one(self):

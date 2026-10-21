@@ -378,19 +378,6 @@
       },
       {
         "agent": "code_quality",
-        "da_verdict": "CONFIRMED",
-        "domain": "Code Quality",
-        "est_hours": 1.0,
-        "evidence": "no references in repository",
-        "finding": "[utils/helper.py:20] — unused_function is never called anywhere → dead code shipped and maintained without purpose",
-        "id": "F-003",
-        "severity": "LOW",
-        "tags": [
-          "dead-code"
-        ]
-      },
-      {
-        "agent": "code_quality",
         "da_verdict": "PLAUSIBLE",
         "domain": "Code Quality",
         "est_hours": 1.0,
@@ -400,6 +387,19 @@
         "severity": "MEDIUM",
         "tags": [
           "unused-import"
+        ]
+      },
+      {
+        "agent": "tech_debt",
+        "da_verdict": "CONFIRMED",
+        "domain": "Tech Debt",
+        "est_hours": 1.0,
+        "evidence": "open(path, \"r\") with no encoding argument",
+        "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
+        "id": "F-012",
+        "severity": "MEDIUM",
+        "tags": [
+          "missing-error-handling"
         ]
       },
       {
@@ -413,6 +413,19 @@
         "severity": "LOW",
         "tags": [
           "missing-api-documentation"
+        ]
+      },
+      {
+        "agent": "code_quality",
+        "da_verdict": "CONFIRMED",
+        "domain": "Code Quality",
+        "est_hours": 1.0,
+        "evidence": "no references in repository",
+        "finding": "[utils/helper.py:20] — unused_function is never called anywhere → dead code shipped and maintained without purpose",
+        "id": "F-003",
+        "severity": "LOW",
+        "tags": [
+          "dead-code"
         ]
       },
       {
@@ -439,19 +452,6 @@
         "severity": "LOW",
         "tags": [
           "long-parameter-list"
-        ]
-      },
-      {
-        "agent": "tech_debt",
-        "da_verdict": "CONFIRMED",
-        "domain": "Tech Debt",
-        "est_hours": 1.0,
-        "evidence": "open(path, \"r\") with no encoding argument",
-        "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
-        "id": "F-012",
-        "severity": "MEDIUM",
-        "tags": [
-          "missing-error-handling"
         ]
       }
     ],

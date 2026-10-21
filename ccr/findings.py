@@ -193,18 +193,29 @@ def roadmap_eligible(finding):
 OVERLAP_THRESHOLD = 0.6
 OVERLAP_STOPWORDS = frozenset({
     "the", "and", "for", "with", "that", "this", "from", "into", "when",
-    "then", "than", "not", "are", "was", "were", "has", "have", "its",
+    "then", "than", "are", "was", "were", "has", "have", "its",
 })
 
 
+NEGATIONS = frozenset({"not", "no", "never", "without"})
+
+
 def _failure_tokens(finding):
+    """Return (tokens, negations) for the failure-mode text."""
     parts = anchor_parts(finding.get("finding", ""))
     text = parts[3] if parts else str(finding.get("finding", ""))
-    tokens = re.findall(r"[a-z0-9_]+", text.lower())
-    return frozenset(
-        token for token in tokens
-        if token not in OVERLAP_STOPWORDS and len(token) > 2
+    words = re.findall(r"[a-z0-9_]+", text.lower())
+    negations = frozenset(
+        words[index + 1]
+        for index, word in enumerate(words[:-1])
+        if word in NEGATIONS
     )
+    tokens = frozenset(
+        token for token in words
+        if token not in OVERLAP_STOPWORDS and token not in NEGATIONS
+        and len(token) > 2
+    )
+    return tokens, negations
 
 
 def find_overlaps(findings):
@@ -224,10 +235,12 @@ def find_overlaps(findings):
     for _file, items in sorted(by_file.items()):
         groups = []
         for item in items:
-            tokens = _failure_tokens(item)
+            tokens, negations = _failure_tokens(item)
             joined = False
             for group in groups:
                 if not tokens or not group["tokens"]:
+                    continue
+                if negations != group["negations"]:
                     continue
                 inter = len(tokens & group["tokens"])
                 union = len(tokens | group["tokens"])
@@ -237,7 +250,10 @@ def find_overlaps(findings):
                     joined = True
                     break
             if not joined:
-                groups.append({"members": [item], "tokens": tokens})
+                groups.append({
+                    "members": [item], "tokens": tokens,
+                    "negations": negations,
+                })
         clusters.extend(
             group["members"] for group in groups if len(group["members"]) > 1
         )
@@ -248,6 +264,7 @@ def _overlap_representative(members):
     return sorted(
         members,
         key=lambda item: (
+            0 if roadmap_eligible(item) else 1,
             SEVERITY_WEIGHT[normalize_severity(item.get("severity"))],
             -_as_hours(item.get("est_hours")),
             item.get("id", ""),
@@ -304,6 +321,11 @@ def place_roadmap(findings):
             phases[2].append(item)
         else:
             phases[3].append(item)
+    quick_wins.sort(key=lambda item: (
+        SEVERITY_WEIGHT[normalize_severity(item.get("severity"))],
+        _as_hours(item.get("est_hours")),
+        item.get("id", ""),
+    ))
     used = 0.0
     for item in quick_wins:
         hours = _as_hours(item.get("est_hours"))
@@ -508,8 +530,10 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
             "hours": round(sum(_as_hours(m.get("est_hours")) for m in members), 2),
         })
     for members in find_large_file_clusters(findings):
-        if any(id(item) in merged_ids for item in members):
+        remaining = [item for item in members if id(item) not in merged_ids]
+        if len(remaining) < 2:
             continue
+        members = remaining
         rep = _overlap_representative(members)
         overlap_candidates.append({
             "file": anchor_parts(rep.get("finding", ""))[0],

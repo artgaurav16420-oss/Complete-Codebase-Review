@@ -168,6 +168,22 @@ class TestJson(unittest.TestCase):
                           "est_hours", "da_verdict"):
                 self.assertIn(field, item)
 
+    def test_design_note_is_marked_no_fix(self):
+        model = pipeline.synthesize(
+            _manifest(),
+            {"security": result("security", [
+                {"finding": "[a.py:1] \u2014 sync and async mirror \u2192 "
+                 "deliberate design", "severity": "INFO", "est_hours": 0,
+                 "finding_type": "design_note",
+                 "da_verdict": "CONFIRMED"},
+            ])},
+            ["security"], target="design",
+        )
+        data = report_mod.render_json(model)
+        item = data["findings"][0]
+        self.assertTrue(item["no_fix"])
+        self.assertEqual(item["finding_type"], "design_note")
+
     def test_overlap_candidates_in_json(self):
         self.assertIn("overlap_candidates", self.data)
         self.assertIsInstance(self.data["overlap_candidates"], list)
