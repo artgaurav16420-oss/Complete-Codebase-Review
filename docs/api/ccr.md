@@ -85,6 +85,102 @@ takes the floor, and an explicit estimate is raised to at least half the floor
 The Organizer benchmark in `tests/fixtures/organizer/` is a real recorded run
 with human-verified precision; see its README.
 
+## Function reference
+
+Signatures below are the public (non-underscore) functions of each module.
+All return values are plain dicts/lists unless stated otherwise.
+
+### `ccr.manifest`
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `load` | `load(path=None)` | Manifest dict; raises `ValueError` on missing/invalid JSON |
+| `validate` | `validate(data)` | `None`; raises `ValueError` with the first schema problem |
+| `agent_ids` | `agent_ids(manifest)` | List of agent ids in manifest order |
+| `agent_by_id` | `agent_by_id(manifest, agent_id)` | Agent dict or `None` |
+| `report_name` | `report_name(manifest, agent_id)` | Report label; raises `ValueError` for unknown ids |
+| `env_var_names` | `env_var_names(manifest)` | List of env-var names |
+| `floor_for` | `floor_for(manifest, key)` | Float hours, or `None` when no floor is defined |
+
+### `ccr.discovery`
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `discover` | `discover(target_dir, max_files=None)` | Facts dict (`files`, `bytes`, `languages`, `top_dirs`, `ci`, `truncated`, ...) |
+| `active_agents` | `active_agents(manifest, facts)` | Agent ids whose dimensions apply; test health only when tests exist |
+| `select_agents` | `select_agents(manifest, facts, effort='max', override=None)` | Planned ids; precedence is override > Quick Mode > dimensions |
+| `plan` | `plan(manifest, target_dir, effort='max', override=None, max_files=None)` | `{target, facts, agents, effort}` |
+
+`discover` raises `ValueError` when the target is not a directory or
+`max_files < 1`.
+
+### `ccr.state`
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `new_state` | `new_state(target_dir, skill_dir='', effort='max')` | Fresh state dict |
+| `merge_resume` | `merge_resume(state, cache_dir)` | Agent ids present on disk but not recorded as completed |
+| `State.load` | `State.load(path)` | `State` or `None` when absent |
+| `State.create` | `State.create(path, target_dir, skill_dir, effort)` | New `State`, persisted |
+| `State.save` | `state.save()` | `None`; atomic write via temp file + `os.replace` |
+| `State.record_agent` | `state.record_agent(agent_id, status='completed')` | `None` |
+| `State.threshold_passed` | `state.threshold_passed(manifest)` | `bool`; enforces the 75%/66% completion gate |
+
+### `ccr.findings`
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `normalize_severity` | `normalize_severity(value)` | One of `CRITICAL/HIGH/MEDIUM/LOW/INFO`; unknown -> `LOW` |
+| `normalize_verdict` | `normalize_verdict(value)` | One of `CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED/DA-ESCALATION`; unknown -> `QUESTIONABLE` |
+| `anchor_parts` | `anchor_parts(finding_text)` | `(file, line, flaw, failure_mode)` or `None` |
+| `weasel_hits` | `weasel_hits(text)` | Matched weasel phrases |
+| `review_findings` | `review_findings(raw_findings, floors=None)` | `(kept, rejected)` after mechanical DA checks |
+| `dedup` | `dedup(findings)` | Deduplicated list |
+| `assign_ids` | `assign_ids(findings)` | Same list with `F-001` style ids |
+| `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED` is never eligible |
+| `place_roadmap` | `place_roadmap(findings)` | `{1: [...], 2: [...], 3: [...]}` |
+| `aggregate` | `aggregate(findings, rejected, agents_planned, agents_completed, target='', baseline=None)` | Report model consumed by the renderers |
+
+### `ccr.report`
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `fmt_hours` | `fmt_hours(value)` | `2` -> `"2h"`, `2.5` -> `"2.5h"` |
+| `fmt_hours_long` | `fmt_hours_long(value)` | `2` -> `"2 hours"` |
+| `render_markdown` | `render_markdown(model)` | Markdown string |
+| `render_json` | `render_json(model)` | JSON-ready dict; `INFO` is mapped to `LOW` |
+
+### `ccr.providers`
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `build_prompt` | `build_prompt(agent, target, skill_dir, manifest_version='')` | Prompt text |
+| `prompt_path` | `prompt_path(out_dir, agent_id)` | `Path` to `phase_<id>.prompt.md` |
+| `result_path` | `result_path(out_dir, agent_id)` | `Path` to `phase_<id>.json` |
+| `write_prompts` | `write_prompts(manifest, plan, out_dir, skill_dir='')` | Written paths |
+| `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |
+| `load_results` | `load_results(out_dir, agent_ids, required=True)` | `{agent_id: result}`; `phase_<id>.json` wins over `<id>.json` |
+
+### `ccr.pipeline`
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `check_completion` | `check_completion(manifest, effort, planned, completed)` | `None`; raises `RuntimeError` below the gate |
+| `synthesize` | `synthesize(manifest, results, planned, completed=None, target='', facts=None, baseline=None, timestamp=None)` | Report model |
+| `render` | `render(model, fmt='markdown')` | `{"markdown": ...}`, `{"json": ...}`, or both |
+| `write_outputs` | `write_outputs(model, out_path, fmt='markdown')` | Written paths |
+| `load_spec` | `load_spec(path)` | Benchmark spec (list or object) |
+| `evaluate` | `evaluate(model, expected_issues)` | `(coverage, precision, matched, total)` |
+| `run_eval` | `run_eval(manifest, fixtures_dir, expected_path)` | Eval dict for the CLI |
+
+### `ccr.cli` and `ccr.fileio`
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `main` | `main(argv=None)` | CLI entry; returns exit code |
+| `build_parser` | `build_parser()` | `argparse` parser for `plan/record/synthesize/eval` |
+| `write_text` | `write_text(path, text, newline='\n')` | UTF-8 write with explicit newline (3.9-compatible) |
+
 ## Tests
 
 `tests/test_manifest.py`, `test_discovery.py`, `test_state.py`,
