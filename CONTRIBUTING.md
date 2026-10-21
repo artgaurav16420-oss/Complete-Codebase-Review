@@ -10,7 +10,7 @@ This project uses **only Python stdlib**. No `requirements.txt`, no `pip install
 
 ```bash
 # Compliance tests
-python tests/test_compliance.py
+python tests/compliance_test.py
 
 # All test suites
 python -m unittest discover -s tests -p "test_*.py" -v
@@ -39,7 +39,7 @@ python tools/generate.py --check  # CI mode: fail if stale
 
 | Suite | Framework | When to use |
 |-------|-----------|-------------|
-| `test_compliance.py` | `unittest.TestCase` | SKILL.md string-matching checks |
+| `compliance_test.py` | `unittest.TestCase` | SKILL.md string-matching checks |
 | All other test files | `unittest.TestCase` | All new tests |
 
 **New test files must use `unittest.TestCase`.**
@@ -65,7 +65,7 @@ The version string is defined in **three places** and must stay in sync:
 - `pyproject.toml`
 - `CHANGELOG.md`
 
-The compliance test `test_compliance.py:test_version_sources_stay_in_sync` enforces this. If you bump the version in one file, update all three before committing.
+The compliance test `compliance_test.py:test_version_sources_stay_in_sync` enforces this. If you bump the version in one file, update all three before committing.
 
 ## Code Style
 
@@ -112,7 +112,7 @@ This pre-fills the conventional commit format when you run `git commit`.
 
 Before submitting:
 
-- [ ] `python tests/test_compliance.py` passes
+- [ ] `python tests/compliance_test.py` passes
 - [ ] `python -m unittest discover -s tests -p "test_*.py"` passes
 - [ ] No new dependencies introduced
 - [ ] New test files use `unittest.TestCase`

@@ -55,7 +55,7 @@
     },
     {
       "name": "CODE_REVIEW_AUTO_APPROVE",
-      "default": "low",
+      "default": "none",
       "description": "Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all."
     },
     {

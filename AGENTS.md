@@ -12,8 +12,8 @@ keeps generated docs in sync. Zero runtime deps, stdlib only, Python >= 3.9.
 | Command | Purpose |
 |---------|---------|
 | `python -m unittest discover -s tests -p "test_*.py"` | Full suite (prints its own count, <2s). Run after **any** change. |
-| `python tests/test_compliance.py` | SKILL.md compliance only |
-| `python tests/test_review_compliance.py` | `skills/review/SKILL.md` compliance only |
+| `python tests/compliance_test.py` | SKILL.md compliance only |
+| `python tests/review_compliance_test.py` | `skills/review/SKILL.md` compliance only |
 | `python -m ccr eval` | Score fixtures; defaults to the synthetic dummy_repo set. Organizer benchmark: `--fixtures tests/fixtures/organizer/agents --expected tests/fixtures/organizer/expected.json` |
 | `python -m ccr plan .` | Discovery facts + selected agents (`--json`, `--effort min`) |
 | `python tools/generate.py` / `--check` | Rewrite / verify generated docs and checksum |

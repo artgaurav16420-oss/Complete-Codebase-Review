@@ -249,7 +249,7 @@ repository root.
 /complete-codebase-review --help
 
 # Or run the compliance test suite:
-python3 tests/test_compliance.py
+python3 tests/compliance_test.py
 ```
 
 ---
@@ -272,7 +272,7 @@ Customize execution with environment variables:
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 | `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
 | `CODE_REVIEW_SANITIZE` | `true` | Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping). |
-| `CODE_REVIEW_AUTO_APPROVE` | `low` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
+| `CODE_REVIEW_AUTO_APPROVE` | `none` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
 | `CODE_REVIEW_FORMAT` | `markdown` | Output format. `markdown` = human-readable report, `json` = machine-parseable report, `both` = both formats. |
 
 <!-- END GENERATED: readme-env-vars -->
@@ -369,8 +369,8 @@ Yes. Run in Quick Mode (`CODE_REVIEW_EFFORT=min`) for fast checks. The exit code
 We welcome contributions of all sizes. Here's how to get started:
 
 1. **Fork** the repo and create a feature branch.
-2. **Write tests** for any new functionality. Test suites migrated to Python — see [test_compliance.py](tests/test_compliance.py) and [test_install.py](tests/test_install.py).
-3. **Run the test suite**: `python3 tests/test_compliance.py`
+2. **Write tests** for any new functionality. Test suites migrated to Python — see [compliance_test.py](tests/compliance_test.py) and [test_install.py](tests/test_install.py).
+3. **Run the test suite**: `python3 tests/compliance_test.py`
 4. **Submit a PR** with a clear description of the change and any related issue.
 
 ### Development
@@ -381,7 +381,7 @@ git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git
 cd Complete-Codebase-Review
 
 # Run compliance tests
-python3 tests/test_compliance.py
+python3 tests/compliance_test.py
 
 # Run bash test suite
 ./test.sh
@@ -397,7 +397,7 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 
 | Suite | Command | Coverage |
 |-------|---------|----------|
-| Python compliance | `python3 tests/test_compliance.py` | SKILL.md contract checks |
+| Python compliance | `python3 tests/compliance_test.py` | SKILL.md contract checks |
 | Full suite | `python3 -m unittest discover -s tests -p "test_*.py"` | Runs in under a second |
 | Install tests | `python3 tests/test_install.py` | Installer and uninstaller |
 | Pipeline core | `python3 tests/test_pipeline_core.py` | Gates, synthesis, rendering |

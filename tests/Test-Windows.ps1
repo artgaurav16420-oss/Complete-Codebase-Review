@@ -86,12 +86,14 @@ if ($LASTEXITCODE -eq 0) {
 
 # --- Check 7: Run compliance tests ---
 Write-Host '[INFO] Running compliance tests...'
-python (Join-Path $ScriptDir 'test_compliance.py')
+python (Join-Path $ScriptDir 'compliance_test.py')
 $complianceExit = $LASTEXITCODE
-if ($complianceExit -eq 0) {
+python (Join-Path $ScriptDir 'review_compliance_test.py')
+$reviewComplianceExit = $LASTEXITCODE
+if ($complianceExit -eq 0 -and $reviewComplianceExit -eq 0) {
     Write-Host '[SUCCESS] Compliance tests passed'
 } else {
-    Write-Host "[ERROR] Compliance tests failed (exit code: $complianceExit)"
+    Write-Host "[ERROR] Compliance tests failed (exit codes: $complianceExit, $reviewComplianceExit)"
     $Fail = 1
 }
 

@@ -47,7 +47,10 @@ def cmd_plan(args):
         f"{', '.join(plan['agents'])}"
     )
     if facts["truncated"]:
-        print("[WARN] file cap reached; results cover a sample only")
+        print(
+            "[WARN] file cap reached; results cover a sample only",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -114,7 +117,7 @@ def _planned_from_cache(cache):
         if stem in ("ccr-state", "ccr-baseline"):
             continue
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             continue
         if not isinstance(data, dict) or not isinstance(
@@ -205,8 +208,11 @@ def cmd_synthesize(args):
         cached is not None and bool(cached.data["agents_planned"])
     )
     if not gate_known:
-        print("[WARN] planned agent set unknown (no state, no --agents); "
-              "completion gate skipped")
+        print(
+            "[WARN] planned agent set unknown (no state, no --agents); "
+            "completion gate skipped",
+            file=sys.stderr,
+        )
 
     try:
         results, completed = _load_synthesis_results(args, planned)

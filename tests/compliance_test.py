@@ -5,7 +5,7 @@ requirements against the SKILL.md file. Uses unittest as the canonical
 test framework (see ADR-003).
 
 Usage:
-    python tests/test_compliance.py
+    python tests/compliance_test.py
 """
 import os
 import re

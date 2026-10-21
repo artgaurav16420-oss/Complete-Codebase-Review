@@ -35,7 +35,7 @@ Customize the execution with these environment variables:
 | `CODE_REVIEW_FILTER` | `all` | Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report. |
 | `REVIEW_MAX_ITERATIONS` | `3` | Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates. |
 | `CODE_REVIEW_SANITIZE` | `true` | Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping). |
-| `CODE_REVIEW_AUTO_APPROVE` | `low` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
+| `CODE_REVIEW_AUTO_APPROVE` | `none` | Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all. |
 | `CODE_REVIEW_FORMAT` | `markdown` | Output format. `markdown` = human-readable report, `json` = machine-parseable report, `both` = both formats. |
 
 <!-- END GENERATED: skill-env-vars -->
@@ -656,7 +656,7 @@ After the local review loop exits cleanly, run the full test suite:
      with ruff/flake8 section), run the configured linter
    - Type checking: if a type checker config exists (`pyrightconfig.json`,
      `mypy.ini`, or pyproject.toml with mypy/pyright section), run it
-   - Compliance/smoke: if a compliance script exists (e.g. `test_compliance.py`,
+   - Compliance/smoke: if a compliance script exists (e.g. `compliance_test.py`,
      `test.sh`, `Test-Windows.ps1`), run it and confirm it passes
 4. If any tests or CI gates fail:
    - Report failures to the user
@@ -774,8 +774,8 @@ After the PR is live on GitHub, enter a user-ping-driven external review loop:
 
 5. **Apply fixes** with per-issue approval based on `CODE_REVIEW_AUTO_APPROVE`:
    - `all`: Auto-apply all findings (legacy behavior)
-   - `low` (default): Auto-apply LOW/MEDIUM; present CRITICAL/HIGH to user
-   - `none`: Present all findings to user for approval
+   - `low`: Auto-apply LOW/MEDIUM; present CRITICAL/HIGH to user
+   - `none` (default): Present all findings to user for approval
    
    For user-presented findings:
    ```text
