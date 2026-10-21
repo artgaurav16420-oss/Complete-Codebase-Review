@@ -165,6 +165,10 @@ class TestJson(unittest.TestCase):
                           "est_hours", "da_verdict"):
                 self.assertIn(field, item)
 
+    def test_rejected_findings_are_in_json(self):
+        self.assertIn("rejected", self.data)
+        self.assertIsInstance(self.data["rejected"], list)
+
 
 class TestFormatting(unittest.TestCase):
     """Hour formatting helpers."""

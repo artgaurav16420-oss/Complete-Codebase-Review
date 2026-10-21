@@ -114,5 +114,23 @@ class TestRecordedProvider(unittest.TestCase):
         self.assertEqual(result["agent"], "security")
 
 
+class TestLoadResult(unittest.TestCase):
+    def test_accepts_utf8_bom(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "phase_security.json"
+            path.write_bytes(
+                b"\xef\xbb\xbf" + json.dumps({"findings": []}).encode("utf-8")
+            )
+            result = providers.load_result(path, "security")
+            self.assertEqual(result["agent"], "security")
+
+    def test_rejects_non_object(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "phase_security.json"
+            path.write_text("[1, 2]", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                providers.load_result(path, "security")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -320,6 +320,7 @@ def render_json(model):
             for row in model["per_domain_scores"]
         },
         "findings": findings,
+        "rejected": model["rejected"],
         "roadmap": roadmap,
         "tech_debt": model["tech_debt"],
         "agent_status": model["agent_status"],

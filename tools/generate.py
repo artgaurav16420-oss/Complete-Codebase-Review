@@ -111,20 +111,21 @@ def render_text(path, manifest):
         text = replace_block(
             text, "skill-specialist-agents", specialist_section(manifest)
         )
-        text = re.sub(
+        text = _sub_once(
             r"(?m)^version:\s*\S+$",
             "version: " + manifest["version"],
             text,
-            count=1,
+            name,
         )
     elif name == "README.md":
         text = replace_block(text, "readme-env-vars", env_table_section(manifest))
     elif name == "help.md":
         text = replace_block(text, "help-env-vars", env_bullets(manifest))
-        text = re.sub(
+        text = _sub_once(
             r"(?m)^(> \*\*Version\*\*: Synced with SKILL\.md v)\S+",
             lambda match: match.group(1) + manifest["version"],
             text,
+            name,
         )
     elif name == "orchestrator-rules.md":
         text = replace_block(
@@ -133,15 +134,23 @@ def render_text(path, manifest):
     return text
 
 
+def _sub_once(pattern, repl, text, label):
+    """Apply a single substitution or fail loudly when the pattern is absent."""
+    new_text, count = re.subn(pattern, repl, text, count=1)
+    if count != 1:
+        raise RuntimeError("pattern not found while rendering " + label)
+    return new_text
+
+
 def render_pyproject(manifest):
     """Return pyproject.toml text with the manifest version applied."""
     path = REPO_ROOT / "pyproject.toml"
     text = path.read_text(encoding="utf-8")
-    return re.sub(
+    return _sub_once(
         r'(?m)^version\s*=\s*"[^"]+"',
         'version = "' + manifest["version"] + '"',
         text,
-        count=1,
+        "pyproject.toml",
     )
 
 

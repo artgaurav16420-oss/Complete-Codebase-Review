@@ -54,6 +54,10 @@ else
     FAIL=1
 fi
 
+echo "[INFO] Running docs and compliance suite..."
+"$PYTHON" tests/compliance_test.py || FAIL=1
+"$PYTHON" tests/review_compliance_test.py || FAIL=1
+
 echo "[INFO] Running all unit tests..."
 if "$PYTHON" -c "import coverage" >/dev/null 2>&1; then
     "$PYTHON" -m coverage run -m unittest discover -s tests -p "test_*.py" || FAIL=1

@@ -5,7 +5,7 @@ incremental review requirements against the review SKILL.md file.
 Uses unittest as the canonical test framework (see ADR-003).
 
 Usage:
-    python tests/test_review_compliance.py
+    python tests/review_compliance_test.py
 """
 import os
 import re

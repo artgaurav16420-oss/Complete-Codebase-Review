@@ -84,7 +84,7 @@ class TestGeneratedArtifacts(unittest.TestCase):
         )
 
     def test_compliance_agent_list_matches_manifest(self):
-        from tests.test_compliance import _ALL_AGENTS
+        from tests.compliance_test import _ALL_AGENTS
         names = {agent["name"] for agent in self.manifest["agents"]}
         self.assertEqual(set(_ALL_AGENTS), names)
 
@@ -116,8 +116,12 @@ class TestWritePath(unittest.TestCase):
             ("help.md", "help-env-vars"),
             ("orchestrator-rules.md", "orchestrator-env-vars"),
         ):
+            prefix = ""
+            if name == "help.md":
+                prefix = "> **Version**: Synced with SKILL.md v0.0.0\n"
             (root / name).write_text(
-                "<!-- BEGIN GENERATED: {} -->\n"
+                prefix
+                + "<!-- BEGIN GENERATED: {} -->\n"
                 "<!-- END GENERATED: {} -->\n".format(key, key),
                 encoding="utf-8",
             )

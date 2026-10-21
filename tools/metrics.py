@@ -7,14 +7,20 @@ from pathlib import Path
 
 def _cc(node):
     count = 1
-    for child in ast.walk(node):
+    stack = list(ast.iter_child_nodes(node))
+    while stack:
+        child = stack.pop()
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
+                              ast.Lambda)):
+            continue
         if isinstance(child, (ast.If, ast.For, ast.While, ast.ExceptHandler,
-                             ast.With, ast.Assert, ast.comprehension)):
+                              ast.With, ast.Assert, ast.comprehension)):
             count += 1
         elif isinstance(child, ast.BoolOp):
             count += len(child.values) - 1
-        elif isinstance(child, (ast.IfExp,)):
+        elif isinstance(child, ast.IfExp):
             count += 1
+        stack.extend(ast.iter_child_nodes(child))
     return count
 
 

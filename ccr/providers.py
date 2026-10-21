@@ -84,7 +84,7 @@ def write_prompts(manifest, plan, out_dir, skill_dir=""):
 
 def load_result(path, agent_id):
     """Load and validate one agent result file."""
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         data = json.load(f)
     if not isinstance(data, dict):
         raise ValueError("agent result must be an object: " + str(path))

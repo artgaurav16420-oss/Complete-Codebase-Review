@@ -22,7 +22,7 @@ You can configure the execution behavior by exporting these environment variable
 *   `CODE_REVIEW_FILTER` (default: `all`): Output filter. Set to `critical-high` to show only CRITICAL and HIGH severity findings in the report.
 *   `REVIEW_MAX_ITERATIONS` (default: `3`): Maximum review-fix loop iterations in Phase 5. Set higher for thorough PR quality gates.
 *   `CODE_REVIEW_SANITIZE` (default: `true`): Enable input sanitization for bot comments (Unicode normalization, path validation, shell command stripping).
-*   `CODE_REVIEW_AUTO_APPROVE` (default: `low`): Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all.
+*   `CODE_REVIEW_AUTO_APPROVE` (default: `none`): Auto-approve threshold for external loop fixes. `all` = auto-apply everything, `low` = only LOW/MEDIUM, `none` = require approval for all.
 *   `CODE_REVIEW_FORMAT` (default: `markdown`): Output format. `markdown` = human-readable report, `json` = machine-parseable report, `both` = both formats.
 
 <!-- END GENERATED: help-env-vars -->

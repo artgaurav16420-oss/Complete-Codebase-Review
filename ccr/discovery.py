@@ -5,6 +5,7 @@ needs and the agent selection that Phase 2 consumes.
 """
 
 import os
+import stat
 from pathlib import Path
 
 IGNORED_DIRS = frozenset({
@@ -132,10 +133,25 @@ def _process_file(full, rel_root, name, size, state):
     top_dirs[top] = top_dirs.get(top, 0) + 1
 
 
+def _is_reparse_dir(path):
+    """Return True for symlinked or junction directories (loop risk)."""
+    try:
+        if os.path.islink(str(path)):
+            return True
+        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
+    except OSError:
+        return False
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(flag and attrs & flag)
+
+
 def _scan_tree(target, limit, state):
     truncated = False
     for root, dirs, names in os.walk(str(target)):
-        dirs[:] = sorted(d for d in dirs if d not in IGNORED_DIRS)
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in IGNORED_DIRS and not _is_reparse_dir(Path(root) / d)
+        )
         rel_root = Path(root).relative_to(target)
         for name in sorted(names):
             if limit and state["files"] >= limit:
