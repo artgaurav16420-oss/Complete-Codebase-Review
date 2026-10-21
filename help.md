@@ -95,7 +95,7 @@ Flags: `--effort max|min`, `--agents a,b`, `--max-files N`, `--format markdown|j
 | `1` | Post-fix verification failed (lint, typecheck, or test suite regression) |
 | `1` | Compliance test failed (one or more SKILL.md assertions not met) |
 | `1` | `ccr eval` found expected issues that no fixture reported |
-| `2` | `ccr` usage error, missing manifest, or invalid target |
+| `2` | `ccr` usage error, missing manifest, invalid target, or agent results malformed (missing `[file:line]` anchors) |
 
 ## ⚙️ Windows Environment Variables
 

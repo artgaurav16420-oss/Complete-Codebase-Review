@@ -248,6 +248,11 @@ class TestContentQuality(_BaseComplianceTest):
         self.assertIn("Persist verdicts", self.content)
         self.assertIn("after the DA verdicts are", self.content)
 
+    def test_dead_code_rejection_requires_reachability(self):
+        self.assertIn("Dead-code rejection requires reachability analysis", self.content)
+        self.assertIn("Exported API is not dead", self.content)
+        self.assertIn("A rejected CRITICAL must record", self.content)
+
     def test_json_results_do_not_require_write_tool(self):
         self.assertIn(
             "The orchestrator persists\n  it as `$RESOLVED_CACHE_DIR/phase_<agent_id>.json`",

@@ -83,6 +83,19 @@ def synthesize(manifest, results, planned, completed=None, target="",
     kept, rejected = findings_mod.review_findings(
         raw, floors=manifest.get("tech_debt_floors")
     )
+    anchor_failures = [
+        item for item in rejected
+        if "anchor" in str(item.get("reject_reason", ""))
+    ]
+    if (len(anchor_failures) > 3
+            and len(anchor_failures) / max(len(raw), 1) > 0.2):
+        raise ValueError(
+            "agent results malformed: {}/{} findings have no [file:line] "
+            "anchor; re-run the agents with the CLI result shape "
+            "([path:line] \u2014 flaw \u2192 failure)".format(
+                len(anchor_failures), len(raw)
+            )
+        )
     kept = findings_mod.assign_ids(findings_mod.dedup(kept))
 
     model = findings_mod.aggregate(

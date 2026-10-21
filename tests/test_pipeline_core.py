@@ -169,6 +169,36 @@ class TestEvaluate(unittest.TestCase):
         self.assertEqual(score["coverage"], 0.0)
 
 
+class TestMalformedResultGuard(unittest.TestCase):
+    def _malformed(self, count, finding="no anchor here"):
+        return {"security": {"findings": [
+            {"finding": finding, "severity": "MEDIUM", "est_hours": 1}
+            for _ in range(count)
+        ]}}
+
+    def test_many_missing_anchors_raise(self):
+        with self.assertRaises(ValueError) as ctx:
+            pipeline.synthesize(
+                _manifest(), self._malformed(5), ["security"],
+            )
+        self.assertIn("malformed", str(ctx.exception))
+
+    def test_small_malformed_set_is_tolerated(self):
+        model = pipeline.synthesize(
+            _manifest(), self._malformed(3), ["security"],
+        )
+        self.assertEqual(model["findings"], [])
+
+    def test_weasel_rejections_do_not_trigger_guard(self):
+        results = {"security": {"findings": [
+            {"finding": "[a.py:1] \u2014 flaw \u2192 failure might occur",
+             "severity": "LOW", "est_hours": 1}
+            for _ in range(5)
+        ]}}
+        model = pipeline.synthesize(_manifest(), results, ["security"])
+        self.assertEqual(model["findings"], [])
+
+
 class TestBaselineDomainIds(unittest.TestCase):
     def test_baseline_uses_canonical_ids(self):
         model = pipeline.synthesize(

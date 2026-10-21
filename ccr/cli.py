@@ -109,8 +109,12 @@ def cmd_record(args):
     return 0
 
 
-def _planned_from_cache(cache):
-    """Infer planned agent ids from phase_*.json files in the cache."""
+def _planned_from_cache(cache, valid_ids=None):
+    """Infer planned agent ids from result JSON files in the cache.
+
+    ``valid_ids`` filters out report JSON and other look-alike files when the
+    manifest is available.
+    """
     ids = []
     for path in sorted(Path(cache).glob("*.json")):
         stem = path.stem
@@ -125,6 +129,8 @@ def _planned_from_cache(cache):
             continue
         if stem.startswith("phase_"):
             stem = stem[len("phase_"):]
+        if valid_ids is not None and stem not in valid_ids:
+            continue
         if stem and stem not in ids:
             ids.append(stem)
     return ids
@@ -135,14 +141,14 @@ def _cache_state(cache):
     return state.State.load(Path(cache) / "ccr-state.json")
 
 
-def _resolve_planned(args, cached):
+def _resolve_planned(args, cached, valid_ids=None):
     if args.agents:
         return [
             token.strip() for token in args.agents.split(",") if token.strip()
         ]
     if cached is not None and cached.data["agents_planned"]:
         return cached.data["agents_planned"]
-    return _planned_from_cache(args.cache)
+    return _planned_from_cache(args.cache, valid_ids=valid_ids)
 
 
 def _check_completion_gate(data, effort, planned, completed, gate_known, args):
@@ -194,7 +200,9 @@ def cmd_synthesize(args):
     except (OSError, ValueError) as exc:
         print(f"[ERROR] invalid state in {args.cache}: {exc}")
         return 2
-    planned = _resolve_planned(args, cached)
+    planned = _resolve_planned(
+        args, cached, valid_ids={agent["id"] for agent in data["agents"]}
+    )
     if not planned:
         print("[ERROR] no agent results found in " + args.cache)
         return 2

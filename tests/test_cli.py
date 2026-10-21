@@ -401,6 +401,17 @@ class TestPlannedFromCache(unittest.TestCase):
             (cache / "ccr-state.json").write_text("{}", encoding="utf-8")
             self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
 
+    def test_filters_report_json_with_valid_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            for name in ("security", "report-cli"):
+                (cache / (name + ".json")).write_text(
+                    json.dumps({"findings": []}), encoding="utf-8")
+            self.assertEqual(
+                cli._planned_from_cache(str(cache), valid_ids={"security"}),
+                ["security"],
+            )
+
     def test_accepts_bom_prefixed_results(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp)
