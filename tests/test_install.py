@@ -462,7 +462,7 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                 self.install.main()
 
         output = mock_stdout.getvalue()
-        self.assertIn("No existing global tool configurations", output)
+        self.assertIn("No detected installations succeeded", output)
         self.assertIn("Installed to local directory", output)
 
     def test_local_fallback_when_parent_exists_but_target_missing(self):
@@ -481,7 +481,7 @@ class TestMainFunction(_BaseInstallTestWithArgv):
                 self.install.main()
 
         output = mock_stdout.getvalue()
-        self.assertIn("No existing global tool configurations", output)
+        self.assertIn("No detected installations succeeded", output)
 
     def test_copy_skill_failure_continues_to_next_agent(self):
         fake_dirs = {
@@ -957,8 +957,19 @@ class TestIgnoreSkillFiles(unittest.TestCase):
 
     def test_keeps_runtime_content(self):
         install_mod = _import_install()
-        names = ["SKILL.md", "karpathy-guidelines.md", "helpers", "skills", "ccr"]
+        names = ["SKILL.md", "karpathy-guidelines.md", "helpers", "skills", "ccr",
+                 "LICENSE"]
         self.assertEqual(install_mod._ignore_skill_files(".", names), [])
+
+    def test_skips_audit_and_coverage_artifacts(self):
+        install_mod = _import_install()
+        names = [
+            "CCR_REPORT.md", "ARCH_QUALITY_FINDINGS.md", "coverage.json",
+            "coverage_report.txt", "coverage_run.txt", ".gitmessage",
+        ]
+        kept = install_mod._ignore_skill_files(".", names)
+        for name in names:
+            self.assertIn(name, kept)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,40 @@ import platform
 from pathlib import Path
 
 
+def _is_link_like(path):
+    """Return True for symlinks and, on Windows, directory junctions."""
+    path = Path(path)
+    try:
+        if os.path.islink(str(path)):
+            return True
+    except OSError:
+        pass
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is not None:
+        try:
+            return bool(isjunction(str(path)))
+        except OSError:
+            return False
+    try:
+        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
+    except OSError:
+        return False
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(flag and attrs & flag)
+
+
+def _remove_link_like(path):
+    """Remove a symlink or junction without touching its target."""
+    path = Path(path)
+    if os.path.islink(str(path)):
+        path.unlink()
+        return
+    try:
+        os.rmdir(str(path))
+    except OSError:
+        path.unlink()
+
+
 def _compute_sha256(file_path):
     """Compute SHA-256 hash of a file.
     
@@ -70,11 +104,14 @@ _SKILL_EXCLUDED = {
     ".github", "tests", "ADRs", "test.sh", "Makefile",
     # Security/advisory files — GitHub standard files, not skill content
     "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md",
-    "LICENSE", ".gitignore", ".gitattributes",
+    ".gitignore", ".gitattributes", ".gitmessage",
     # Project metadata — not consumed at runtime
     "pyproject.toml", "AGENTS.md", "help.md", ".coveragerc",
     # Dev-only tooling — generators and fixtures never ship
     "tools",
+    # Self-audit and coverage artifacts — generated, not runtime content
+    "CCR_REPORT.md", "ARCH_QUALITY_FINDINGS.md",
+    "coverage.json", "coverage_report.txt", "coverage_run.txt",
     # Config/credentials — never shipped
     ".skills", ".env", ".secret", ".credentials",
     # Cache directory — runtime artifact
@@ -239,11 +276,15 @@ def copy_skill(src_dir, dest_dir):
 
         if os.path.lexists(skill_dest):
             print_info(f"Updating existing installation in {skill_dest}")
-            if os.path.islink(str(skill_dest)):
-                skill_dest.unlink()
+            if _is_link_like(skill_dest):
+                _remove_link_like(skill_dest)
             else:
                 resolved = skill_dest.resolve(strict=False)
                 root = dest_dir.resolve(strict=False)
+                if resolved == root:
+                    raise ValueError(
+                        f"Refusing to replace target root {root}"
+                    )
                 if not resolved.is_relative_to(root):
                     raise ValueError(
                         f"Resolved path {resolved} is outside target {root}"
@@ -284,11 +325,7 @@ def _validate_no_escaped_symlinks(skill_dest):
     for dirpath, dirnames, filenames in os.walk(skill_dest):
         for name in dirnames + filenames:
             full_path = Path(dirpath) / name
-            try:
-                is_link = full_path.is_symlink()
-            except OSError:
-                continue
-            if is_link:
+            if _is_link_like(full_path):
                 try:
                     target = full_path.resolve(strict=True)
                 except (OSError, RuntimeError) as err:
@@ -360,7 +397,7 @@ def _run_target_install(src_dir, target, dry_run):
     try:
         dest_path = copy_skill(src_dir, resolved)
         print_success(f"Installed to: {dest_path}")
-    except (PermissionError, OSError) as e:
+    except (PermissionError, OSError, ValueError) as e:
         print_error(f"Install failed: {e}")
         sys.exit(1)
     print_success("Installation complete!")
@@ -387,7 +424,7 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
             dest_path = copy_skill(src_dir, target_dir)
             print_success(f"Installed to {tool_name}: {dest_path}")
             installed_any = True
-        except (PermissionError, OSError) as e:
+        except (PermissionError, OSError, ValueError) as e:
             print_error(f"Failed to install to {tool_name}: {e}")
     return installed_any
 
@@ -402,10 +439,12 @@ def remove_skill(dest_dir, dry_run):
         print_info("[DRY-RUN] Would remove " + str(skill_dest))
         return True
     root = Path(dest_dir).resolve(strict=False)
-    if os.path.islink(str(skill_dest)):
-        skill_dest.unlink()
+    if _is_link_like(skill_dest):
+        _remove_link_like(skill_dest)
     else:
         resolved = skill_dest.resolve(strict=False)
+        if resolved == root:
+            raise ValueError("Refusing to remove target root: " + str(resolved))
         if not resolved.is_relative_to(root):
             raise ValueError("Refusing to remove path outside target: " + str(resolved))
         if resolved.is_dir():
@@ -487,7 +526,7 @@ def _run_local_fallback(src_dir, dry_run):
     try:
         dest_path = copy_skill(src_dir, local_target)
         print_success(f"Installed to local directory: {dest_path}")
-    except (PermissionError, OSError) as e:
+    except (PermissionError, OSError, ValueError) as e:
         print_error(f"Local installation failed: {e}")
         sys.exit(1)
 
@@ -497,7 +536,10 @@ def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
     installed_any = _run_auto_install(src_dir, target_dirs, dry_run)
 
     if not installed_any:
-        print_info("No existing global tool configurations")
+        if target_dirs:
+            print_info("No detected installations succeeded")
+        else:
+            print_info("No existing global tool configurations")
         _run_local_fallback(src_dir, dry_run)
 
     if dry_run:
@@ -623,4 +665,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
