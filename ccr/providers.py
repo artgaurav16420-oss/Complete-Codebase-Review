@@ -22,6 +22,9 @@ simplicity/YAGNI, surgical changes only, verify before claiming done.
 
 Coverage: {coverage}
 
+Domain checks (verify each, or state why not applicable):
+{checks}
+
 Return your report as JSON with this shape:
 {{
   "agent": "{agent_id}",
@@ -49,6 +52,8 @@ Rules:
   finding_type "design_note", severity INFO, and est_hours 0.
 - CRITICAL and HIGH require a reproduction path: the exact input, call path,
   or command that triggers the failure. Without one, use MEDIUM at most.
+- Documentation-only findings are at most MEDIUM. Test-only reliability
+  findings are at most MEDIUM unless they disable a release gate.
 - Set finding_type when it matches a floor key
   (circular_dependency, hardcoded_secret, missing_test_coverage, ...).
 - Set da_verdict to CONFIRMED when you reproduced the failure, PLAUSIBLE when
@@ -60,12 +65,18 @@ End with "GATE: COMPLETE" only if you actually performed the analysis.
 
 def build_prompt(agent, target, skill_dir, manifest_version=""):
     """Return the hardened prompt for one specialist agent."""
+    checks = agent.get("checks") or []
+    checks_text = (
+        "\n".join("- " + check for check in checks)
+        if checks else "- none beyond the coverage above"
+    )
     return PROMPT_TEMPLATE.format(
         domain=agent["coverage"],
         target=target,
         skill_dir=skill_dir or "<SKILL_DIR>",
         coverage=agent["coverage"],
         agent_id=agent["id"],
+        checks=checks_text,
     )
 
 

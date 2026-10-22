@@ -366,6 +366,19 @@
         "agent": "security",
         "da_verdict": "CONFIRMED",
         "domain": "Security",
+        "est_hours": 2.0,
+        "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
+        "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
+        "id": "F-008",
+        "severity": "HIGH",
+        "tags": [
+          "CWE-200"
+        ]
+      },
+      {
+        "agent": "security",
+        "da_verdict": "CONFIRMED",
+        "domain": "Security",
         "est_hours": 3.0,
         "evidence": "subprocess.run(\"tar ... \" + path, shell=True)",
         "finding": "[auth/login.py:41] — concatenates caller input into a shell command with shell=True → arbitrary command execution as the service account",
@@ -496,19 +509,6 @@
         ]
       },
       {
-        "agent": "security",
-        "da_verdict": "CONFIRMED",
-        "domain": "Security",
-        "est_hours": 2.0,
-        "evidence": "os.environ.setdefault receives cfg[\"db_password\"]",
-        "finding": "[app.py:6] — copies the database password into AUTH_SECRET in the process environment → secrets leak to child processes and crash dumps",
-        "id": "F-008",
-        "severity": "HIGH",
-        "tags": [
-          "CWE-200"
-        ]
-      },
-      {
         "agent": "tech_debt",
         "da_verdict": "CONFIRMED",
         "domain": "Tech Debt",
@@ -538,8 +538,8 @@
     "3": []
   },
   "roadmap_hours": {
-    "1": 10.5,
-    "2": 21.0,
+    "1": 12.5,
+    "2": 19.0,
     "3": 0
   },
   "target": ".",

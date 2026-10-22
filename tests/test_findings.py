@@ -143,7 +143,9 @@ class TestRoadmap(unittest.TestCase):
         self.assertEqual(len(phases[1]), 1)
 
     def test_high_goes_phase_2(self):
-        phases = f.place_roadmap([make(GOOD, severity="HIGH", hours=5)])
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", hours=5, domain="Architecture")
+        ])
         self.assertEqual(len(phases[2]), 1)
 
     def test_large_medium_goes_phase_3(self):
@@ -166,8 +168,24 @@ class TestRoadmap(unittest.TestCase):
         phases = f.place_roadmap([make(GOOD, verdict="DA-ESCALATION")])
         self.assertEqual(sum(len(items) for items in phases.values()), 1)
 
+    def test_security_high_goes_phase_1(self):
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", domain="Security", hours=4)
+        ])
+        self.assertEqual(len(phases[1]), 1)
+        self.assertEqual(len(phases[2]), 0)
+
+    def test_non_security_high_stays_phase_2(self):
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", domain="Architecture", hours=4)
+        ])
+        self.assertEqual(len(phases[1]), 0)
+        self.assertEqual(len(phases[2]), 1)
+
     def test_high_never_quick_win(self):
-        phases = f.place_roadmap([make(GOOD, severity="HIGH", hours=1)])
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", hours=1, domain="Architecture")
+        ])
         self.assertEqual(len(phases[1]), 0)
         self.assertEqual(len(phases[2]), 1)
 

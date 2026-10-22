@@ -37,6 +37,20 @@ WEASEL_PATTERNS = [
 ]
 
 
+MALFORMED_REASONS = ("anchor", "empty finding")
+
+
+def malformed_rejections(rejected):
+    """Return rejections caused by empty text or a missing anchor."""
+    return [
+        item for item in rejected
+        if any(
+            reason in str(item.get("reject_reason", ""))
+            for reason in MALFORMED_REASONS
+        )
+    ]
+
+
 def normalize_severity(value):
     """Return an uppercase severity, defaulting to LOW when unrecognized."""
     if not value:
@@ -314,6 +328,8 @@ def place_roadmap(findings):
         severity = normalize_severity(item.get("severity"))
         hours = _as_hours(item.get("est_hours"))
         if severity == "CRITICAL":
+            phases[1].append(item)
+        elif severity == "HIGH" and item.get("domain") == "Security":
             phases[1].append(item)
         elif severity in ("MEDIUM", "LOW") and hours <= 2:
             quick_wins.append(item)
