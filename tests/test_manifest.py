@@ -35,15 +35,16 @@ class TestManifestLoad(unittest.TestCase):
             "Code Quality",
         )
 
+
     def test_env_var_names(self):
         dummy_manifest = {
             "env_vars": [
-                {"name": "VAR_B"},
-                {"name": "VAR_A"}
+                {"name": "CODE_REVIEW_EFFORT"},
+                {"name": "CODE_REVIEW_TIMEOUT_SEC"}
             ]
         }
         names = manifest_mod.env_var_names(dummy_manifest)
-        self.assertEqual(names, ["VAR_B", "VAR_A"])
+        self.assertEqual(names, ["CODE_REVIEW_EFFORT", "CODE_REVIEW_TIMEOUT_SEC"])
 
     def test_unknown_agent_raises(self):
         with self.assertRaises(ValueError):
