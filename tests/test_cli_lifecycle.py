@@ -312,6 +312,17 @@ class TestCliSynthesizeOptions(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("could not write report", out)
 
+    def test_report_encoding_failure_exits_two(self):
+        error = UnicodeEncodeError("utf-8", "x", 0, 1, "surrogate")
+        with mock.patch.object(
+                cli.pipeline, "write_outputs", side_effect=error):
+            code, out, _ = run([
+                "synthesize", "--in", str(FIXTURES), "--agents", "security",
+                "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 2)
+        self.assertIn("could not write report", out)
+
     def test_eval_runs_from_any_directory(self):
         old = os.getcwd()
         try:

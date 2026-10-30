@@ -343,7 +343,7 @@ def cmd_synthesize(args):
         return 2
     try:
         return _emit_synthesis_output(model, args)
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         print("[ERROR] could not write report: " + str(exc))
         return 2
 
