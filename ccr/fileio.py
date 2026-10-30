@@ -20,6 +20,7 @@ def write_text(path, text, newline="\n"):
     # O_NOFOLLOW closes the race on POSIX. Windows has no equivalent flag, so
     # the islink pre-check is best effort there.
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags, 0o666)
     with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:

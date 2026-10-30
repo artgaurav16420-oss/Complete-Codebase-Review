@@ -418,7 +418,8 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 | Windows test | `powershell tests/Test-Windows.ps1` | End-to-end (Windows) |
 
 `./test.sh` is the aggregate gate on Unix: skill contract checks, generated-doc
-drift, `ccr eval`, both compliance suites, and the unit suite under coverage.
+drift, `ccr eval`, both compliance suites, and the unit suite (under coverage
+when the `coverage` package is installed).
 
 ---
 

@@ -40,7 +40,7 @@ jobs:
       - name: Cache pip
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/pip
+          path: ${{ runner.os == 'Linux' && '~/.cache/pip' || (runner.os == 'macOS' && '~/Library/Caches/pip' || '~/AppData/Local/pip/Cache') }}
           key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-

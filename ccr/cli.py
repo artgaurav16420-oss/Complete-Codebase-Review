@@ -69,6 +69,8 @@ def _archive_results(cache, agent_ids=()):
     if not stale:
         return 0
     base = root / "previous-results"
+    if base.is_symlink():
+        raise OSError("refusing to archive through symlink: " + str(base))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     dest = base / stamp
     suffix = 1
@@ -107,9 +109,14 @@ def cmd_record(args):
     except OSError as exc:
         print(f"[ERROR] could not write prompts: {exc}")
         return 2
-    archived = _archive_results(
-        args.out, [agent["id"] for agent in data["agents"]]
-    )
+    archived = 0
+    try:
+        archived = _archive_results(
+            args.out, [agent["id"] for agent in data["agents"]]
+        )
+    except OSError as exc:
+        print(f"[ERROR] could not archive stale results: {exc}")
+        return 2
     previous = None
     if current is not None and current.data["target_dir"] == plan["target"]:
         previous = current.data

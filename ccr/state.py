@@ -70,6 +70,10 @@ def _apply_defaults(data):
     for key, value in _defaults_copy().items():
         if key not in data:
             data[key] = value
+    try:
+        data["re_review_count"] = int(data.get("re_review_count") or 0)
+    except (TypeError, ValueError):
+        data["re_review_count"] = 0
 
 
 def new_state(target_dir, skill_dir="", effort="max"):

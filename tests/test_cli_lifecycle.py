@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -84,6 +85,49 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(code, 0)
         data = json.loads(state_path.read_text(encoding="utf-8"))
         self.assertEqual(data["re_review_count"], 1)
+
+    def test_non_numeric_re_review_count_is_normalized(self):
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        state_path = self.cache / "ccr-state.json"
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        data["re_review_count"] = "not-a-number"
+        state_path.write_text(json.dumps(data), encoding="utf-8")
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["re_review_count"], 1)
+
+    def test_archive_failure_exits_two(self):
+        with mock.patch.object(
+                cli, "_archive_results", side_effect=OSError("boom")):
+            code, out, _ = run([
+                "record", str(TARGET), "--out", str(self.cache),
+                "--agents", "security",
+            ])
+        self.assertEqual(code, 2)
+        self.assertIn("could not archive stale results", out)
+
+    def test_archive_refuses_symlinked_previous_results(self):
+        target = Path(self.tmp.name) / "elsewhere"
+        target.mkdir()
+        base = self.cache / "previous-results"
+        try:
+            os.symlink(target, base, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlink creation unavailable: " + str(exc))
+        (self.cache / "phase_security.json").write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        with self.assertRaises(OSError):
+            cli._archive_results(self.cache)
+        self.assertEqual(list(target.iterdir()), [])
 
     def test_bare_agent_result_is_archived(self):
         result = self.cache / "security.json"
