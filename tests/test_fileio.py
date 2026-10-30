@@ -151,6 +151,22 @@ class TestFileioWriteText(unittest.TestCase):
         with self.assertRaises(OSError):
             write_text(link / "note.txt", "x", root=root)
 
+    @unittest.skipUnless(os.name == "nt", "Windows handle path API")
+    def test_windows_handle_outside_root_is_refused(self):
+        outside = str(Path(self.tmp.name).parent / "outside.txt")
+        with mock.patch(
+                "ccr.fileio._windows_final_path", return_value=outside):
+            with self.assertRaises(OSError):
+                write_text(self.dir / "note.txt", "x", root=self.dir)
+
+    @unittest.skipUnless(os.name == "nt", "Windows handle path API")
+    def test_windows_handle_inside_root_is_accepted(self):
+        final = str(self.dir / "note.txt")
+        with mock.patch(
+                "ccr.fileio._windows_final_path", return_value=final):
+            write_text(self.dir / "note.txt", "x", root=self.dir)
+        self.assertTrue((self.dir / "note.txt").exists())
+
     def test_parent_that_is_a_symlink_after_open_is_refused(self):
         with mock.patch(
                 "ccr.fileio.os.path.islink",

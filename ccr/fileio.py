@@ -34,12 +34,53 @@ def _open_beneath(root, rel, flags):
         os.close(dir_fd)
 
 
-def _open_checked(path, flags):
+def _inside(root, path):
+    """Return True when path is the root or below it (case-normalised)."""
+    try:
+        return os.path.commonpath(
+            [os.path.normcase(root), os.path.normcase(path)]
+        ) == os.path.normcase(root)
+    except ValueError:
+        return False
+
+
+def _windows_final_path(fd):
+    """Return the final path of an open descriptor, or '' if unavailable.
+
+    Resolves reparse points through the handle, so the answer reflects the
+    file that was actually opened rather than the path spelling.
+    """
+    try:
+        import ctypes
+        import msvcrt
+    except ImportError:
+        return ""
+    kernel32 = ctypes.windll.kernel32
+    handle = msvcrt.get_osfhandle(fd)
+    length = kernel32.GetFinalPathNameByHandleW(handle, None, 0, 0)
+    if not length:
+        return ""
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    written = kernel32.GetFinalPathNameByHandleW(
+        handle, buffer, length + 1, 0
+    )
+    if not written:
+        return ""
+    path = buffer.value
+    if path.startswith("\\\\?\\UNC\\"):
+        path = "\\\\" + path[8:]
+    elif path.startswith("\\\\?\\"):
+        path = path[4:]
+    return path
+
+
+def _open_checked(path, flags, root=None):
     """Open a file with path-level checks (no POSIX dir_fd walk).
 
     Records the parent identity before the open and compares it after,
     re-checks that neither the leaf nor the parent is now a symlink, and
     verifies that the descriptor names the file the path currently names.
+    On Windows, the handle's final path is also checked against ``root``.
     """
     parent = os.path.dirname(os.path.abspath(path)) or "."
     try:
@@ -70,6 +111,10 @@ def _open_checked(path, flags):
                 "refusing to write: opened file is not the named file: "
                 + path
             )
+        if root is not None and os.name == "nt":
+            final = _windows_final_path(fd)
+            if final and not _inside(root, final):
+                raise OSError("refusing to write outside root: " + path)
     except BaseException:
         os.close(fd)
         raise
@@ -82,23 +127,24 @@ def write_text(path, text, newline="\n", root=None):
     Refuses to follow a symlink at the destination. When ``root`` is given,
     the destination must resolve inside it; on POSIX every component from the
     filesystem root down is opened with O_NOFOLLOW, so no symlink is followed.
-    On Windows the leaf and parent checks are best effort.
+    On Windows the opened handle's final path is checked against the root.
     """
     path = os.fsdecode(os.fspath(path))
     if os.path.islink(path):
         raise OSError("refusing to write through symlink: " + path)
     root_real = None
+    root_abs = None
     rel = None
     if root is not None:
         root = os.fsdecode(os.fspath(root))
         if os.path.islink(root):
             raise OSError("refusing to write under symlinked root: " + root)
         root_real = os.path.realpath(root)
-        root_real_abs = os.path.abspath(root_real)
+        root_abs = os.path.abspath(root_real)
         try:
             if os.path.commonpath(
-                    [root_real_abs, os.path.realpath(path)]
-            ) != root_real_abs:
+                    [root_abs, os.path.realpath(path)]
+            ) != root_abs:
                 raise OSError("refusing to write outside root: " + path)
             rel = os.path.relpath(os.path.abspath(path), os.path.abspath(root))
         except ValueError:
@@ -111,9 +157,9 @@ def write_text(path, text, newline="\n", root=None):
     flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     if root_real is not None and os.name == "posix":
-        fd = _open_beneath(root_real_abs, rel, flags)
+        fd = _open_beneath(root_abs, rel, flags)
     else:
-        fd = _open_checked(path, flags)
+        fd = _open_checked(path, flags, root=root_abs)
     try:
         os.ftruncate(fd, 0)
     except BaseException:
