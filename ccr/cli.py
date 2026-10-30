@@ -142,6 +142,7 @@ def _cache_state(cache):
 
 
 def _resolve_planned(args, cached, valid_ids=None):
+    """Resolve the planned agent set: --agents flag, state file, cache scan."""
     if args.agents:
         return [
             token.strip() for token in args.agents.split(",") if token.strip()
@@ -152,6 +153,7 @@ def _resolve_planned(args, cached, valid_ids=None):
 
 
 def _check_completion_gate(data, effort, planned, completed, gate_known, args):
+    """Return the gate error, or None when partial output is allowed."""
     if args.allow_partial or not gate_known:
         return None
     try:
@@ -162,6 +164,7 @@ def _check_completion_gate(data, effort, planned, completed, gate_known, args):
 
 
 def _load_synthesis_results(args, planned):
+    """Load cached agent results; raise when none are present."""
     results = providers.load_results(args.cache, planned, required=False)
     completed = [agent_id for agent_id in planned if agent_id in results]
     if not completed:
@@ -170,6 +173,7 @@ def _load_synthesis_results(args, planned):
 
 
 def _emit_synthesis_output(model, args):
+    """Write the report model to stdout or files; return the exit code."""
     if not args.out:
         rendered = pipeline.render(model, args.format)
         if "markdown" in rendered:

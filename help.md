@@ -79,6 +79,7 @@ that need no model:
 | `python -m ccr plan .` | Discovery facts and the agent list that would run |
 | `python -m ccr record . --out .code-review-cache` | Writes one hardened prompt per agent plus `ccr-state.json` |
 | `python -m ccr synthesize --in .code-review-cache --out report` | Dedup, mechanical DA checks, roadmap, Markdown/JSON |
+| `python -m ccr validate-results --in .code-review-cache` | Malformed-result check over cached agent results |
 | `python -m ccr eval` | Scores recorded fixtures against `tests/expected_issues.json` |
 
 Flags: `--effort max|min`, `--agents a,b`, `--max-files N`, `--format markdown|json|both`.

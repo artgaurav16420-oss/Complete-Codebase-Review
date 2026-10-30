@@ -106,6 +106,7 @@ def _is_test_file(rel_parts, name):
 
 
 def _process_file(full, rel_root, name, size, state):
+    """Tally one file into the discovery state dict."""
     state["files"] += 1
     state["total_bytes"] += size
     if _is_test_file(rel_root.parts, name):
@@ -151,6 +152,7 @@ def _is_reparse_dir(path):
 
 
 def _scan_tree(target, limit, state):
+    """Walk the target tree into the state dict; report truncation."""
     truncated = False
     for root, dirs, names in os.walk(str(target)):
         dirs[:] = sorted(
@@ -174,6 +176,7 @@ def _scan_tree(target, limit, state):
 
 
 def _build_facts(target, state, truncated):
+    """Derive the discovery facts dict from the accumulated state."""
     files = state["files"]
     total_bytes = state["total_bytes"]
     languages = state["languages"]

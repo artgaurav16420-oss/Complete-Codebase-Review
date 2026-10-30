@@ -26,7 +26,8 @@ python tools/generate.py --check   # CI mode
 | `ccr.report` | Markdown and JSON renderers; both validated by `tests/test_pipeline.py` |
 | `ccr.providers` | Prompt generation, result ingestion, fixture replay |
 | `ccr.pipeline` | Completion gates, synthesis, eval scoring |
-| `ccr.cli` | `plan`, `record`, `synthesize`, `eval` |
+| `ccr.cli` | `plan`, `record`, `synthesize`, `validate-results`, `eval` |
+| `ccr.fileio` | UTF-8 write helper used by `pipeline` and `providers` |
 
 ## Integration boundary
 
@@ -64,6 +65,7 @@ takes the floor, and an explicit estimate is raised to at least half the floor
 | `python -m ccr plan <dir>` | Discovery facts and selected agents (`--json` for machine output) |
 | `python -m ccr record <dir> --out <cache>` | Prompts plus initial `ccr-state.json` |
 | `python -m ccr synthesize --in <cache> --out <report>` | Report model to Markdown/JSON; refuses below the completion gate |
+| `python -m ccr validate-results --in <cache>` | Malformed-result check over cached `phase_<id>.json` files |
 | `python -m ccr eval` | Fixture coverage and precision (list or benchmark spec) |
 
 `synthesize` flags: `--effort max|min` (defaults to the state file),
@@ -123,7 +125,12 @@ All return values are plain dicts/lists unless stated otherwise.
 | `State.load` | `State.load(path)` | `State` or `None` when absent |
 | `State.create` | `State.create(path, target_dir, skill_dir, effort)` | New `State`, persisted |
 | `State.save` | `state.save()` | `None`; atomic write via temp file + `os.replace` |
+| `State.set_step` | `state.set_step(step)` | `None`; records the current sub-step |
+| `State.advance` | `state.advance(phase)` | `None`; refuses to skip an unpassed gate |
+| `State.set_gate` | `state.set_gate(name, value=True)` | `None` |
+| `State.plan_agents` | `state.plan_agents(agent_ids)` | `None`; records the planned set |
 | `State.record_agent` | `state.record_agent(agent_id, status='completed')` | `None` |
+| `State.completion_ratio` | `state.completion_ratio()` | Float completed / planned |
 | `State.threshold_passed` | `state.threshold_passed(manifest)` | `bool`; enforces the 75%/66% completion gate |
 
 ### `ccr.findings`
@@ -134,6 +141,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `normalize_verdict` | `normalize_verdict(value)` | One of `CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED/DA-ESCALATION`; unknown -> `QUESTIONABLE` |
 | `anchor_parts` | `anchor_parts(finding_text)` | `(file, line, flaw, failure_mode)` or `None` |
 | `weasel_hits` | `weasel_hits(text)` | Matched weasel phrases |
+| `malformed_rejections` | `malformed_rejections(rejected)` | Filtered rejection records for the eval path |
 | `review_findings` | `review_findings(raw_findings, floors=None)` | `(kept, rejected)` after mechanical DA checks |
 | `dedup` | `dedup(findings)` | Deduplicated list |
 | `assign_ids` | `assign_ids(findings)` | Same list with `F-001` style ids |
@@ -150,6 +158,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `fmt_hours` | `fmt_hours(value)` | `2` -> `"2h"`, `2.5` -> `"2.5h"` |
 | `fmt_hours_long` | `fmt_hours_long(value)` | `2` -> `"2 hours"` |
 | `render_markdown` | `render_markdown(model)` | Markdown string |
+| `validate_markdown` | `validate_markdown(md)` | Error list for missing sections, N/A scores, tech-debt mismatch |
 | `render_json` | `render_json(model)` | JSON-ready dict; `INFO` is mapped to `LOW` |
 
 ### `ccr.providers`
@@ -162,6 +171,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `write_prompts` | `write_prompts(manifest, plan, out_dir, skill_dir='')` | Written paths |
 | `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |
 | `load_results` | `load_results(out_dir, agent_ids, required=True)` | `{agent_id: result}`; `phase_<id>.json` wins over `<id>.json` |
+| `RecordedProvider` | `RecordedProvider(fixtures_dir)` | Class holding the fixture dir; `agent_ids()` lists ids for `ccr eval` |
 
 ### `ccr.pipeline`
 
@@ -180,12 +190,21 @@ All return values are plain dicts/lists unless stated otherwise.
 | Function | Signature | Purpose |
 |----------|-----------|---------|
 | `main` | `main(argv=None)` | CLI entry; returns exit code |
-| `build_parser` | `build_parser()` | `argparse` parser for `plan/record/synthesize/eval` |
+| `cmd_plan` | `cmd_plan(args)` | Implements `plan` |
+| `cmd_record` | `cmd_record(args)` | Implements `record` |
+| `cmd_synthesize` | `cmd_synthesize(args)` | Implements `synthesize` |
+| `cmd_validate_results` | `cmd_validate_results(args)` | Implements `validate-results` |
+| `cmd_eval` | `cmd_eval(args)` | Implements `eval` |
+| `build_parser` | `build_parser()` | `argparse` parser for `plan/record/synthesize/validate-results/eval` |
 | `write_text` | `write_text(path, text, newline='\n')` | UTF-8 write with explicit newline (3.9-compatible) |
 
 ## Tests
 
-`tests/test_manifest.py`, `test_discovery.py`, `test_state.py`,
-`test_findings.py`, `test_report.py`, `test_providers.py`,
-`test_pipeline_core.py`, `test_cli.py`, `test_eval.py`, and `test_generated.py`
+`tests/test_characterization.py`, `test_cli.py`, `test_compat.py`,
+`test_core_guard.py`, `test_coverage_floor.py`, `test_discovery.py`,
+`test_env_config.py`, `test_eval.py`, `test_findings.py`,
+`test_generated.py`, `test_install.py`, `test_uninstall.py`,
+`test_manifest.py`, `test_metrics.py`, `test_pipeline.py`,
+`test_pipeline_core.py`, `test_pipeline_integration.py`,
+`test_providers.py`, `test_report.py`, `test_smoke.py`, and `test_state.py`
 cover this package.
