@@ -190,6 +190,7 @@ runs anywhere, without an LLM:
 | `python -m ccr plan .` | Discovery facts and which agents would run |
 | `python -m ccr record . --out .code-review-cache` | Writes one hardened prompt per agent plus `ccr-state.json` |
 | `python -m ccr synthesize --in .code-review-cache --out report` | Normalizes, dedups, applies mechanical DA checks, renders Markdown/JSON |
+| `python -m ccr validate-results --in .code-review-cache` | Malformed-result check over cached agent results |
 | `python -m ccr eval` | Replays recorded fixtures and scores coverage against `expected_issues.json` |
 
 `record` / `synthesize` is the integration boundary: the host agent executes

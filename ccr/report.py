@@ -6,6 +6,7 @@ section names and table headers exactly as written here.
 
 
 def _fmt_number(value):
+    """Format a number without trailing zeros: 2.0 -> '2', 2.5 -> '2.5'."""
     number = round(float(value), 2)
     if number == int(number):
         return str(int(number))
@@ -233,6 +234,7 @@ REQUIRED_SECTIONS = (
 
 
 def _num(text):
+    """Parse a number from text; return None when not numeric."""
     try:
         return float(text)
     except (TypeError, ValueError):

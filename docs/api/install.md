@@ -7,10 +7,20 @@ Minimal module-level reference for `install.py`.
 | Function | Purpose |
 |----------|---------|
 | `_read_version()` | Parse `version` from `pyproject.toml`. Raises `RuntimeError`. |
+| `_is_link_like(path)` | True for symlinks and junctions. |
+| `_remove_link_like(path)` | Remove a link without following it. |
+| `_compute_sha256(file_path)` | SHA-256 hex digest of a file. |
+| `_verify_checksum(file_path, expected_hash)` | True on match, False otherwise; raises `FileNotFoundError` when missing. |
 | `_use_color()` | True if stdout TTY and `NO_COLOR` unset. |
 | `_print(msg, label, color)` | Core printer: `[label] msg` with ANSI color. |
+| `_validate_xdg_path(xdg_path)` | Reject unsafe XDG overrides. |
 | `_xdg_or_home_dir(home, app_dir)` | Resolve skill dir: XDG on Linux, `~/.app_dir/skills` otherwise. |
+| `_validate_no_escaped_symlinks(skill_dest)` | Refuse archives that escape the dest dir. |
 | `_validate_target_path(path)` | Sanitize path - reject `..`, resolve symlinks. Raises `ValueError`. |
+| `_run_target_install(src_dir, target, dry_run)` | Install into one target dir. |
+| `_run_auto_install(src_dir, target_dirs, dry_run)` | Install into all detected targets. |
+| `_run_local_fallback(src_dir, dry_run)` | Local `./.skills` fallback install. |
+| `_run_auto_or_local_install(src_dir, target_dirs, dry_run)` | Auto install, falling back to local. |
 
 ## Public
 
@@ -24,6 +34,7 @@ Minimal module-level reference for `install.py`.
 | `copy_skill(src_dir, dest_dir)` | Copy skill files, returns dest Path. |
 | `main()` | CLI entry - argparse, --target/--dry-run/--version/--self-verify/--checksum/--uninstall. |
 | `remove_skill(dest_dir, dry_run)` | Remove `complete-codebase-review` under a target dir, refusing paths outside it. |
+| `_run_uninstall(target, dry_run)` | Uninstall from one target dir, or all targets when `target` is unset. |
 
 ## Integrity
 

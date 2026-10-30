@@ -37,7 +37,9 @@ ccr/              executable core
   report.py       Markdown + JSON renderers (validated by tests/test_pipeline.py)
   providers.py    prompt generation, result ingestion, fixture replay
   pipeline.py     completion gates, synthesis, eval scoring
-  cli.py          plan | record | synthesize | eval
+  cli.py          plan | record | synthesize | validate-results | eval
+  manifest.py     manifest load + schema validation
+  fileio.py       UTF-8 write helper used by pipeline and providers
 tools/generate.py regenerates doc tables + install.py.sha256 from pipeline.json
 install.py        installer (the only legacy standalone script)
 ```

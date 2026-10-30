@@ -371,6 +371,7 @@ def _empty_counts():
 
 
 def _score_domains(open_findings):
+    """Score each domain from open findings; also return total counts."""
     per_domain = {}
     for item in open_findings:
         domain = item.get("domain") or "Unknown"
@@ -396,6 +397,7 @@ def _score_domains(open_findings):
 
 
 def _roadmap_summary(phases):
+    """Sum roadmap hours per phase, total, and per domain."""
     roadmap_hours = {
         phase: round(sum(_as_hours(f.get("est_hours")) for f in items), 2)
         for phase, items in phases.items()
@@ -412,6 +414,7 @@ def _roadmap_summary(phases):
 
 
 def _verdict_summary(all_findings):
+    """Count findings per DA verdict."""
     verdict_summary = {}
     for item in all_findings:
         verdict = normalize_verdict(item.get("da_verdict"))
@@ -420,6 +423,7 @@ def _verdict_summary(all_findings):
 
 
 def _priority_areas(scores):
+    """Return the three domains needing attention first."""
     priority = sorted(
         scores,
         key=lambda row: (
@@ -430,6 +434,7 @@ def _priority_areas(scores):
 
 
 def _health(total_counts):
+    """Map severity counts to RED/YELLOW/GREEN."""
     if total_counts["CRITICAL"]:
         return "RED"
     if total_counts["HIGH"]:
@@ -438,12 +443,14 @@ def _health(total_counts):
 
 
 def _overall_score(scores):
+    """Average domain scores; 10.0 when there are no domains."""
     if scores:
         return round(sum(row["score"] for row in scores) / len(scores), 1)
     return 10.0
 
 
 def _trend(baseline, total_hours):
+    """Describe tech-debt movement against the previous baseline."""
     trend = "no previous baseline"
     if baseline:
         previous = baseline.get("tech_debt_hours")
@@ -460,6 +467,7 @@ def _assemble_model(findings, rejected, agents_planned, agents_completed,
                     target, health, total_counts, total_hours, scores,
                     priority_areas, overall_score, roadmap_hours, by_domain,
                     phases, verdict_summary, trend, overlap_candidates=None):
+    """Build the report model dict consumed by the renderers."""
     return {
         "target": target,
         "overall_health": health,
