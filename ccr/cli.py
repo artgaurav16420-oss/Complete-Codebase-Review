@@ -23,11 +23,29 @@ def _manifest():
         sys.exit(2)
 
 
+def _resolve_target(args):
+    """Resolve the target path from the positional or --target.
+
+    Raises:
+        ValueError: When both are given and disagree, instead of silently
+            discarding one and reporting on the wrong directory.
+    """
+    if args.target and args.target_opt and args.target != args.target_opt:
+        same = Path(args.target).resolve() == Path(args.target_opt).resolve()
+        if not same:
+            raise ValueError(
+                "target given twice: positional {!r} and --target {!r}".format(
+                    args.target, args.target_opt
+                )
+            )
+    return args.target or args.target_opt or "."
+
+
 def cmd_plan(args):
     """Print the Phase 1 + Phase 2 plan."""
     data = _manifest()
-    target = args.target or args.target_opt or "."
     try:
+        target = _resolve_target(args)
         plan = discovery.plan(
             data, target, effort=args.effort,
             override=args.agents, max_files=args.max_files,
@@ -94,12 +112,22 @@ def _archive_results(cache, agent_ids=()):
         for source, target in reversed(moved):
             try:
                 shutil.move(str(target), str(source))
-            except OSError:
-                pass
+            except OSError as exc:
+                print(
+                    "[WARN] could not restore archived result {}: {}".format(
+                        source, exc
+                    ),
+                    file=sys.stderr,
+                )
         try:
             dest.rmdir()
-        except OSError:
-            pass
+        except OSError as exc:
+            print(
+                "[WARN] could not remove archive directory {}: {}".format(
+                    dest, exc
+                ),
+                file=sys.stderr,
+            )
         raise
     return len(stale)
 
@@ -107,8 +135,8 @@ def _archive_results(cache, agent_ids=()):
 def cmd_record(args):
     """Write agent prompts and initialize pipeline state."""
     data = _manifest()
-    target = args.target or args.target_opt or "."
     try:
+        target = _resolve_target(args)
         plan = discovery.plan(
             data, target, effort=args.effort,
             override=args.agents, max_files=args.max_files,
@@ -194,12 +222,22 @@ def _cache_state(cache):
     return state.State.load(Path(cache) / "ccr-state.json")
 
 
-def _resolve_planned(args, cached, valid_ids=None):
-    """Resolve the planned agent set: --agents flag, state file, cache scan."""
+def _resolve_planned(args, cached, valid_ids=None, manifest=None):
+    """Resolve the planned agent set: --agents flag, state file, cache scan.
+
+    ``manifest`` lets the flag accept the same id, report-name and display-name
+    spellings that ``plan`` and ``record`` accept.
+    """
     if args.agents:
-        return [
+        tokens = [
             token.strip() for token in args.agents.split(",") if token.strip()
         ]
+        if manifest is not None:
+            resolved = [
+                discovery.resolve_agent(manifest, token) for token in tokens
+            ]
+            return list(dict.fromkeys(resolved))
+        return list(dict.fromkeys(tokens))
     if cached is not None and cached.data["agents_planned"]:
         return cached.data["agents_planned"]
     return _planned_from_cache(args.cache, valid_ids=valid_ids)
@@ -282,9 +320,14 @@ def cmd_synthesize(args):
     except (OSError, ValueError) as exc:
         print(f"[ERROR] invalid state in {args.cache}: {exc}")
         return 2
-    planned = _resolve_planned(
-        args, cached, valid_ids={agent["id"] for agent in data["agents"]}
-    )
+    try:
+        planned = _resolve_planned(
+            args, cached, manifest=data,
+            valid_ids={agent["id"] for agent in data["agents"]},
+        )
+    except ValueError as exc:
+        print("[ERROR] " + str(exc))
+        return 2
     if not planned:
         print("[ERROR] no agent results found in " + args.cache)
         return 2
@@ -343,7 +386,7 @@ def cmd_synthesize(args):
         return 2
     try:
         return _emit_synthesis_output(model, args)
-    except (OSError, UnicodeError) as exc:
+    except (OSError, UnicodeError, ValueError) as exc:
         print("[ERROR] could not write report: " + str(exc))
         return 2
 
@@ -353,9 +396,14 @@ def cmd_validate_results(args):
     data = _manifest()
     agents = {agent["id"]: agent for agent in data["agents"]}
     if args.agents:
-        planned = [
-            token.strip() for token in args.agents.split(",") if token.strip()
-        ]
+        try:
+            planned = list(dict.fromkeys(
+                discovery.resolve_agent(data, token)
+                for token in args.agents.split(",") if token.strip()
+            ))
+        except ValueError as exc:
+            print("[ERROR] " + str(exc))
+            return 2
     else:
         planned = _planned_from_cache(
             args.cache, valid_ids=set(agents)
@@ -375,6 +423,7 @@ def cmd_validate_results(args):
         return 2
     rows = []
     total_malformed = 0
+    total_raw = 0
     kept_all = []
     for agent_id in planned:
         result = results.get(agent_id)
@@ -395,6 +444,7 @@ def cmd_validate_results(args):
         )
         malformed = findings_mod.malformed_rejections(rejected)
         kept_all.extend(kept)
+        total_raw += len(raw)
         total_malformed += len(malformed)
         rows.append({
             "agent": agent_id,
@@ -416,7 +466,9 @@ def cmd_validate_results(args):
             print(f"[VALIDATE] {row['agent']}: {row['valid']} valid, "
                   f"{row['malformed']} malformed")
         print(f"[VALIDATE] {total_valid} valid, {total_malformed} malformed")
-    return 1 if total_malformed else 0
+    if pipeline.malformed_exceeded(total_raw, total_malformed):
+        return 1
+    return 0
 
 
 def cmd_eval(args):

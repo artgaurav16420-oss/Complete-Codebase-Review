@@ -1,5 +1,6 @@
 """Tests for ccr.discovery: facts, agent selection, and planning."""
 
+import copy
 import os
 import tempfile
 import unittest
@@ -103,6 +104,15 @@ class TestActiveAgents(unittest.TestCase):
         active = discovery.active_agents(self.manifest, facts)
         order = [a["id"] for a in self.manifest["agents"]]
         self.assertEqual(active, [a for a in order if a in active])
+
+    def test_renamed_dimension_agent_fails_loudly(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["agents"] = [
+            a for a in manifest["agents"] if a["id"] != "test_health"
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            discovery.active_agents(manifest, {"test_files": 1})
+        self.assertIn("test_health", str(ctx.exception))
 
 
 class TestSelectAgents(unittest.TestCase):

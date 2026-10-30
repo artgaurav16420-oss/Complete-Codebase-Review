@@ -88,6 +88,22 @@ def _canonicalize_baseline(model, manifest):
     }
 
 
+MALFORMED_MAX = 3
+MALFORMED_RATIO = 0.2
+
+
+def malformed_exceeded(raw_count, malformed_count):
+    """True when malformed findings are too many and too large a share.
+
+    Single source of the rule: synthesize and validate-results must agree on
+    the same cache, otherwise the gate blocks a report the producer accepts.
+    """
+    return (
+        malformed_count > MALFORMED_MAX
+        and malformed_count / max(raw_count, 1) > MALFORMED_RATIO
+    )
+
+
 def synthesize(manifest, results, planned, completed=None, target="",
                facts=None, baseline=None, timestamp=None):
     """Merge agent results into a report model.
@@ -113,8 +129,7 @@ def synthesize(manifest, results, planned, completed=None, target="",
         raw, floors=manifest.get("tech_debt_floors")
     )
     malformed = findings_mod.malformed_rejections(rejected)
-    if (len(malformed) > 3
-            and len(malformed) / max(len(raw), 1) > 0.2):
+    if malformed_exceeded(len(raw), len(malformed)):
         raise ValueError(
             "agent results malformed: {}/{} findings are empty or have no "
             "[file:line] anchor; re-run the agents with the CLI result shape "

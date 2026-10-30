@@ -181,24 +181,34 @@ def _build_facts(target, state, truncated):
     test_files = state["test_files"]
 
     database = []
-    root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
+    try:
+        root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
+    except OSError as exc:
+        raise ValueError(
+            "cannot list target directory: {} ({})".format(target, exc)
+        )
     for marker in DB_MARKERS:
         if marker in root_entries:
             database.append(marker)
 
     ci = []
-    for marker in CI_PATHS:
-        candidate = target / marker
-        if candidate.is_file():
-            ci.append(marker)
-        elif candidate.is_dir():
-            ci.extend(
-                sorted(
-                    str((candidate / f.name).relative_to(target)).replace("\\", "/")
-                    for f in candidate.iterdir()
-                    if f.suffix.lower() in (".yml", ".yaml")
+    try:
+        for marker in CI_PATHS:
+            candidate = target / marker
+            if candidate.is_file():
+                ci.append(marker)
+            elif candidate.is_dir():
+                ci.extend(
+                    sorted(
+                        str((candidate / f.name).relative_to(target)).replace("\\", "/")
+                        for f in candidate.iterdir()
+                        if f.suffix.lower() in (".yml", ".yaml")
+                    )
                 )
-            )
+    except OSError as exc:
+        raise ValueError(
+            "cannot list CI directory under: {} ({})".format(target, exc)
+        )
 
     code_files = sum(
         count for language, count in languages.items()
@@ -259,7 +269,11 @@ def discover(target_dir, max_files=None):
 
 
 def active_agents(manifest, facts):
-    """Return the agent ids whose health dimensions apply to the target."""
+    """Return the agent ids whose health dimensions apply to the target.
+
+    Raises ValueError when a triggered id is missing from the manifest, so a
+    renamed agent fails loudly instead of silently dropping its domain.
+    """
     active = list(manifest.get("base_agents") or [])
     if facts.get("test_files"):
         active.append("test_health")
@@ -276,10 +290,16 @@ def active_agents(manifest, facts):
     if facts.get("code_files", 0) >= 20 or facts.get("ui_files"):
         active.append("performance")
     wanted = set(active)
+    known = {a["id"] for a in manifest["agents"]}
+    unknown = sorted(wanted - known)
+    if unknown:
+        raise ValueError(
+            "agent trigger not in manifest: " + ", ".join(unknown)
+        )
     return [a["id"] for a in manifest["agents"] if a["id"] in wanted]
 
 
-def _resolve_agent(manifest, token):
+def resolve_agent(manifest, token):
     """Map an id or report name to a canonical agent id."""
     cleaned = token.strip().lower().replace(" ", "_").replace("-", "_")
     for agent in manifest["agents"]:
@@ -311,7 +331,7 @@ def select_agents(manifest, facts, effort="max", override=None):
         raise ValueError("effort must be 'max' or 'min'")
     order = [a["id"] for a in manifest["agents"]]
     if override:
-        chosen = {_resolve_agent(manifest, token) for token in override.split(",")}
+        chosen = {resolve_agent(manifest, token) for token in override.split(",")}
         return [agent_id for agent_id in order if agent_id in chosen]
     if effort == "min":
         quick = set(manifest["thresholds"]["quick_agents"])
