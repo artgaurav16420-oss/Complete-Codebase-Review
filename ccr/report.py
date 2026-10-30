@@ -24,8 +24,11 @@ def fmt_hours_long(value):
 
 
 def _cell(text):
-    """Make text safe inside a Markdown table cell."""
-    return str(text).replace("|", "/").replace("\n", " ").strip()
+    """Make text safe inside a Markdown table cell or section body."""
+    cleaned = str(text).replace("|", "/")
+    for sep in ("\r\n", "\r", "\n", "\u2028", "\u2029"):
+        cleaned = cleaned.replace(sep, " ")
+    return cleaned.strip()
 
 
 def _executive_summary(model):
@@ -34,7 +37,9 @@ def _executive_summary(model):
     files = size.get("files", 0)
     languages = size.get("languages", 0)
     modules = size.get("modules", 0)
-    priority = ", ".join(model["priority_areas"]) or "none"
+    priority = ", ".join(_cell(name) for name in model["priority_areas"])
+    if not priority:
+        priority = "none"
     lines = [
         "## Executive Summary",
         "",
@@ -68,7 +73,7 @@ def _per_domain(model):
     ]
     for row in model["per_domain_scores"]:
         lines.append(
-            f"| {row['domain']} | {row['score']} | {row['critical']} | "
+            f"| {_cell(row['domain'])} | {row['score']} | {row['critical']} | "
             f"{row['high']} | {row['medium']} | {row['low']} |"
         )
     if not model["per_domain_scores"]:
@@ -93,7 +98,8 @@ def _findings(model):
     for item in model["findings"]:
         lines.append(
             f"| {_cell(item['finding'])} | {item['severity']} | "
-            f"{item.get('domain', '')} | {fmt_hours(item.get('est_hours', 0))} | "
+            f"{_cell(item.get('domain', ''))} | "
+            f"{fmt_hours(item.get('est_hours', 0))} | "
             f"{item['da_verdict']} |"
         )
     if not model["findings"]:
@@ -132,7 +138,7 @@ def _tech_debt(model):
     """Render the Tech Debt Summary section."""
     debt = model["tech_debt"]
     parts = [
-        f"{domain}: {fmt_hours(hours)}"
+        f"{_cell(domain)}: {fmt_hours(hours)}"
         for domain, hours in debt["by_domain"].items()
     ]
     lines = [
@@ -192,14 +198,14 @@ def _overlap_candidates(model):
         merged = ", ".join(candidate.get("merged", []))
         if candidate.get("advisory"):
             lines.append(
-                f"- [advisory] {candidate.get('file', '')}: "
+                f"- [advisory] {_cell(candidate.get('file', ''))}: "
                 f"{candidate.get('hours', 0)}h across "
                 f"{candidate.get('kept', '')} + {merged} \u2014 adjudicate "
                 "whether this is one root cause"
             )
         else:
             lines.append(
-                f"- {candidate.get('file', '')}: kept "
+                f"- {_cell(candidate.get('file', ''))}: kept "
                 f"{candidate.get('kept', '')} (merged: {merged})"
             )
     lines.append("")
@@ -294,6 +300,12 @@ def validate_markdown(md):
 
 def render_json(model):
     """Render the machine-readable report contract."""
+    domain_ids = {}
+    for item in model["findings"]:
+        display = item.get("domain")
+        agent_id = item.get("agent")
+        if display and agent_id:
+            domain_ids.setdefault(display, agent_id)
     findings = []
     for item in model["findings"]:
         raw_severity = item["severity"]
@@ -302,7 +314,7 @@ def render_json(model):
             "id": item["id"],
             "finding": item["finding"],
             "severity": severity,
-            "domain": item.get("domain", ""),
+            "domain": item.get("agent") or item.get("domain", ""),
             "est_hours": item.get("est_hours", 0),
             "da_verdict": item["da_verdict"],
             "finding_type": item.get("finding_type", ""),
@@ -340,7 +352,7 @@ def render_json(model):
             "priority_areas": model["priority_areas"],
         },
         "per_domain_scores": {
-            row["domain"]: {
+            domain_ids.get(row["domain"], row["domain"]): {
                 "score": row["score"],
                 "critical": row["critical"],
                 "high": row["high"],
@@ -350,10 +362,23 @@ def render_json(model):
             for row in model["per_domain_scores"]
         },
         "findings": findings,
-        "rejected": model["rejected"],
+        "rejected": [
+            dict(
+                item,
+                domain=item.get("agent") or item.get("domain", ""),
+            )
+            for item in model["rejected"]
+        ],
         "overlap_candidates": model.get("overlap_candidates", []),
         "roadmap": roadmap,
-        "tech_debt": model["tech_debt"],
+        "tech_debt": {
+            "total_hours": model["tech_debt"]["total_hours"],
+            "by_domain": {
+                domain_ids.get(name, name): hours
+                for name, hours in model["tech_debt"]["by_domain"].items()
+            },
+            "trend": model["tech_debt"]["trend"],
+        },
         "agent_status": model["agent_status"],
         "baseline": model["baseline"],
     }

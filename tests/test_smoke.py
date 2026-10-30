@@ -23,6 +23,13 @@ def _import_install():
 INSTALL_PY = str(Path(__file__).resolve().parent.parent / "install.py")
 
 
+class _TtyStringIO(io.StringIO):
+    """StringIO that claims to be a terminal so color branches activate."""
+
+    def isatty(self):
+        return True
+
+
 class TestChecksumVerification(unittest.TestCase):
     """Tests for --checksum and --self-verify flags using in-process calls."""
 
@@ -178,7 +185,7 @@ class TestNoColorEnv(unittest.TestCase):
         return env
 
     def test_no_color_suppresses_ansi(self):
-        """Verify NO_COLOR suppresses ANSI escape codes."""
+        """Verify NO_COLOR suppresses ANSI codes on a color-capable TTY."""
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
             script = Path(tmpdir) / "install.py"
@@ -186,13 +193,27 @@ class TestNoColorEnv(unittest.TestCase):
             valid_hash = self.install._compute_sha256(script)
             checksum_file = script.parent / "install.py.sha256"
             checksum_file.write_text(valid_hash + "  install.py\n", encoding="utf-8")
+            env_without_no_color = {
+                key: value for key, value in os.environ.items()
+                if key != "NO_COLOR"
+            }
             with patch.object(self.install, "__file__", str(script)), \
                  patch("sys.argv", [str(script), "--self-verify"]), \
-                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout, \
+                 patch("sys.stdout", new_callable=_TtyStringIO) as control_stdout, \
+                 patch.dict(os.environ, env_without_no_color, clear=True):
+                with self.assertRaises(SystemExit):
+                    self.install.main()
+                control = control_stdout.getvalue()
+                self.assertIn("Checksum verification passed", control)
+                self.assertIn("\033[", control)
+            with patch.object(self.install, "__file__", str(script)), \
+                 patch("sys.argv", [str(script), "--self-verify"]), \
+                 patch("sys.stdout", new_callable=_TtyStringIO) as tty_stdout, \
                  patch.dict(os.environ, {"NO_COLOR": "1"}, clear=True):
                 with self.assertRaises(SystemExit):
                     self.install.main()
-                output = mock_stdout.getvalue()
+                output = tty_stdout.getvalue()
+                self.assertIn("Checksum verification passed", output)
                 self.assertNotIn("\033[", output)
 
     def test_no_color_still_outputs_text(self):

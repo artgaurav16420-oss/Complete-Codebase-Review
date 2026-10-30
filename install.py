@@ -95,6 +95,13 @@ def _verify_checksum(file_path, expected_hash):
     return actual_hash.lower() == expected_hash.lower()
 
 
+def _is_sha256(text):
+    """Return True if text is exactly 64 hexadecimal characters."""
+    return len(text) == 64 and all(
+        c in "0123456789abcdefABCDEF" for c in text
+    )
+
+
 _SKILL_EXCLUDED = {
     # VCS and build artifacts — never ship these
     ".git", "__pycache__",
@@ -114,8 +121,8 @@ _SKILL_EXCLUDED = {
     "coverage.json", "coverage_report.txt", "coverage_run.txt",
     # Config/credentials — never shipped
     ".skills", ".env", ".secret", ".credentials",
-    # Cache directory — runtime artifact
-    ".code-review-cache",
+    # Cache directory and foreign skills index — runtime artifacts
+    ".code-review-cache", ".skills-index.json",
     # orchestrator-rules.md deliberately excluded — it's an internal
     # protocol document consumed by the orchestrator at repo root,
     # not a runtime requirement for installed skill consumers.
@@ -397,7 +404,7 @@ def _run_target_install(src_dir, target, dry_run):
     try:
         dest_path = copy_skill(src_dir, resolved)
         print_success(f"Installed to: {dest_path}")
-    except (PermissionError, OSError, ValueError) as e:
+    except (OSError, ValueError) as e:
         print_error(f"Install failed: {e}")
         sys.exit(1)
     print_success("Installation complete!")
@@ -424,7 +431,7 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
             dest_path = copy_skill(src_dir, target_dir)
             print_success(f"Installed to {tool_name}: {dest_path}")
             installed_any = True
-        except (PermissionError, OSError, ValueError) as e:
+        except (OSError, ValueError) as e:
             print_error(f"Failed to install to {tool_name}: {e}")
     return installed_any
 
@@ -470,7 +477,7 @@ def _run_uninstall(target, dry_run):
             sys.exit(1)
         try:
             removed += int(remove_skill(resolved, dry_run))
-        except (PermissionError, OSError, ValueError) as e:
+        except (OSError, ValueError) as e:
             print_error("Uninstall failed: " + str(e))
             sys.exit(1)
     else:
@@ -481,7 +488,7 @@ def _run_uninstall(target, dry_run):
                 if remove_skill(target_dir, dry_run):
                     removed += 1
                     print_info("Removed from " + tool_name)
-            except (PermissionError, OSError, ValueError) as e:
+            except (OSError, ValueError) as e:
                 failed += 1
                 print_error("Failed to remove from {}: {}".format(tool_name, e))
         local = Path.cwd() / ".skills"
@@ -490,7 +497,7 @@ def _run_uninstall(target, dry_run):
                 if remove_skill(local, dry_run):
                     removed += 1
                     print_info("Removed local .skills install")
-            except (PermissionError, OSError, ValueError) as e:
+            except (OSError, ValueError) as e:
                 failed += 1
                 print_error("Failed to remove local install: " + str(e))
     if failed:
@@ -526,7 +533,7 @@ def _run_local_fallback(src_dir, dry_run):
     try:
         dest_path = copy_skill(src_dir, local_target)
         print_success(f"Installed to local directory: {dest_path}")
-    except (PermissionError, OSError, ValueError) as e:
+    except (OSError, ValueError) as e:
         print_error(f"Local installation failed: {e}")
         sys.exit(1)
 
@@ -552,8 +559,8 @@ def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
     print_success("Installation complete!")
 
 
-def main():
-    """Execute the main installation process."""
+def _parse_args():
+    """Build the CLI parser and return the parsed arguments."""
     parser = argparse.ArgumentParser(
         description="Install the Complete Codebase Review skill for AI coding agents.",
         epilog=(
@@ -595,7 +602,7 @@ def main():
         "--checksum",
         metavar="HASH",
         default=None,
-        help="Verify the script's SHA-256 checksum before running.",
+        help="Post-load self-check: verify the extracted installer's SHA-256.",
     )
     verify_group.add_argument(
         "--self-verify",
@@ -603,54 +610,65 @@ def main():
         default=False,
         help="Verify this script against install.py.sha256 (if present) and exit.",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    if args.version:
-        print(f"complete-codebase-review v{get_version()}")
-        return
 
+def _handle_version(args):
+    """Print the version when --version was given. Returns True if handled."""
+    if not args.version:
+        return False
+    print(f"complete-codebase-review v{get_version()}")
+    return True
+
+
+def _handle_self_verify(args):
+    """Verify this script against install.py.sha256, exiting 0 on match or 1 on failure."""
+    script_path = Path(__file__).resolve()
+    checksum_file = script_path.parent / "install.py.sha256"
+    if not checksum_file.exists():
+        print_error("install.py.sha256 not found")
+        sys.exit(1)
+    checksum_content = checksum_file.read_text(encoding="utf-8").strip()
+    if not checksum_content:
+        print_error("install.py.sha256 is empty — verification failed")
+        sys.exit(1)
+    expected_hash = checksum_content.split()[0]
+    if not _is_sha256(expected_hash):
+        print_error(
+            "install.py.sha256 contains invalid checksum format"
+            " (expected 64 hex characters)"
+        )
+        sys.exit(1)
+    if _verify_checksum(script_path, expected_hash):
+        print_success("Checksum verification passed")
+        sys.exit(0)
+    print_error("Checksum verification FAILED — script may be corrupted")
+    sys.exit(1)
+
+
+def _handle_checksum(args):
+    """Verify this script against --checksum, exiting 0 on match or 1 on failure."""
+    script_path = Path(__file__).resolve()
+    if not _is_sha256(args.checksum):
+        print_error(
+            "Invalid checksum format (expected 64 hexadecimal characters)"
+        )
+        sys.exit(1)
+    if _verify_checksum(script_path, args.checksum):
+        print_success("Checksum verification passed")
+        sys.exit(0)
+    print_error("Checksum verification FAILED")
+    sys.exit(1)
+
+
+def _dispatch(args):
+    """Run the installer mode selected by the parsed arguments."""
+    if _handle_version(args):
+        return None
     if args.self_verify:
-        script_path = Path(__file__).resolve()
-        checksum_file = script_path.parent / "install.py.sha256"
-        if not checksum_file.exists():
-            print_error("install.py.sha256 not found")
-            sys.exit(1)
-        checksum_content = checksum_file.read_text(encoding="utf-8").strip()
-        if not checksum_content:
-            print_error("install.py.sha256 is empty — verification failed")
-            sys.exit(1)
-        expected_hash = checksum_content.split()[0]
-        if len(expected_hash) != 64 or not all(
-            c in "0123456789abcdefABCDEF" for c in expected_hash
-        ):
-            print_error(
-                "install.py.sha256 contains invalid checksum format"
-                " (expected 64 hex characters)"
-            )
-            sys.exit(1)
-        if _verify_checksum(script_path, expected_hash):
-            print_success("Checksum verification passed")
-            sys.exit(0)
-        else:
-            print_error("Checksum verification FAILED — script may be corrupted")
-            sys.exit(1)
-
+        _handle_self_verify(args)
     if args.checksum is not None:
-        script_path = Path(__file__).resolve()
-        if len(args.checksum) != 64 or not all(
-            c in "0123456789abcdefABCDEF" for c in args.checksum
-        ):
-            print_error(
-                "Invalid checksum format (expected 64 hexadecimal characters)"
-            )
-            sys.exit(1)
-        if _verify_checksum(script_path, args.checksum):
-            print_success("Checksum verification passed")
-            sys.exit(0)
-        else:
-            print_error("Checksum verification FAILED")
-            sys.exit(1)
-
+        _handle_checksum(args)
     if args.uninstall:
         print_info(f"Starting Universal Uninstaller on {platform.system()}")
         return _run_uninstall(args.target, args.dry_run)
@@ -661,10 +679,16 @@ def main():
 
     if args.target:
         _run_target_install(src_dir, args.target, args.dry_run)
-        return
+        return None
 
     target_dirs = get_target_dirs()
     _run_auto_or_local_install(src_dir, target_dirs, args.dry_run)
+    return None
+
+
+def main():
+    """Execute the main installation process."""
+    return _dispatch(_parse_args())
 
 
 if __name__ == "__main__":

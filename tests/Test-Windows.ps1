@@ -2,6 +2,7 @@
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Resolve-Path (Join-Path $ScriptDir '..')
+Set-Location $ProjectRoot
 $Fail = 0
 
 $SkillFile = Join-Path $ProjectRoot 'SKILL.md'

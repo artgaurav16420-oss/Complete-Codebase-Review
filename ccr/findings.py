@@ -238,6 +238,9 @@ def find_overlaps(findings):
     Deterministic: same-file findings whose failure-mode token sets have a
     Jaccard similarity >= OVERLAP_THRESHOLD join one cluster. Clusters with
     one member are dropped. Returns a list of member lists.
+
+    Groups are indexed by failure token, so a group that shares no token with
+    the current finding is skipped: its Jaccard score would be zero.
     """
     by_file = {}
     for item in findings:
@@ -248,19 +251,25 @@ def find_overlaps(findings):
     clusters = []
     for _file, items in sorted(by_file.items()):
         groups = []
+        index = {}
         for item in items:
             tokens, negations = _failure_tokens(item)
+            candidates = set()
+            for token in tokens:
+                candidates.update(index.get(token, ()))
             joined = False
-            for group in groups:
-                if not tokens or not group["tokens"]:
-                    continue
+            for position in sorted(candidates):
+                group = groups[position]
                 if negations != group["negations"]:
                     continue
                 inter = len(tokens & group["tokens"])
                 union = len(tokens | group["tokens"])
                 if union and inter / union >= OVERLAP_THRESHOLD:
                     group["members"].append(item)
+                    added = tokens - group["tokens"]
                     group["tokens"] = group["tokens"] | tokens
+                    for token in added:
+                        index.setdefault(token, set()).add(position)
                     joined = True
                     break
             if not joined:
@@ -268,6 +277,9 @@ def find_overlaps(findings):
                     "members": [item], "tokens": tokens,
                     "negations": negations,
                 })
+                position = len(groups) - 1
+                for token in tokens:
+                    index.setdefault(token, set()).add(position)
         clusters.extend(
             group["members"] for group in groups if len(group["members"]) > 1
         )
@@ -454,6 +466,9 @@ def _trend(baseline, total_hours):
     trend = "no previous baseline"
     if baseline:
         previous = baseline.get("tech_debt_hours")
+        if isinstance(previous, bool) or not isinstance(
+                previous, (int, float)):
+            previous = None
         if previous is not None:
             if previous > 0:
                 change = round((total_hours - previous) / previous * 100)
@@ -463,7 +478,7 @@ def _trend(baseline, total_hours):
     return trend
 
 
-def _assemble_model(findings, rejected, agents_planned, agents_completed,
+def _assemble_model(findings, rejected, agents_planned, agents_completed, *,
                     target, health, total_counts, total_hours, scores,
                     priority_areas, overall_score, roadmap_hours, by_domain,
                     phases, verdict_summary, trend, overlap_candidates=None):
@@ -580,7 +595,10 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
 
     return _assemble_model(
         findings, rejected, agents_planned, agents_completed,
-        target, health, total_counts, total_hours, scores,
-        priority_areas, overall_score, roadmap_hours, by_domain,
-        phases, verdict_summary, trend, overlap_candidates,
+        target=target, health=health, total_counts=total_counts,
+        total_hours=total_hours, scores=scores,
+        priority_areas=priority_areas, overall_score=overall_score,
+        roadmap_hours=roadmap_hours, by_domain=by_domain,
+        phases=phases, verdict_summary=verdict_summary, trend=trend,
+        overlap_candidates=overlap_candidates,
     )

@@ -32,27 +32,58 @@ PHASE_GATES = {
 
 AGENT_STATES = ("completed", "failed")
 
+# Fields that a hand-edited or older state file may omit. Values are copied
+# so callers never share the mutable defaults.
+DEFAULTS = {
+    "skill_dir": "",
+    "effort": "max",
+    "current_step": "",
+    "agents_completed": [],
+    "agents_failed": [],
+    "completed_count": 0,
+    "total_agents": 0,
+    "facts": {},
+    "re_review_count": 0,
+    "local_loop_iterations": 0,
+    "external_fix_rounds": 0,
+    "last_checkpoint_ts": "",
+}
+
+
+def _defaults_copy():
+    """Return a fresh copy of the optional state fields."""
+    copied = {}
+    for key, value in DEFAULTS.items():
+        if isinstance(value, dict):
+            copied[key] = dict(value)
+        elif isinstance(value, list):
+            copied[key] = list(value)
+        else:
+            copied[key] = value
+    return copied
+
+
+def _apply_defaults(data):
+    """Fill optional state fields on a loaded dict."""
+    if "total_agents" not in data:
+        data["total_agents"] = len(data["agents_planned"])
+    for key, value in _defaults_copy().items():
+        if key not in data:
+            data[key] = value
+
 
 def new_state(target_dir, skill_dir="", effort="max"):
     """Return a fresh state dict."""
-    return {
+    state = _defaults_copy()
+    state.update({
         "target_dir": str(Path(target_dir).resolve()),
         "skill_dir": skill_dir,
         "effort": effort,
         "current_phase": 1,
-        "current_step": "",
         "agents_planned": [],
-        "agents_completed": [],
-        "agents_failed": [],
-        "completed_count": 0,
-        "total_agents": 0,
-        "facts": {},
         "phase_gates": {name: False for name in GATES},
-        "re_review_count": 0,
-        "local_loop_iterations": 0,
-        "external_fix_rounds": 0,
-        "last_checkpoint_ts": "",
-    }
+    })
+    return state
 
 
 class State:
@@ -71,6 +102,7 @@ class State:
         with open(state_path, encoding="utf-8") as f:
             data = json.load(f)
         cls._validate(data)
+        _apply_defaults(data)
         return cls(state_path, data)
 
     @classmethod
@@ -88,6 +120,10 @@ class State:
         for key in ("target_dir", "current_phase", "phase_gates", "agents_planned"):
             if key not in data:
                 raise ValueError("state missing key: " + key)
+        if not isinstance(data["phase_gates"], dict):
+            raise ValueError("state phase_gates must be a JSON object")
+        if not isinstance(data["agents_planned"], list):
+            raise ValueError("state agents_planned must be a JSON array")
         if data["current_phase"] not in PHASES:
             raise ValueError("invalid phase: " + str(data["current_phase"]))
         for gate in data["phase_gates"]:

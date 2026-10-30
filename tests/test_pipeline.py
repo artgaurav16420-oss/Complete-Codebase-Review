@@ -7,8 +7,16 @@ Scores, Detailed Findings, Improvement Roadmap, Tech Debt Summary, Agent
 Status) and validates that sample outputs conform.
 """
 import re
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TESTS_DIR = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 VALID_SEVERITIES = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}
 VALID_DA_VERDICTS = {
@@ -847,19 +855,39 @@ class TestSampleOutputValidation(unittest.TestCase):
         self.assertEqual(sum(totals), 200,
                          f"Roadmap phases {totals} sum to {sum(totals)}h, expected 200h")
 
-    def test_actual_health_report_passes_validation(self):
-        import os
-        cache_dir = os.environ.get("CODE_REVIEW_CACHE_DIR", ".code-review-cache")
-        report_path = Path(__file__).resolve().parent.parent / cache_dir / "health-report.md"
-        if not report_path.exists():
-            self.skipTest("health-report.md not found on disk")
-        md = report_path.read_text(encoding="utf-8")
+
+class TestPipelineGeneratedReport(unittest.TestCase):
+    """A report synthesized from the recorded fixtures passes the contract."""
+
+    def test_synthesized_health_report_passes_validation(self):
+        from ccr import manifest as manifest_mod
+        from ccr import pipeline
+        from ccr.providers import RecordedProvider
+
+        fixtures = TESTS_DIR / "fixtures" / "agents"
+        provider = RecordedProvider(fixtures)
+        agent_ids = provider.agent_ids()
+        self.assertTrue(agent_ids, f"no recorded agent fixtures in {fixtures}")
+        results = {agent_id: provider.get(agent_id) for agent_id in agent_ids}
+        model = pipeline.synthesize(
+            manifest_mod.load(), results, agent_ids, target="fixture",
+            timestamp="1970-01-01T00:00:00+00:00",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = pipeline.write_outputs(
+                model, Path(tmp) / "health-report", "both"
+            )
+            report_path = Path(tmp) / "health-report.md"
+            self.assertIn(report_path, paths)
+            self.assertTrue(report_path.exists())
+            md = report_path.read_text(encoding="utf-8")
+
         errors = validate_markdown_output(md)
         self.assertEqual(
             errors, [],
-            "health-report.md does not conform to schema:\n" + "\n".join(
+            "synthesized health report does not conform to schema:\n" + "\n".join(
                 f"  - {e}" for e in errors
-            )
+            ),
         )
 
 

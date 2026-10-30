@@ -4,7 +4,7 @@ import argparse
 import json
 import shutil
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__, manifest as manifest_mod
@@ -15,7 +15,7 @@ def _manifest():
     """Load the manifest or exit with a clear error."""
     try:
         return manifest_mod.load()
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, TypeError, AttributeError, KeyError) as exc:
         print("[ERROR] " + str(exc))
         sys.exit(2)
 
@@ -54,15 +54,28 @@ def cmd_plan(args):
     return 0
 
 
-def _archive_results(cache):
-    """Move previous agent results aside so they cannot be counted again."""
-    stale = sorted(Path(cache).glob("phase_*.json"))
+def _archive_results(cache, agent_ids=()):
+    """Move previous agent results aside so they cannot be counted again.
+
+    Covers both supported result layouts: ``phase_<id>.json`` and bare
+    ``<id>.json`` for ids declared by the manifest.
+    """
+    root = Path(cache)
+    stale = sorted(root.glob("phase_*.json"))
+    for agent_id in sorted(set(agent_ids)):
+        candidate = root / (agent_id + ".json")
+        if candidate.is_file() and candidate not in stale:
+            stale.append(candidate)
     if not stale:
         return 0
-    dest = Path(cache) / "previous-results" / datetime.now().strftime(
-        "%Y%m%d-%H%M%S"
-    )
-    dest.mkdir(parents=True, exist_ok=True)
+    base = root / "previous-results"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    dest = base / stamp
+    suffix = 1
+    while dest.exists():
+        dest = base / f"{stamp}-{suffix}"
+        suffix += 1
+    dest.mkdir(parents=True)
     for path in stale:
         shutil.move(str(path), str(dest / path.name))
     return len(stale)
@@ -87,14 +100,26 @@ def cmd_record(args):
     except (OSError, ValueError) as exc:
         print(f"[ERROR] invalid state in {cache}: {exc}")
         return 2
-    archived = _archive_results(args.out)
-    paths = providers.write_prompts(
-        data, plan, args.out, skill_dir=args.skill_dir
-    )
-    if current is None or current.data["target_dir"] != plan["target"]:
-        current = state.State.create(
-            state_path, plan["target"], args.skill_dir, args.effort
+    try:
+        paths = providers.write_prompts(
+            data, plan, args.out, skill_dir=args.skill_dir
         )
+    except OSError as exc:
+        print(f"[ERROR] could not write prompts: {exc}")
+        return 2
+    archived = _archive_results(
+        args.out, [agent["id"] for agent in data["agents"]]
+    )
+    previous = None
+    if current is not None and current.data["target_dir"] == plan["target"]:
+        previous = current.data
+    current = state.State.create(
+        state_path, plan["target"], args.skill_dir, args.effort
+    )
+    if previous is not None:
+        current.data["re_review_count"] = int(
+            previous.get("re_review_count") or 0
+        ) + 1
     current.data["effort"] = args.effort
     current.data["skill_dir"] = args.skill_dir
     current.data["facts"] = plan["facts"]
@@ -196,6 +221,24 @@ def _emit_synthesis_output(model, args):
     return 0
 
 
+def _load_baseline(path):
+    """Load a previous baseline JSON object for trend comparison."""
+    if not path:
+        return None
+    with open(path, encoding="utf-8-sig") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("baseline must be a JSON object: " + path)
+    previous = data.get("tech_debt_hours")
+    if previous is not None and (
+            isinstance(previous, bool)
+            or not isinstance(previous, (int, float))):
+        raise ValueError(
+            "baseline tech_debt_hours must be a number: " + path
+        )
+    return data
+
+
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
@@ -215,7 +258,17 @@ def cmd_synthesize(args):
     if effort is None:
         effort = cached.data.get("effort", "max") if cached is not None else "max"
     target = args.target or (cached.data["target_dir"] if cached else args.cache)
-    facts = cached.data.get("facts") if cached is not None else None
+    facts = None
+    if cached is not None:
+        stored = cached.data.get("target_dir", "")
+        if not stored or Path(target).resolve() == Path(stored).resolve():
+            facts = cached.data.get("facts")
+        else:
+            print(
+                "[WARN] cached facts belong to " + stored
+                + "; codebase size omitted",
+                file=sys.stderr,
+            )
     gate_known = bool(args.agents) or (
         cached is not None and bool(cached.data["agents_planned"])
     )
@@ -241,9 +294,14 @@ def cmd_synthesize(args):
         return 1
 
     try:
+        baseline = _load_baseline(args.baseline)
+    except (OSError, ValueError) as exc:
+        print("[ERROR] invalid baseline: " + str(exc))
+        return 2
+    try:
         model = pipeline.synthesize(
             data, results, planned, completed=completed, target=target,
-            facts=facts,
+            facts=facts, baseline=baseline,
         )
     except ValueError as exc:
         print("[ERROR] " + str(exc))
@@ -277,8 +335,8 @@ def cmd_validate_results(args):
         print("[ERROR] no agent results found in " + args.cache)
         return 2
     rows = []
-    total_valid = 0
     total_malformed = 0
+    kept_all = []
     for agent_id in planned:
         result = results.get(agent_id)
         if result is None:
@@ -297,13 +355,17 @@ def cmd_validate_results(args):
             raw, floors=data.get("tech_debt_floors")
         )
         malformed = findings_mod.malformed_rejections(rejected)
-        total_valid += len(kept)
+        kept_all.extend(kept)
         total_malformed += len(malformed)
         rows.append({
             "agent": agent_id,
-            "valid": len(kept),
+            "valid": 0,
             "malformed": len(malformed),
         })
+    by_agent = {row["agent"]: row for row in rows}
+    for item in findings_mod.dedup(kept_all):
+        by_agent[item["agent"]]["valid"] += 1
+    total_valid = sum(row["valid"] for row in rows)
     if args.json:
         print(json.dumps({
             "agents": rows,
@@ -312,11 +374,9 @@ def cmd_validate_results(args):
         }, indent=2, sort_keys=True))
     else:
         for row in rows:
-            print("[VALIDATE] {agent}: {valid} valid, {malformed} malformed"
-                  .format(**row))
-        print("[VALIDATE] {} valid, {} malformed".format(
-            total_valid, total_malformed
-        ))
+            print(f"[VALIDATE] {row['agent']}: {row['valid']} valid, "
+                  f"{row['malformed']} malformed")
+        print(f"[VALIDATE] {total_valid} valid, {total_malformed} malformed")
     return 1 if total_malformed else 0
 
 
@@ -364,14 +424,14 @@ def _positive_int(value):
     return number
 
 
-def build_parser():
+def build_parser(version=None):
     """Build the argparse parser."""
     parser = argparse.ArgumentParser(
         prog="ccr",
         description="Deterministic core for the Complete Codebase Review pipeline.",
     )
     parser.add_argument(
-        "--version", action="version", version="ccr " + __version__
+        "--version", action="version", version="ccr " + (version or __version__)
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -403,6 +463,10 @@ def build_parser():
     synth.add_argument("--out", default=None)
     synth.add_argument("--target", default="")
     synth.add_argument("--agents", default=None)
+    synth.add_argument(
+        "--baseline", default=None,
+        help="Previous baseline JSON for the tech-debt trend line.",
+    )
     synth.add_argument(
         "--effort", choices=["max", "min"], default=None,
         help="Defaults to the effort recorded in ccr-state.json, else max.",
@@ -444,11 +508,9 @@ def main(argv=None):
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, OSError):
         pass
-    parser = build_parser()
+    data = _manifest()
+    parser = build_parser(data["version"])
     args = parser.parse_args(argv)
-    if not hasattr(args, "func"):
-        parser.print_help()
-        return 2
     return args.func(args)
 
 

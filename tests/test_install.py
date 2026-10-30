@@ -282,6 +282,35 @@ class TestCopySkill(_BaseInstallTest):
             self.assertFalse((result / "foo.pyc").exists())
             self.assertFalse((result / "orchestrator-rules.md").exists())
 
+    def test_copy_skill_skips_foreign_skills_index(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {
+                ".skills-index.json": '{"skills": []}',
+                "skills/review/SKILL.md": "name: review",
+            })
+            dest = Path(tmpdir) / "dest"
+            result = self.install.copy_skill(src, dest)
+
+            self.assertFalse((result / ".skills-index.json").exists())
+            self.assertTrue((result / "SKILL.md").exists())
+            self.assertTrue((result / "skills" / "review" / "SKILL.md").exists())
+
+    def test_copy_skill_normal_tree_copies_nested_content(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {
+                "ccr/pipeline.json": "{}",
+                "skills/review/SKILL.md": "name: review",
+                "helpers/note.md": "# Note",
+            })
+            dest = Path(tmpdir) / "dest"
+            result = self.install.copy_skill(src, dest)
+
+            self.assertTrue((result / "SKILL.md").exists())
+            self.assertTrue((result / "README.md").exists())
+            self.assertTrue((result / "ccr" / "pipeline.json").exists())
+            self.assertTrue((result / "skills" / "review" / "SKILL.md").exists())
+            self.assertTrue((result / "helpers" / "note.md").exists())
+
     def test_permission_error_is_raised(self):
         with patch.object(self.install.shutil, "copytree",
                           side_effect=PermissionError("denied")), \
@@ -942,6 +971,43 @@ class TestChecksumFunctions(unittest.TestCase):
             Path(temp_path).unlink()
 
 
+class TestIsSha256(_BaseInstallTest):
+    """Tests for the shared 64-hex checksum validator."""
+
+    def test_accepts_lowercase_and_uppercase_hex(self):
+        self.assertTrue(self.install._is_sha256("0" * 64))
+        self.assertTrue(self.install._is_sha256("aB" * 32))
+
+    def test_rejects_wrong_length(self):
+        self.assertFalse(self.install._is_sha256(""))
+        self.assertFalse(self.install._is_sha256("0" * 63))
+        self.assertFalse(self.install._is_sha256("0" * 65))
+
+    def test_rejects_non_hex_characters(self):
+        self.assertFalse(self.install._is_sha256("g" * 64))
+        self.assertFalse(self.install._is_sha256("0" * 63 + " "))
+
+
+class TestChecksumFormatValidation(_BaseInstallTest):
+    """--checksum rejects malformed input before any file is verified."""
+
+    def test_invalid_checksum_format_exits_with_unchanged_message(self):
+        bad_inputs = ["", "short", "xyz" * 30, "g" * 64]
+        for bad in bad_inputs:
+            with self.subTest(input=bad):
+                with patch("sys.argv", ["install.py", "--checksum", bad]), \
+                     patch("sys.stdout", new_callable=io.StringIO) as mock_stdout, \
+                     patch.object(self.install, "_verify_checksum") as mock_verify:
+                    with self.assertRaises(SystemExit) as ctx:
+                        self.install.main()
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn(
+                    "Invalid checksum format (expected 64 hexadecimal characters)",
+                    mock_stdout.getvalue(),
+                )
+                mock_verify.assert_not_called()
+
+
 class TestMainEntryPoint(unittest.TestCase):
     """Tests for the if __name__ == '__main__' guard."""
 
@@ -986,6 +1052,14 @@ class TestIgnoreSkillFiles(unittest.TestCase):
         kept = install_mod._ignore_skill_files(".", names)
         for name in names:
             self.assertIn(name, kept)
+
+    def test_skips_foreign_skills_index(self):
+        install_mod = _import_install()
+        kept = install_mod._ignore_skill_files(
+            ".", [".skills-index.json", "SKILL.md"]
+        )
+        self.assertIn(".skills-index.json", kept)
+        self.assertNotIn("SKILL.md", kept)
 
 
 if __name__ == "__main__":

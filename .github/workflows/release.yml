@@ -3,7 +3,6 @@ name: Release
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -51,8 +50,28 @@ jobs:
           python -m coverage json -o coverage.json
           python tools/coverage_floor.py coverage.json
 
+      - name: Bash contract checks
+        run: bash test.sh --skill-checks-only
+
+  windows-test:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Windows PowerShell test suite
+        run: powershell -ExecutionPolicy Bypass -File tests/Test-Windows.ps1
+        shell: powershell
+
   build:
-    needs: test
+    needs: [test, windows-test]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

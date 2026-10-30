@@ -1,12 +1,19 @@
 """Tests for ccr.pipeline: gates, synthesis, rendering, scoring."""
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from ccr import manifest as manifest_mod
-from ccr import pipeline
+ROOT = Path(__file__).resolve().parent.parent
+TESTS_DIR = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+from ccr import manifest as manifest_mod  # noqa: E402
+from ccr import pipeline  # noqa: E402
 
 GOOD = "[app.py:1] \u2014 hardcoded key in source \u2192 any reader gets the key"
 
@@ -49,9 +56,10 @@ class TestCompletion(unittest.TestCase):
         self.assertIn("insufficient", str(ctx.exception))
 
     def test_quick_threshold_pass(self):
-        pipeline.check_completion(
+        ratio = pipeline.check_completion(
             self.manifest, "min", ["a", "b", "c"], ["a", "b"]
         )
+        self.assertAlmostEqual(ratio, 2 / 3)
 
     def test_quick_threshold_fail(self):
         with self.assertRaises(RuntimeError):

@@ -1,6 +1,6 @@
 .PHONY: test test-py test-bash test-windows coverage lint clean clean-windows eval generate check
 
-test: check test-py test-bash
+test: check test-bash
 	@echo "[SUCCESS] All tests passed!"
 
 test-windows:

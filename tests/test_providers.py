@@ -62,6 +62,23 @@ class TestPrompt(unittest.TestCase):
         prompt = providers.build_prompt(self.agent, "/tmp/repo", "")
         self.assertIn("<SKILL_DIR>", prompt)
 
+    def test_prompt_carries_manifest_version(self):
+        prompt = providers.build_prompt(
+            self.agent, "/tmp/repo", "/skills/ccr", manifest_version="2.4.0"
+        )
+        self.assertIn("MANIFEST_VERSION=2.4.0", prompt)
+
+    def test_write_prompts_embeds_manifest_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = {"agents": ["security"], "target": "/tmp/x"}
+            paths = providers.write_prompts(
+                self.manifest, plan, tmp, skill_dir="/skills/ccr"
+            )
+            text = paths[0].read_text(encoding="utf-8")
+        self.assertIn(
+            "MANIFEST_VERSION=" + self.manifest["version"], text
+        )
+
     def test_write_prompts(self):
         with tempfile.TemporaryDirectory() as tmp:
             plan = {"agents": ["security", "architecture"], "target": "/tmp/x"}

@@ -1,8 +1,10 @@
 """Tests for ccr.discovery: facts, agent selection, and planning."""
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ccr import discovery
 from ccr import manifest as manifest_mod
@@ -161,6 +163,16 @@ class TestPlan(unittest.TestCase):
         self.assertTrue(plan["quick_mode"])
         self.assertEqual(len(plan["agent_names"]), 3)
 
+    def test_full_plan_timeout_follows_env_var(self):
+        with mock.patch.dict(
+                os.environ, {"CODE_REVIEW_TIMEOUT_SEC": "1800"}):
+            plan = discovery.plan(self.manifest, DUMMY)
+        self.assertEqual(plan["timeout_sec"], 1800)
+
+    def test_top_dirs_excludes_synthetic_root(self):
+        plan = discovery.plan(self.manifest, DUMMY)
+        self.assertNotIn(".", plan["facts"]["top_dirs"])
+
 
 class TestProcessFile(unittest.TestCase):
     def test_updates_state(self):
@@ -178,7 +190,7 @@ class TestProcessFile(unittest.TestCase):
             discovery._process_file(f, Path("."), "main.py", f.stat().st_size, state)
             self.assertEqual(state["files"], 1)
             self.assertEqual(state["languages"].get("Python"), 1)
-            self.assertIn(".", state["top_dirs"])
+            self.assertNotIn(".", state["top_dirs"])
 
 
 class TestUiFileClassification(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 # Complete Codebase Review
 
-### AI-powered holistic codebase audit — 14 specialist agents, zero false positives, no code changes without your approval.
+### AI-powered holistic codebase audit — 14 specialist agents, 94% verified precision on the [Organizer benchmark](tests/fixtures/organizer/README.md), no code changes without your approval.
 
 [![CI](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions/workflows/ci.yml/badge.svg)](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/actions)
 [![Security](https://img.shields.io/badge/Security-Policy-purple)](SECURITY.md)
@@ -82,7 +82,7 @@ Architecture, Security, Code Quality, Tech Debt, Test Health, Dependencies, Docu
 <td width="50%">
 
 ### ✅ Devil's Advocate QA
-Every finding is independently challenged, web-verified, and classified (CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED). Zero false positives.
+Every finding is independently challenged, web-verified, and classified (CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED). On the [Organizer benchmark](tests/fixtures/organizer/README.md), 17 of 18 findings were verified, with the known false positive listed by tag in `expected.json`.
 
 </td>
 <td width="50%">
@@ -123,37 +123,41 @@ Works identically on Windows PowerShell and Unix bash. Auto-detects OS, uses pla
 
 ## 📸 Example Output
 
-Here's a real health report excerpt for a medium-sized web application:
+An abridged sample for a medium-sized web application, in the shape `ccr` renders:
 
 ```markdown
-# Codebase Health Report — my-web-app (src/)
+# Codebase Health Report - my-web-app/src
 
 ## Executive Summary
-- **Overall Health**: YELLOW
-- **Codebase Size**: 47,320 LOC, 312 files, 8 modules
-- **Critical Issues**: 3
-- **Tech Debt**: 200 engineering hours
-- **Priority Areas**: Security, Architecture, Test Health
+
+| Field | Value |
+|-------|-------|
+| **Overall Health** | RED |
+| **Codebase Size** | 312 files, 8 languages, 12 top-level modules |
+| **Critical Issues** | 2 |
+| **Tech Debt** | 87.5h |
+| **Priority Areas** | Security, Architecture, Test Health |
 
 ## Per-Domain Scores
+
 | Domain | Score (/10) | Critical | High | Medium | Low |
-|--------|------------|----------|------|--------|-----|
-| Architecture | 6 | 1 | 2 | 3 | 1 |
-| Security | 4 | 2 | 3 | 1 | 0 |
-| Test Health | 5 | 0 | 2 | 2 | 1 |
-| ... | ... | ... | ... | ... | ... |
-| **Overall** | **6.5** | **3** | **11** | **16** | **15** |
+|--------|-------------|----------|------|--------|-----|
+| Architecture | 6.0 | 1 | 2 | 3 | 1 |
+| Security | 4.0 | 1 | 3 | 1 | 0 |
+| Test Health | 5.0 | 0 | 2 | 2 | 1 |
+| **Overall** | 5.0 | 2 | 7 | 6 | 2 |
 
 ## Detailed Findings
+
 | Finding | Severity | Domain | Est. Hours | DA Verdict |
 |---------|----------|--------|------------|------------|
 | Hardcoded DB password | CRITICAL | Security | 2h | CONFIRMED |
 | Circular dep: auth→user→notification→auth | CRITICAL | Architecture | 8h | CONFIRMED |
-| Test coverage <20% in 3 of 8 modules | HIGH | Test Health | 12h | PLAUSIBLE |
+| Test coverage <20% in 3 of 12 modules | HIGH | Test Health | 12h | PLAUSIBLE |
 | ... | | | | |
 ```
 
-The full report includes a 3-phase improvement roadmap, tech debt breakdown by domain, and agent completion status.
+Severity counts and the health value follow the renderer's rules: any CRITICAL finding makes the overall health RED. The full report adds the improvement roadmap, tech debt broken down by domain, agent completion status, and the rejected findings.
 
 ---
 
@@ -165,14 +169,16 @@ git clone --depth 1 https://github.com/artgaurav16420-oss/Complete-Codebase-Revi
 cd Complete-Codebase-Review
 
 # Self-verify script integrity (detects accidental corruption)
-python3 install.py --self-verify
+python install.py --self-verify
 
 # Install
-python3 install.py
+python install.py
 
 # Run a review
 /complete-codebase-review .
 ```
+
+> **Python command name:** commands in this README use `python`. Where that shim is absent and only `python3` exists (common on Linux and macOS), substitute `python3`.
 
 > **Release-based verification:** For production environments, download the installer from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify its SHA-256 checksum published alongside the release notes — never rely on a checksum downloaded from the same source as the script.
 
@@ -191,7 +197,9 @@ runs anywhere, without an LLM:
 | `python -m ccr record . --out .code-review-cache` | Writes one hardened prompt per agent plus `ccr-state.json` |
 | `python -m ccr synthesize --in .code-review-cache --out report` | Normalizes, dedups, applies mechanical DA checks, renders Markdown/JSON |
 | `python -m ccr validate-results --in .code-review-cache` | Malformed-result check over cached agent results |
-| `python -m ccr eval` | Replays recorded fixtures and scores coverage against `expected_issues.json` |
+| `python -m ccr eval` | Replays recorded fixtures and scores coverage against `expected_issues.json` (source checkout only) |
+
+`ccr eval` resolves its `--fixtures` and `--expected` defaults relative to the repository, so it runs only from a source checkout. From an installed wheel, pass both paths explicitly.
 
 `record` / `synthesize` is the integration boundary: the host agent executes
 the prompts, and `ccr` never calls a model itself. That keeps the deterministic
@@ -210,10 +218,10 @@ git clone --depth 1 https://github.com/artgaurav16420-oss/Complete-Codebase-Revi
 cd Complete-Codebase-Review
 
 # Self-verify script integrity (detects accidental corruption)
-python3 install.py --self-verify
+python install.py --self-verify
 
 # Install to detected agent configs
-python3 install.py
+python install.py
 ```
 
 The `--self-verify` flag detects accidental corruption of the installer, but does not authenticate the source. For production environments, download from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify the checksum published alongside the release notes.
@@ -227,8 +235,8 @@ git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git ~/.
 ### Uninstall
 
 ```bash
-python3 install.py --uninstall --dry-run   # preview
-python3 install.py --uninstall             # remove from detected configs
+python install.py --uninstall --dry-run   # preview
+python install.py --uninstall             # remove from detected configs
 ```
 
 ### Optional: install the CLI
@@ -246,11 +254,11 @@ repository root.
 ### Verify Installation
 
 ```bash
-# The skill registers as a slash command. Run in your agent:
-/complete-codebase-review --help
+# Confirm the install target without writing anything (prints the destination)
+python install.py --dry-run
 
 # Or run the compliance test suite:
-python3 tests/compliance_test.py
+python tests/compliance_test.py
 ```
 
 ---
@@ -357,7 +365,7 @@ Yes. Cross-platform commands handle any directory structure. Use `CODE_REVIEW_MA
 
 <details>
 <summary><b>Can I integrate this into CI/CD?</b></summary>
-Yes. Run in Quick Mode (`CODE_REVIEW_EFFORT=min`) for fast checks. The exit code reflects pass/fail status, making it suitable for CI pipelines. See the [CI workflow](.github/workflows/ci.yml) for a reference.
+Yes, but gate on the report rather than on the exit code. `ccr synthesize` exits 0 once it has written a report, regardless of finding severity, so a clean exit does not mean a clean codebase. Gate CI on the JSON report (`--format json`, then check `overall_health` or `critical_issues`) or on `ccr eval --json`, which exits 1 when expected tags are missing. Run in Quick Mode (`CODE_REVIEW_EFFORT=min`) for fast checks; see the [CI workflow](.github/workflows/ci.yml) for a reference.
 </details>
 
 ---
@@ -371,7 +379,7 @@ We welcome contributions of all sizes. Here's how to get started:
 
 1. **Fork** the repo and create a feature branch.
 2. **Write tests** for any new functionality. Test suites migrated to Python — see [compliance_test.py](tests/compliance_test.py) and [test_install.py](tests/test_install.py).
-3. **Run the test suite**: `python3 tests/compliance_test.py`
+3. **Run the test suite**: `python -m unittest discover -s tests -p "test_*.py"`
 4. **Submit a PR** with a clear description of the change and any related issue.
 
 ### Development
@@ -382,9 +390,9 @@ git clone https://github.com/artgaurav16420-oss/Complete-Codebase-Review.git
 cd Complete-Codebase-Review
 
 # Run compliance tests
-python3 tests/compliance_test.py
+python tests/compliance_test.py
 
-# Run bash test suite
+# Run the aggregate gate (Unix: unit, compliance, eval, generated-doc drift)
 ./test.sh
 ```
 
@@ -398,15 +406,19 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 
 | Suite | Command | Coverage |
 |-------|---------|----------|
-| Python compliance | `python3 tests/compliance_test.py` | SKILL.md contract checks |
-| Full suite | `python3 -m unittest discover -s tests -p "test_*.py"` | Runs in under a second |
-| Install tests | `python3 tests/test_install.py` | Installer and uninstaller |
-| Pipeline core | `python3 tests/test_pipeline_core.py` | Gates, synthesis, rendering |
-| Eval harness | `python3 -m ccr eval` | Fixture coverage against expected issues |
-| Organizer benchmark | `python3 -m ccr eval --fixtures tests/fixtures/organizer/agents --expected tests/fixtures/organizer/expected.json` | Real recorded run, 94% verified precision |
-| Generated docs | `python3 tools/generate.py --check` | Manifest/doc drift |
-| Bash integration | `./test.sh` | End-to-end (Unix only) |
+| Python compliance | `python tests/compliance_test.py` | SKILL.md contract checks |
+| Review skill compliance | `python tests/review_compliance_test.py` | `skills/review/SKILL.md` contract checks |
+| Python unit suite | `python -m unittest discover -s tests -p "test_*.py"` | Runs in under a second |
+| Install tests | `python tests/test_install.py` | Installer and uninstaller |
+| Pipeline core | `python tests/test_pipeline_core.py` | Gates, synthesis, rendering |
+| Eval harness | `python -m ccr eval` | Fixture coverage against expected issues (source checkout only) |
+| Organizer benchmark | `python -m ccr eval --fixtures tests/fixtures/organizer/agents --expected tests/fixtures/organizer/expected.json` | Real recorded run, 94% verified precision |
+| Generated docs | `python tools/generate.py --check` | Manifest/doc drift |
+| Bash integration | `./test.sh` | Aggregate gate (Unix only) |
 | Windows test | `powershell tests/Test-Windows.ps1` | End-to-end (Windows) |
+
+`./test.sh` is the aggregate gate on Unix: skill contract checks, generated-doc
+drift, `ccr eval`, both compliance suites, and the unit suite under coverage.
 
 ---
 
