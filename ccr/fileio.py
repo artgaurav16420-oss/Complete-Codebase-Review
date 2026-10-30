@@ -7,6 +7,16 @@ project supports 3.9. Route explicit newline writes through `open()`.
 import os
 
 
+def _directory_flags():
+    """Flags for opening a directory without requiring read permission."""
+    flags = getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    for name in ("O_PATH", "O_SEARCH"):
+        value = getattr(os, name, 0)
+        if value:
+            return value | flags
+    return os.O_RDONLY | flags
+
+
 def _open_beneath(root, rel, flags):
     """Open ``root/rel`` without following a symlink below ``root``.
 
@@ -18,18 +28,11 @@ def _open_beneath(root, rel, flags):
     if rel in (os.curdir, os.pardir) or rel.startswith(os.pardir + os.sep):
         raise OSError("refusing to write outside root: " + rel)
     parts = rel.split(os.sep)
-    dir_fd = os.open(
-        root,
-        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0),
-    )
+    dir_fd = os.open(root, _directory_flags())
     try:
         for part in parts[:-1]:
             next_fd = os.open(
-                part,
-                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-                | getattr(os, "O_NOFOLLOW", 0),
-                dir_fd=dir_fd,
+                part, _directory_flags(), dir_fd=dir_fd
             )
             os.close(dir_fd)
             dir_fd = next_fd

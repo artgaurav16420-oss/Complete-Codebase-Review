@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ccr.fileio import (  # noqa: E402
+    _directory_flags,
     _open_beneath,
     _verify_handle,
     _windows_final_path,
@@ -139,6 +140,10 @@ class TestFileioWriteText(unittest.TestCase):
         rel = os.sep.join([os.pardir, "etc", "passwd"])
         with self.assertRaises(OSError):
             _open_beneath(os.path.abspath(os.sep + "root"), rel, os.O_WRONLY)
+
+    def test_directory_flags_prefer_search_flags(self):
+        with mock.patch.object(os, "O_PATH", 0o10000000, create=True):
+            self.assertTrue(_directory_flags() & 0o10000000)
 
     def test_bytes_path_and_root_are_accepted(self):
         write_text(
