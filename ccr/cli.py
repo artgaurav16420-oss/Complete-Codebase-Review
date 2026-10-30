@@ -31,7 +31,10 @@ def _resolve_target(args):
             discarding one and reporting on the wrong directory.
     """
     if args.target and args.target_opt and args.target != args.target_opt:
-        same = Path(args.target).resolve() == Path(args.target_opt).resolve()
+        try:
+            same = Path(args.target).resolve() == Path(args.target_opt).resolve()
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("cannot resolve target path: {}".format(exc))
         if not same:
             raise ValueError(
                 "target given twice: positional {!r} and --target {!r}".format(

@@ -454,7 +454,7 @@ Actions:
 ### 3d. Output + Cleanup
 
 1. **Orchestrator action:** run
-   `PYTHONPATH="$SKILL_DIR" python -m ccr synthesize --in $RESOLVED_CACHE_DIR --out <report> --format both`.
+   `PYTHONPATH="$SKILL_DIR" python -m ccr synthesize --in "$RESOLVED_CACHE_DIR" --out <report> --format both`.
    `ccr` ships inside the skill directory and is not installed as a console
    script, so the skill dir goes on `PYTHONPATH`; without it the command fails
    with `No module named ccr`. It owns severity normalization, DA rejection, dedup, overlap candidates, the

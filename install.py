@@ -154,22 +154,22 @@ def _onerror(func, path, exc_info):
 
 
 _CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
-_CREDENTIAL_NAMES = {
-    "credentials.json", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", ".netrc",
-}
+_CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
+_CREDENTIAL_NAMES = {"credentials.json", ".netrc"}
 
 
 def _is_credential_name(name):
     """True for names that commonly hold private keys or credentials.
 
     Exact-name matching alone misses the variants that actually exist in a
-    checkout (.env.local, credentials.json, id_rsa, *.pem), and those files
-    would otherwise be copied into every agent skill directory.
+    checkout (.env.local, credentials.json, id_rsa_work, *.pem), and those
+    files would otherwise be copied into every agent skill directory.
     """
     lowered = name.lower()
     return (
         lowered in _CREDENTIAL_NAMES
         or lowered.startswith(".env.")
+        or lowered.startswith(_CREDENTIAL_PREFIXES)
         or lowered.endswith(_CREDENTIAL_SUFFIXES)
     )
 
@@ -584,8 +584,13 @@ def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
     print_success("Installation complete!")
     print_info(
         "The ccr core ships inside the skill directory and is not installed "
-        "as a console script. Run it with the skill directory on PYTHONPATH, "
-        'e.g. PYTHONPATH="<skill-dir>" python -m ccr plan .'
+        "as a console script. Run it with the skill directory on PYTHONPATH:"
+    )
+    print_info(
+        '  POSIX:      PYTHONPATH="<skill-dir>" python -m ccr plan .'
+    )
+    print_info(
+        '  PowerShell: $env:PYTHONPATH="<skill-dir>"; python -m ccr plan .'
     )
 
 

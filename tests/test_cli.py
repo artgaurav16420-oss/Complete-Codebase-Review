@@ -338,6 +338,17 @@ class TestResolvePlanned(unittest.TestCase):
         )
         self.assertEqual(planned, ["security", "architecture"])
 
+    def test_agents_flag_accepts_parenthesized_name(self):
+        import argparse
+        from ccr import manifest as manifest_mod
+        args = argparse.Namespace(
+            agents="Process Quality (Karpathy Compliance)", cache="."
+        )
+        planned = cli._resolve_planned(
+            args, None, manifest=manifest_mod.load()
+        )
+        self.assertEqual(planned, ["process_quality"])
+
     def test_agents_flag_dedupes_spellings(self):
         import argparse
         from ccr import manifest as manifest_mod

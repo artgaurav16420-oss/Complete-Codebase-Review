@@ -117,6 +117,13 @@ class TestMarkdown(unittest.TestCase):
         md = report_mod.render_markdown(model)
         self.assertEqual(report_mod.validate_markdown(md), [])
 
+    def test_target_html_is_escaped_in_the_title(self):
+        model = dict(self.model)
+        model["target"] = "<img src=x onerror=alert(1)>"
+        md = report_mod.render_markdown(model)
+        self.assertNotIn("<img", md.splitlines()[0])
+        self.assertIn("&lt;img", md.splitlines()[0])
+
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")
         self.assertTrue(report_mod.validate_markdown(broken))

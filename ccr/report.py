@@ -214,10 +214,20 @@ def _overlap_candidates(model):
     return "\n".join(lines)
 
 
+def _title(text):
+    """Escape the heading text so a path cannot inject raw HTML."""
+    return (
+        _cell(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def render_markdown(model):
     """Render the full health report as Markdown."""
     sections = [
-        f"# Codebase Health Report - {_cell(model.get('target') or '.')}",
+        f"# Codebase Health Report - {_title(model.get('target') or '.')}",
         "",
         _executive_summary(model),
         _per_domain(model),

@@ -114,6 +114,22 @@ class TestActiveAgents(unittest.TestCase):
             discovery.active_agents(manifest, {"test_files": 1})
         self.assertIn("test_health", str(ctx.exception))
 
+    def test_symlinked_ci_directory_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "ci.yml").write_text("name: x\n", encoding="utf-8")
+            (root / ".github").mkdir()
+            link = root / ".github" / "workflows"
+            try:
+                link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
 
 class TestSelectAgents(unittest.TestCase):
     """Selection precedence: override > quick > dimensions."""

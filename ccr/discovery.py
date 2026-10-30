@@ -197,7 +197,7 @@ def _build_facts(target, state, truncated):
             candidate = target / marker
             if candidate.is_file():
                 ci.append(marker)
-            elif candidate.is_dir():
+            elif candidate.is_dir() and not candidate.is_symlink():
                 ci.extend(
                     sorted(
                         str((candidate / f.name).relative_to(target)).replace("\\", "/")
@@ -299,15 +299,26 @@ def active_agents(manifest, facts):
     return [a["id"] for a in manifest["agents"] if a["id"] in wanted]
 
 
+def _normalize_agent_token(text):
+    """Lower-case a token and drop the punctuation agent names carry."""
+    return (
+        text.strip().lower()
+        .replace(" ", "_")
+        .replace("-", "_")
+        .replace("(", "")
+        .replace(")", "")
+    )
+
+
 def resolve_agent(manifest, token):
-    """Map an id or report name to a canonical agent id."""
-    cleaned = token.strip().lower().replace(" ", "_").replace("-", "_")
+    """Map an id, report name or display name to a canonical agent id."""
+    cleaned = _normalize_agent_token(token)
     for agent in manifest["agents"]:
-        if agent["id"] == cleaned:
+        if _normalize_agent_token(agent["id"]) == cleaned:
             return agent["id"]
-        if agent["report"].lower().replace(" ", "_") == cleaned:
+        if _normalize_agent_token(agent["report"]) == cleaned:
             return agent["id"]
-        if agent["name"].lower().replace(" ", "_").replace("(", "").replace(")", "") == cleaned:
+        if _normalize_agent_token(agent["name"]) == cleaned:
             return agent["id"]
     raise ValueError("unknown agent: " + token)
 
