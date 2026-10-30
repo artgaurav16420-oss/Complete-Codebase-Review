@@ -72,7 +72,7 @@ def _apply_defaults(data):
             data[key] = value
     try:
         data["re_review_count"] = int(data.get("re_review_count") or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         data["re_review_count"] = 0
 
 

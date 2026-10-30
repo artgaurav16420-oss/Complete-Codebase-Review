@@ -68,6 +68,16 @@ class TestStateLifecycle(unittest.TestCase):
         self.assertEqual(loaded.data["agents_completed"], [])
         self.assertEqual(loaded.completion_ratio(), 0.0)
 
+    def test_infinite_re_review_count_is_normalized(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(
+            '{"target_dir": ".", "current_phase": 1, "phase_gates": {}, '
+            '"agents_planned": [], "re_review_count": 1e999}',
+            encoding="utf-8",
+        )
+        loaded = state.State.load(self.path)
+        self.assertEqual(loaded.data["re_review_count"], 0)
+
     def test_list_phase_gates_rejected(self):
         self.path.parent.mkdir(parents=True)
         self.path.write_text(json.dumps({
