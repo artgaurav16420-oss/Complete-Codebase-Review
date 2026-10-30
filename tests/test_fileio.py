@@ -104,6 +104,12 @@ class TestFileioWriteText(unittest.TestCase):
             with self.assertRaises(OSError):
                 write_text(self.dir / "note.txt", "x", root=self.dir)
 
+    def test_parent_that_is_a_symlink_after_open_is_refused(self):
+        with mock.patch(
+                "ccr.fileio.os.path.islink", side_effect=[False, True]):
+            with self.assertRaises(OSError):
+                write_text(self.dir / "note.txt", "x")
+
 
 if __name__ == "__main__":
     unittest.main()

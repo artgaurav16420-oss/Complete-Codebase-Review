@@ -45,6 +45,10 @@ def write_text(path, text, newline="\n", root=None):
     fd = os.open(path, flags, 0o666)
     try:
         after = os.stat(parent)
+        if os.path.islink(parent):
+            raise OSError(
+                "refusing to write: parent is a symlink: " + parent
+            )
         if before is not None and (
                 (before.st_dev, before.st_ino)
                 != (after.st_dev, after.st_ino)):
