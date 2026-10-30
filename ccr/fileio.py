@@ -11,8 +11,9 @@ def write_text(path, text, newline="\n", root=None):
     """Write UTF-8 text with explicit newline handling on Python 3.9+.
 
     Refuses to follow a symlink at the destination. When ``root`` is given,
-    the destination must resolve inside it, and a symlinked root or a symlink
-    between the root and the file is refused.
+    the destination must resolve inside it; a symlinked root, or a parent that
+    is a symlink at open time, is refused. An internal symlink that resolves
+    inside the root is followed.
     """
     path = os.fspath(path)
     if os.path.islink(path):
