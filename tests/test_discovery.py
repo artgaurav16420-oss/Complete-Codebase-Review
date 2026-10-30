@@ -149,6 +149,14 @@ class TestActiveAgents(unittest.TestCase):
                 discovery.discover(str(DUMMY))
         self.assertIn("cannot scan target directory", str(ctx.exception))
 
+    def test_id_wins_over_an_earlier_agents_display_name(self):
+        manifest = copy.deepcopy(manifest_mod.load())
+        manifest["agents"][0]["name"] = manifest["agents"][1]["id"]
+        resolved = discovery.resolve_agent(
+            manifest, manifest["agents"][1]["id"]
+        )
+        self.assertEqual(resolved, manifest["agents"][1]["id"])
+
     def test_symlinked_ci_directory_is_not_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

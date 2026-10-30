@@ -331,11 +331,16 @@ def _normalize_agent_token(text):
 
 
 def resolve_agent(manifest, token):
-    """Map an id, report name or display name to a canonical agent id."""
+    """Map an id, report name or display name to a canonical agent id.
+
+    Ids are matched across the whole roster before any alias, so an earlier
+    agent's display name cannot shadow a later agent's id.
+    """
     cleaned = _normalize_agent_token(token)
     for agent in manifest["agents"]:
         if _normalize_agent_token(agent["id"]) == cleaned:
             return agent["id"]
+    for agent in manifest["agents"]:
         if _normalize_agent_token(agent["report"]) == cleaned:
             return agent["id"]
         if _normalize_agent_token(agent["name"]) == cleaned:
