@@ -24,11 +24,13 @@ def fmt_hours_long(value):
 
 
 def _cell(text):
-    """Make text safe inside a Markdown table cell or section body."""
+    """Make text safe inside a Markdown table cell or section body.
+
+    Uses ``splitlines`` so every separator it honours (including ``\\x0b``,
+    ``\\x0c`` and ``\\x85``) collapses, not just CR/LF.
+    """
     cleaned = str(text).replace("|", "/")
-    for sep in ("\r\n", "\r", "\n", "\u2028", "\u2029"):
-        cleaned = cleaned.replace(sep, " ")
-    return cleaned.strip()
+    return " ".join(cleaned.splitlines()).strip()
 
 
 def _executive_summary(model):
@@ -215,7 +217,7 @@ def _overlap_candidates(model):
 def render_markdown(model):
     """Render the full health report as Markdown."""
     sections = [
-        f"# Codebase Health Report - {model.get('target') or '.'}",
+        f"# Codebase Health Report - {_cell(model.get('target') or '.')}",
         "",
         _executive_summary(model),
         _per_domain(model),
@@ -248,25 +250,50 @@ def _num(text):
 
 
 def _section_text(md, header):
-    """Return the text of one '## ' section, excluding later sections."""
-    start = md.find(header)
-    if start == -1:
+    """Return the text of one '## ' section, excluding later sections.
+
+    Matches the header as a whole line, so a finding that quotes the heading
+    cannot move the section boundary.
+    """
+    lines = md.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line == header:
+            start = index + 1
+            break
+    if start is None:
         return ""
-    start += len(header)
-    end = md.find("\n## ", start)
-    return md[start:end if end != -1 else len(md)]
+    end = len(lines)
+    for index in range(start, len(lines)):
+        if lines[index].startswith("## "):
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
+HEALTH_VALUES = ("GREEN", "YELLOW", "RED")
 
 
 def validate_markdown(md):
     """Return a list of contract violations in a rendered report.
 
-    Enforces the section contract, numeric domain scores, and the tech-debt
-    reconciliation the orchestrator rules require.
+    Enforces the section contract, numeric domain scores, the health enum, and
+    the tech-debt reconciliation the orchestrator rules require.
     """
     errors = []
     for section in REQUIRED_SECTIONS:
         if section not in md:
             errors.append("missing section: " + section)
+
+    health = None
+    for line in _section_text(md, "## Executive Summary").splitlines():
+        if line.startswith("| **Overall Health** |"):
+            health = line.split("|")[2].strip()
+            break
+    if health is None:
+        errors.append("missing overall health")
+    elif health not in HEALTH_VALUES:
+        errors.append("invalid overall health: " + health)
 
     scores_text = _section_text(md, "## Per-Domain Scores")
     for line in scores_text.splitlines():
@@ -276,10 +303,11 @@ def validate_markdown(md):
     total = None
     domain_sum = 0.0
     found_domain = False
-    for line in md.splitlines():
-        if line.startswith("**Total estimated**"):
+    debt_text = _section_text(md, "## Tech Debt Summary")
+    for line in debt_text.splitlines():
+        if line.startswith("**Total estimated**") and ":" in line:
             total = _num(line.split(":", 1)[1].strip().split(" ")[0])
-        if "**By domain**" in line:
+        if "**By domain**" in line and ":" in line:
             for part in line.split(":", 1)[1].split(";"):
                 if ":" not in part:
                     continue

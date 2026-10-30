@@ -6,9 +6,19 @@ executes them, then `synthesize` ingests the JSON results.
 """
 
 import json
+import re
 from pathlib import Path
 
 from .fileio import write_text
+
+# Any control character (including newlines) collapses to a space so a value
+# interpolated into the prompt template cannot add lines of its own.
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
+
+
+def _one_line(text):
+    """Return text safe to interpolate into a single prompt line."""
+    return _CONTROL_RE.sub(" ", str(text)).strip()
 
 PROMPT_TEMPLATE = """You are auditing the {domain} of {target}.
 
@@ -68,16 +78,16 @@ def build_prompt(agent, target, skill_dir, manifest_version=""):
     """Return the hardened prompt for one specialist agent."""
     checks = agent.get("checks") or []
     checks_text = (
-        "\n".join("- " + check for check in checks)
+        "\n".join("- " + _one_line(check) for check in checks)
         if checks else "- none beyond the coverage above"
     )
     return PROMPT_TEMPLATE.format(
-        domain=agent["coverage"],
-        target=target,
-        skill_dir=skill_dir or "<SKILL_DIR>",
-        manifest_version=manifest_version or "unknown",
-        coverage=agent["coverage"],
-        agent_id=agent["id"],
+        domain=_one_line(agent["coverage"]),
+        target=_one_line(target),
+        skill_dir=_one_line(skill_dir or "<SKILL_DIR>"),
+        manifest_version=_one_line(manifest_version or "unknown"),
+        coverage=_one_line(agent["coverage"]),
+        agent_id=_one_line(agent["id"]),
         checks=checks_text,
     )
 

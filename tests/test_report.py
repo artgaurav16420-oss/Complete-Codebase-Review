@@ -1,6 +1,7 @@
 """Tests for ccr.report: Markdown and JSON contracts."""
 
 import importlib
+import copy
 import sys
 import unittest
 from pathlib import Path
@@ -83,6 +84,38 @@ class TestMarkdown(unittest.TestCase):
 
     def test_internal_validator_accepts(self):
         self.assertEqual(report_mod.validate_markdown(self.md), [])
+
+    def test_rejects_non_enum_health(self):
+        bad = dict(self.model)
+        bad["overall_health"] = "PURPLE"
+        md = report_mod.render_markdown(bad)
+        errors = report_mod.validate_markdown(md)
+        self.assertIn("invalid overall health: PURPLE", errors)
+
+    def test_finding_text_cannot_forge_tech_debt_marker(self):
+        model = copy.deepcopy(self.model)
+        model["findings"][0]["finding"] = (
+            "[" + "x.py:1] \u2014 quotes **By domain**: Evil: 99h \u2192 "
+            "synthesis aborts"
+        )
+        md = report_mod.render_markdown(model)
+        self.assertEqual(report_mod.validate_markdown(md), [])
+
+    def test_finding_text_cannot_forge_section_header(self):
+        model = copy.deepcopy(self.model)
+        model["findings"][0]["finding"] = (
+            "[" + "x.py:1] \u2014 x \x0c## Tech Debt Summary\x0c"
+            "**Total estimated**: 2 hours\x0c**By domain**: fake: 99h\x0c"
+            "## X \u2192 failure"
+        )
+        md = report_mod.render_markdown(model)
+        self.assertEqual(report_mod.validate_markdown(md), [])
+
+    def test_target_cannot_forge_section_header(self):
+        model = dict(self.model)
+        model["target"] = "repo ## Executive Summary"
+        md = report_mod.render_markdown(model)
+        self.assertEqual(report_mod.validate_markdown(md), [])
 
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")
