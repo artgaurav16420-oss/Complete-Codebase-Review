@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -48,6 +49,51 @@ class TestFileioWriteText(unittest.TestCase):
     def test_missing_parent_is_an_error(self):
         with self.assertRaises(OSError):
             write_text(self.dir / "absent" / "note.txt", "x")
+
+    def test_root_containment_allows_nested_write(self):
+        nested = self.dir / "sub"
+        nested.mkdir()
+        write_text(nested / "note.txt", "ok", root=self.dir)
+        self.assertEqual(
+            (nested / "note.txt").read_text(encoding="utf-8"), "ok"
+        )
+
+    def test_symlinked_root_is_refused(self):
+        real = self.dir / "real"
+        real.mkdir()
+        link = self.dir / "linkroot"
+        try:
+            os.symlink(real, link, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlink creation unavailable: " + str(exc))
+        with self.assertRaises(OSError):
+            write_text(link / "note.txt", "x", root=link)
+
+    def test_symlinked_subdir_cannot_escape_root(self):
+        outside = self.dir / "outside"
+        outside.mkdir()
+        root = self.dir / "root"
+        root.mkdir()
+        link = root / "sub"
+        try:
+            os.symlink(outside, link, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlink creation unavailable: " + str(exc))
+        with self.assertRaises(OSError):
+            write_text(link / "note.txt", "x", root=root)
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_symlinked_root_check_without_os_symlink(self):
+        with mock.patch(
+                "ccr.fileio.os.path.islink", side_effect=[False, True]):
+            with self.assertRaises(OSError):
+                write_text(self.dir / "note.txt", "x", root=self.dir)
+
+    def test_root_on_another_drive_is_refused(self):
+        with mock.patch(
+                "ccr.fileio.os.path.commonpath", side_effect=ValueError):
+            with self.assertRaises(OSError):
+                write_text(self.dir / "note.txt", "x", root=self.dir)
 
 
 if __name__ == "__main__":

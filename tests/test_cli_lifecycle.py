@@ -277,7 +277,27 @@ class TestCliSynthesizeOptions(unittest.TestCase):
             "--baseline", str(bad),
         ])
         self.assertEqual(code, 2)
-        self.assertIn("tech_debt_hours must be a number", out)
+        self.assertIn("tech_debt_hours must be a finite number", out)
+
+    def test_non_finite_baseline_exits_two(self):
+        bad = self.dir / "baseline.json"
+        bad.write_text('{"tech_debt_hours": NaN}', encoding="utf-8")
+        code, out, _ = run([
+            "synthesize", "--in", str(FIXTURES), "--agents", "security",
+            "--baseline", str(bad),
+        ])
+        self.assertEqual(code, 2)
+        self.assertIn("tech_debt_hours must be a finite number", out)
+
+    def test_eval_runs_from_any_directory(self):
+        old = os.getcwd()
+        try:
+            os.chdir(self.dir)
+            code, out, err = run(["eval"])
+        finally:
+            os.chdir(old)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("[EVAL] coverage=100%", out)
 
     def test_bom_baseline_is_accepted(self):
         baseline = self.dir / "baseline.json"
@@ -291,6 +311,28 @@ class TestCliSynthesizeOptions(unittest.TestCase):
             "--out", str(out),
         ])
         self.assertEqual(code, 0)
+
+    def test_validate_results_forces_manifest_domain(self):
+        cache = self.dir / "cache"
+        cache.mkdir()
+        finding = {
+            "finding": "[app.py:9] \u2014 repeated state update \u2192 "
+                       "two writes for one event",
+            "severity": "MEDIUM",
+            "est_hours": 1,
+            "da_verdict": "CONFIRMED",
+        }
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [dict(finding, domain="Architecture"), finding],
+        }), encoding="utf-8")
+        code, out, _ = run([
+            "validate-results", "--in", str(cache), "--agents", "security",
+            "--json",
+        ])
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertEqual(data["valid"], 1)
 
     def test_validate_results_dedups_like_synthesize(self):
         cache = self.dir / "cache"

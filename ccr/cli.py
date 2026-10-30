@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -9,6 +10,8 @@ from pathlib import Path
 
 from . import __version__, manifest as manifest_mod
 from . import discovery, findings as findings_mod, pipeline, providers, state
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _manifest():
@@ -257,9 +260,10 @@ def _load_baseline(path):
     previous = data.get("tech_debt_hours")
     if previous is not None and (
             isinstance(previous, bool)
-            or not isinstance(previous, (int, float))):
+            or not isinstance(previous, (int, float))
+            or not math.isfinite(previous)):
         raise ValueError(
-            "baseline tech_debt_hours must be a number: " + path
+            "baseline tech_debt_hours must be a finite number: " + path
         )
     return data
 
@@ -373,7 +377,7 @@ def cmd_validate_results(args):
         raw = []
         for item in result.get("findings", []):
             copy = dict(item)
-            copy.setdefault("domain", domain)
+            copy["domain"] = domain
             copy["agent"] = agent_id
             raw.append(copy)
         kept, rejected = findings_mod.review_findings(
@@ -408,8 +412,12 @@ def cmd_validate_results(args):
 def cmd_eval(args):
     """Score recorded fixtures against expected issues."""
     data = _manifest()
-    fixtures = args.fixtures or "tests/fixtures/agents"
-    expected = args.expected or "tests/expected_issues.json"
+    fixtures = args.fixtures or str(
+        REPO_ROOT / "tests" / "fixtures" / "agents"
+    )
+    expected = args.expected or str(
+        REPO_ROOT / "tests" / "expected_issues.json"
+    )
     if not Path(fixtures).is_dir() or not Path(expected).is_file():
         print("[ERROR] eval defaults require a source checkout; "
               "pass --fixtures and --expected")
