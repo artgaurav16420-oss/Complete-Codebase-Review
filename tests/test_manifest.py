@@ -35,7 +35,6 @@ class TestManifestLoad(unittest.TestCase):
             "Code Quality",
         )
 
-
     def test_env_var_names(self):
         dummy_manifest = {
             "env_vars": [
