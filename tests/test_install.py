@@ -1085,7 +1085,7 @@ class TestIgnoreSkillFiles(unittest.TestCase):
         kept = install_mod._ignore_skill_files(".", ["install.py.sha256"])
         self.assertIn("install.py.sha256", kept)
 
-    def test_skips_a_link_whose_target_is_not_copied(self):
+    def test_skips_symlinked_entries(self):
         install_mod = _import_install()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

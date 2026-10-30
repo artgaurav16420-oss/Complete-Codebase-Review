@@ -138,6 +138,17 @@ class TestActiveAgents(unittest.TestCase):
             discovery.select_agents(manifest, {}, override=", ,")
         self.assertIn("no agent ids", str(ctx.exception))
 
+    def test_unreadable_nested_directory_raises(self):
+        def fake_walk(path, onerror=None):
+            if onerror is not None:
+                onerror(OSError("denied"))
+            return iter(())
+
+        with mock.patch.object(discovery.os, "walk", fake_walk):
+            with self.assertRaises(ValueError) as ctx:
+                discovery.discover(str(DUMMY))
+        self.assertIn("cannot scan target directory", str(ctx.exception))
+
     def test_symlinked_ci_directory_is_not_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -193,6 +204,20 @@ class TestActiveAgents(unittest.TestCase):
                 (root / ".github" / "workflows").symlink_to(
                     root / "outside.yml"
                 )
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
+    def test_symlinked_workflow_file_is_not_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            (root / "outside.yml").write_text("name: x\n", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            try:
+                (workflows / "linked.yml").symlink_to(root / "outside.yml")
             except (OSError, NotImplementedError):
                 self.skipTest("symlink creation needs privilege here")
             facts = discovery.discover(str(root))

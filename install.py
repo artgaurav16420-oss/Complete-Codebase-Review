@@ -176,32 +176,30 @@ def _is_credential_name(name):
     )
 
 
-def _is_blocked_link(path, name):
-    """True for a symlink whose target would not be copied.
-
-    Copying such a link leaves a dangling entry, which the escaped-symlink
-    validator then rejects, aborting the whole install.
-    """
-    full = Path(path) / name
+def _is_link_like(path):
+    """True for a symlink, a Windows junction, or any reparse point."""
     try:
-        if not full.is_symlink():
-            return False
-        target = full.resolve()
-    except (OSError, RuntimeError):
-        return True
-    return (
-        _is_credential_name(target.name)
-        or any(part in _SKILL_EXCLUDED for part in target.parts)
-    )
+        if os.path.islink(str(path)):
+            return True
+        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
+    except OSError:
+        return False
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(flag and attrs & flag)
 
 
 def _ignore_skill_files(path, names):
-    """Filter files to exclude from skill copy based on _SKILL_EXCLUDED."""
+    """Filter files to exclude from skill copy based on _SKILL_EXCLUDED.
+
+    Links are skipped outright: a copy either dangles (its target was filtered)
+    or resolves outside the checkout (a junction on Windows is not a symlink,
+    so ``copytree`` follows it). The skill tree needs neither.
+    """
     return [
         n for n in names
         if n in _SKILL_EXCLUDED
         or _is_credential_name(n)
-        or _is_blocked_link(path, n)
+        or _is_link_like(Path(path) / n)
         or n.endswith(".pyc")
         or n.endswith(".egg-info")
         or n == ".coverage"

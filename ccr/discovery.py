@@ -147,7 +147,13 @@ def _is_reparse_dir(path):
 def _scan_tree(target, limit, state):
     """Walk the target tree into the state dict; report truncation."""
     truncated = False
-    for root, dirs, names in os.walk(str(target)):
+
+    def _fail(exc):
+        raise ValueError(
+            "cannot scan target directory: {} ({})".format(target, exc)
+        )
+
+    for root, dirs, names in os.walk(str(target), onerror=_fail):
         dirs[:] = sorted(
             d for d in dirs
             if d not in IGNORED_DIRS and not _is_reparse_dir(Path(root) / d)
@@ -215,6 +221,7 @@ def _build_facts(target, state, truncated):
                         str((candidate / f.name).relative_to(target)).replace("\\", "/")
                         for f in candidate.iterdir()
                         if f.is_file()
+                        and not _is_reparse_dir(f)
                         and f.suffix.lower() in (".yml", ".yaml")
                     )
                 )
