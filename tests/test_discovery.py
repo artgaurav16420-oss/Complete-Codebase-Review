@@ -132,6 +132,12 @@ class TestActiveAgents(unittest.TestCase):
         )
         self.assertEqual(chosen, ["security"])
 
+    def test_override_with_no_ids_fails_loudly(self):
+        manifest = manifest_mod.load()
+        with self.assertRaises(ValueError) as ctx:
+            discovery.select_agents(manifest, {}, override=", ,")
+        self.assertIn("no agent ids", str(ctx.exception))
+
     def test_symlinked_ci_directory_is_not_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -175,6 +181,21 @@ class TestActiveAgents(unittest.TestCase):
                 discovery, "_is_reparse_dir", return_value=True
             ):
                 facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
+    def test_symlinked_ci_file_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            (root / "outside.yml").write_text("name: x\n", encoding="utf-8")
+            (root / ".github").mkdir()
+            try:
+                (root / ".github" / "workflows").symlink_to(
+                    root / "outside.yml"
+                )
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
             self.assertEqual(facts["ci"], [])
 
 

@@ -205,7 +205,9 @@ def _build_facts(target, state, truncated):
     try:
         for marker in CI_PATHS:
             candidate = target / marker
-            if candidate.is_file():
+            if candidate.is_file() and not _has_symlinked_component(
+                target, marker
+            ):
                 ci.append(marker)
             elif candidate.is_dir() and not _has_symlinked_component(target, marker):
                 ci.extend(
@@ -354,6 +356,8 @@ def select_agents(manifest, facts, effort="max", override=None):
     order = [a["id"] for a in manifest["agents"]]
     if override:
         tokens = [token for token in override.split(",") if token.strip()]
+        if not tokens:
+            raise ValueError("--agents contained no agent ids")
         chosen = {resolve_agent(manifest, token) for token in tokens}
         return [agent_id for agent_id in order if agent_id in chosen]
     if effort == "min":

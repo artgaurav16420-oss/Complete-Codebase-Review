@@ -176,12 +176,32 @@ def _is_credential_name(name):
     )
 
 
+def _is_blocked_link(path, name):
+    """True for a symlink whose target would not be copied.
+
+    Copying such a link leaves a dangling entry, which the escaped-symlink
+    validator then rejects, aborting the whole install.
+    """
+    full = Path(path) / name
+    try:
+        if not full.is_symlink():
+            return False
+        target = full.resolve()
+    except (OSError, RuntimeError):
+        return True
+    return (
+        _is_credential_name(target.name)
+        or any(part in _SKILL_EXCLUDED for part in target.parts)
+    )
+
+
 def _ignore_skill_files(path, names):
     """Filter files to exclude from skill copy based on _SKILL_EXCLUDED."""
     return [
         n for n in names
         if n in _SKILL_EXCLUDED
         or _is_credential_name(n)
+        or _is_blocked_link(path, n)
         or n.endswith(".pyc")
         or n.endswith(".egg-info")
         or n == ".coverage"
