@@ -81,8 +81,23 @@ def _archive_results(cache, agent_ids=()):
         except FileExistsError:
             dest = base / f"{stamp}-{suffix}"
             suffix += 1
-    for path in stale:
-        shutil.move(str(path), str(dest / path.name))
+    moved = []
+    try:
+        for path in stale:
+            target = dest / path.name
+            shutil.move(str(path), str(target))
+            moved.append((path, target))
+    except OSError:
+        for source, target in reversed(moved):
+            try:
+                shutil.move(str(target), str(source))
+            except OSError:
+                pass
+        try:
+            dest.rmdir()
+        except OSError:
+            pass
+        raise
     return len(stale)
 
 

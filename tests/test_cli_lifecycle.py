@@ -135,6 +135,28 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(len(dirs), 1)
         self.assertTrue(dirs[0].name.endswith("-1"))
 
+    def test_archive_rolls_back_on_partial_move(self):
+        for name in ("security", "architecture"):
+            (self.cache / f"phase_{name}.json").write_text(
+                "{}", encoding="utf-8")
+        real_move = shutil.move
+        calls = []
+
+        def flaky_move(source, target):
+            calls.append(source)
+            if len(calls) == 2:
+                raise OSError("simulated move failure")
+            return real_move(source, target)
+
+        with mock.patch.object(cli.shutil, "move", flaky_move):
+            with self.assertRaises(OSError):
+                cli._archive_results(self.cache)
+        self.assertTrue((self.cache / "phase_security.json").exists())
+        self.assertTrue((self.cache / "phase_architecture.json").exists())
+        self.assertEqual(
+            list((self.cache / "previous-results").iterdir()), []
+        )
+
     def test_archive_refuses_symlinked_previous_results(self):
         target = Path(self.tmp.name) / "elsewhere"
         target.mkdir()
