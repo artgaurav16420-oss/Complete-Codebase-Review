@@ -106,6 +106,7 @@ def write_prompts(manifest, plan, out_dir, skill_dir=""):
                 agent, plan["target"], skill_dir,
                 manifest_version=manifest.get("version", ""),
             ),
+            root=cache,
         )
         written.append(path)
     return written

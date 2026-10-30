@@ -466,8 +466,15 @@ def _trend(baseline, total_hours):
     trend = "no previous baseline"
     if baseline:
         previous = baseline.get("tech_debt_hours")
-        if isinstance(previous, bool) or not isinstance(
-                previous, (int, float)):
+        invalid = isinstance(previous, bool) or not isinstance(
+            previous, (int, float)
+        )
+        if not invalid:
+            try:
+                invalid = not math.isfinite(previous)
+            except OverflowError:
+                invalid = True
+        if invalid:
             previous = None
         if previous is not None:
             if previous > 0:

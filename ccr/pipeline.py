@@ -163,7 +163,7 @@ def write_outputs(model, out_path, fmt="markdown"):
         if name == "json":
             target = _target(".json")
             payload = json.dumps(text, indent=2, sort_keys=True) + "\n"
-            write_text(target, payload)
+            write_text(target, payload, root=target.parent)
         else:
             errors = report_mod.validate_markdown(text)
             if errors:
@@ -171,7 +171,7 @@ def write_outputs(model, out_path, fmt="markdown"):
                     "report failed validation: " + "; ".join(errors)
                 )
             target = _target(".md")
-            write_text(target, text)
+            write_text(target, text, root=target.parent)
         written.append(target)
     return written
 
