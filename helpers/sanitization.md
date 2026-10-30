@@ -69,11 +69,17 @@ def sanitize_content(text, max_length=MAX_COMMENT_LENGTH):
 import re
 SHELL_PATTERNS = [
     r'rm\s+-rf',
+    r'rm\s+-fr',
+    r'rm\s+-[rf]\s+-[rf]',
+    r'rm\s+--(?:recursive|force)\s+--(?:recursive|force)',
     r'del\s+/[sfq]',
     r'format\s+[a-zA-Z]:',
     r'sudo\s+',
     r'chmod\s+777',
+    r'chmod\s+-R\s+777',
     r'curl\s+.*\|\s*(ba)?sh',
+    r'curl\s+.*\|\s*python3?',
+    r'wget\s+.*\|\s*(ba)?sh',
 ]
 
 def sanitize_shell_suggestions(text):
@@ -82,6 +88,8 @@ def sanitize_shell_suggestions(text):
         text = re.sub(pattern, "[BLOCKED COMMAND]", text, flags=re.IGNORECASE)
     return text
 ```
+
+This denylist is heuristic and not a sandbox: it only matches literal spellings and cannot make untrusted commands safe.
 
 ### 5. URL Validation
 ```python

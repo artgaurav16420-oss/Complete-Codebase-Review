@@ -37,14 +37,8 @@ def load(path=None):
     return data
 
 
-def validate(data):
-    """Validate manifest structure. Raises ValueError on the first problem."""
-    if not isinstance(data, dict):
-        raise ValueError("manifest must be a JSON object")
-    for key in REQUIRED_KEYS:
-        if key not in data:
-            raise ValueError("manifest missing key: " + key)
-
+def _validate_agents(data):
+    """Check the agent roster; returns the declared ids in order."""
     agent_ids = []
     for agent in data["agents"]:
         for field in ("id", "name", "report", "coverage", "skill"):
@@ -55,6 +49,11 @@ def validate(data):
         raise ValueError("duplicate agent id in manifest")
     if len(agent_ids) < 12:
         raise ValueError("manifest must define at least 12 agents")
+    return agent_ids
+
+
+def _validate_base_agents(data, agent_ids):
+    """Check the default agent roster references declared ids."""
     base_agents = data.get("base_agents", [])
     if not base_agents:
         raise ValueError("manifest must define base_agents")
@@ -64,6 +63,9 @@ def validate(data):
         if agent_id not in agent_ids:
             raise ValueError("unknown base agent: " + agent_id)
 
+
+def _validate_env_vars(data):
+    """Check env-var names are unique and fully specified."""
     var_names = [v["name"] for v in data["env_vars"]]
     if len(var_names) != len(set(var_names)):
         raise ValueError("duplicate env var in manifest")
@@ -72,6 +74,9 @@ def validate(data):
             if field not in var:
                 raise ValueError("env var missing field: " + field)
 
+
+def _validate_thresholds(data, agent_ids):
+    """Check completion thresholds and Quick Mode agent ids."""
     thresholds = data["thresholds"]
     for key in ("full_completion", "quick_completion"):
         value = thresholds.get(key)
@@ -81,6 +86,9 @@ def validate(data):
         if agent_id not in agent_ids:
             raise ValueError("quick agent not in manifest: " + agent_id)
 
+
+def _validate_enums(data):
+    """Check the severity and DA-verdict enums carry required members."""
     severities = data["severities"]
     if "CRITICAL" not in severities or "HIGH" not in severities:
         raise ValueError("severities must include CRITICAL and HIGH")
@@ -88,6 +96,21 @@ def validate(data):
     verdicts = data["da_verdicts"]
     if "REJECTED" not in verdicts:
         raise ValueError("da_verdicts must include REJECTED")
+
+
+def validate(data):
+    """Validate manifest structure. Raises ValueError on the first problem."""
+    if not isinstance(data, dict):
+        raise ValueError("manifest must be a JSON object")
+    for key in REQUIRED_KEYS:
+        if key not in data:
+            raise ValueError("manifest missing key: " + key)
+
+    agent_ids = _validate_agents(data)
+    _validate_base_agents(data, agent_ids)
+    _validate_env_vars(data)
+    _validate_thresholds(data, agent_ids)
+    _validate_enums(data)
 
 
 def agent_ids(manifest):

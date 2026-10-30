@@ -1,22 +1,51 @@
 """Tests for ccr.report: Markdown and JSON contracts."""
 
+import importlib
 import sys
 import unittest
 from pathlib import Path
-
-from ccr import pipeline
-from ccr import report as report_mod
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TESTS_DIR = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
-from tests.test_pipeline import (  # noqa: E402
+# Import the shared helpers from the bare module so discovery, direct runs
+# and these tests all share one module object (no duplicate copies).
+import test_pipeline  # noqa: E402
+from ccr import pipeline  # noqa: E402
+from ccr import report as report_mod  # noqa: E402
+from test_pipeline import (  # noqa: E402
     validate_json_output,
     validate_markdown_output,
 )
 
 GOOD = "[app.py:1] \u2014 hardcoded key in source \u2192 any reader gets the key"
+
+
+class TestSharedValidatorModule(unittest.TestCase):
+    """Schema validators come from the one `test_pipeline` module object."""
+
+    def test_helpers_are_attributes_of_the_shared_module(self):
+        module = sys.modules["test_pipeline"]
+        self.assertIs(module, test_pipeline)
+        self.assertIs(validate_markdown_output, module.validate_markdown_output)
+        self.assertIs(validate_json_output, module.validate_json_output)
+
+    def test_patch_on_shared_module_is_visible_to_importers(self):
+        module = sys.modules["test_pipeline"]
+        with patch.object(
+            module, "validate_markdown_output", return_value=["patched"],
+        ):
+            reimported = importlib.import_module("test_pipeline")
+            self.assertIs(reimported, module)
+            self.assertEqual(reimported.validate_markdown_output(""), ["patched"])
+            self.assertIs(
+                reimported.validate_markdown_output,
+                module.validate_markdown_output,
+            )
 
 
 def result(agent, findings):
@@ -123,6 +152,67 @@ class TestMarkdown(unittest.TestCase):
         md = report_mod.render_markdown(model)
         self.assertEqual(validate_markdown_output(md), [])
         self.assertIn("GREEN", md)
+
+
+class TestOverlapCandidates(unittest.TestCase):
+    """Non-empty overlap section: merged ids and the large-file advisory."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.model = pipeline.synthesize(
+            _manifest(),
+            {
+                "security": result("security", [
+                    {"finding": "[svc/a.py:10] \u2014 session token cache shared "
+                     "across tenants \u2192 cross-tenant credential leak",
+                     "severity": "CRITICAL", "est_hours": 4,
+                     "da_verdict": "CONFIRMED"},
+                    {"finding": "[svc/b.py:20] \u2014 blocking call inside async "
+                     "handler \u2192 request timeouts under load",
+                     "severity": "HIGH", "est_hours": 9,
+                     "da_verdict": "CONFIRMED"},
+                ]),
+                "code_quality": result("code_quality", [
+                    {"finding": "[svc/a.py:11] \u2014 session token cache shared "
+                     "across tenants \u2192 cross-tenant credential leak",
+                     "severity": "HIGH", "est_hours": 12,
+                     "da_verdict": "CONFIRMED"},
+                    {"finding": "[svc/b.py:40] \u2014 duplicated mapper logic "
+                     "\u2192 stale reads after schema change",
+                     "severity": "MEDIUM", "est_hours": 10,
+                     "da_verdict": "CONFIRMED"},
+                ]),
+            },
+            ["security", "code_quality"],
+            target="overlap",
+        )
+        cls.md = report_mod.render_markdown(cls.model)
+
+    def test_model_records_merge_and_advisory(self):
+        self.assertEqual(
+            [
+                (candidate["file"], candidate["kept"], candidate["merged"],
+                 candidate["advisory"])
+                for candidate in self.model["overlap_candidates"]
+            ],
+            [
+                ("svc/a.py", "F-001", ["F-003"], False),
+                ("svc/b.py", "F-002", ["F-004"], True),
+            ],
+        )
+
+    def test_markdown_renders_merged_id(self):
+        self.assertIn("- svc/a.py: kept F-001 (merged: F-003)", self.md)
+
+    def test_markdown_renders_large_file_advisory(self):
+        self.assertIn(
+            "- [advisory] svc/b.py: 19.0h across F-002 + F-004", self.md,
+        )
+        self.assertIn("adjudicate whether this is one root cause", self.md)
+
+    def test_overlap_report_still_passes_validators(self):
+        self.assertEqual(validate_markdown_output(self.md), [])
+        self.assertEqual(report_mod.validate_markdown(self.md), [])
 
 
 class TestJson(unittest.TestCase):

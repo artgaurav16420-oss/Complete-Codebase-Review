@@ -23,7 +23,7 @@ python tools/generate.py --check   # CI mode
 | `ccr.discovery` | Deterministic file/tooling scan; agent selection (override > Quick Mode > dimensions) |
 | `ccr.state` | Atomic `ccr-state.json`; phase gates, agent accounting, resume drift detection |
 | `ccr.findings` | Severity/verdict normalization, mechanical DA rejection, dedup, roadmap, aggregation |
-| `ccr.report` | Markdown and JSON renderers; both validated by `tests/test_pipeline.py` |
+| `ccr.report` | Markdown and JSON renderers; exercised by `tests/test_report.py` (imports `ccr.report`, renders Markdown and JSON, and asserts both contracts) |
 | `ccr.providers` | Prompt generation, result ingestion, fixture replay |
 | `ccr.pipeline` | Completion gates, synthesis, eval scoring |
 | `ccr.cli` | `plan`, `record`, `synthesize`, `validate-results`, `eval` |
@@ -68,9 +68,10 @@ takes the floor, and an explicit estimate is raised to at least half the floor
 | `python -m ccr validate-results --in <cache>` | Malformed-result check over cached `phase_<id>.json` files |
 | `python -m ccr eval` | Fixture coverage and precision (list or benchmark spec) |
 
-`synthesize` flags: `--effort max|min` (defaults to the state file),
-`--allow-partial` to emit a report below the gate. Exit codes: `0` success,
-`1` completion gate or eval miss, `2` usage or manifest error.
+`synthesize` flags: `--baseline <file>` for the tech-debt trend line,
+`--effort max|min` (defaults to the state file), and `--allow-partial` to emit
+a report below the gate. Exit codes: `0` success, `1` completion gate or eval
+miss, `2` usage, manifest, or baseline error.
 
 ## Benchmarks
 
@@ -96,7 +97,7 @@ All return values are plain dicts/lists unless stated otherwise.
 
 | Function | Signature | Returns |
 |----------|-----------|---------|
-| `load` | `load(path=None)` | Manifest dict; raises `ValueError` on missing/invalid JSON |
+| `load` | `load(path=None)` | Manifest dict; raises `FileNotFoundError` when the file is missing and `ValueError` for invalid JSON or schema |
 | `validate` | `validate(data)` | `None`; raises `ValueError` with the first schema problem |
 | `agent_ids` | `agent_ids(manifest)` | List of agent ids in manifest order |
 | `agent_by_id` | `agent_by_id(manifest, agent_id)` | Agent dict or `None` |
@@ -181,7 +182,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `synthesize` | `synthesize(manifest, results, planned, completed=None, target='', facts=None, baseline=None, timestamp=None)` | Report model |
 | `render` | `render(model, fmt='markdown')` | `{"markdown": ...}`, `{"json": ...}`, or both |
 | `write_outputs` | `write_outputs(model, out_path, fmt='markdown')` | Written paths |
-| `load_spec` | `load_spec(path)` | Benchmark spec (list or object) |
+| `load_spec` | `load_spec(path)` | 2-tuple `(expected_issues, known_false_positives)`; a bare list yields `([...], [])` |
 | `evaluate` | `evaluate(model, expected_issues)` | Dict: `expected`, `matched`, `missing`, `coverage`, `precision`, `findings_total`, `findings_matched`, `rejected` |
 | `run_eval` | `run_eval(manifest, fixtures_dir, expected_path)` | Tuple `(model, score)` |
 
@@ -195,7 +196,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `cmd_synthesize` | `cmd_synthesize(args)` | Implements `synthesize` |
 | `cmd_validate_results` | `cmd_validate_results(args)` | Implements `validate-results` |
 | `cmd_eval` | `cmd_eval(args)` | Implements `eval` |
-| `build_parser` | `build_parser()` | `argparse` parser for `plan/record/synthesize/validate-results/eval` |
+| `build_parser` | `build_parser(version=None)` | `argparse` parser for `plan/record/synthesize/validate-results/eval` |
 | `write_text` | `write_text(path, text, newline='\n')` | UTF-8 write with explicit newline (3.9-compatible) |
 
 ## Tests

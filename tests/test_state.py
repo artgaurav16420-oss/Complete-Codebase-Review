@@ -26,6 +26,16 @@ class TestStateLifecycle(unittest.TestCase):
         self.assertEqual(data["current_phase"], 1)
         self.assertEqual(data["effort"], "max")
 
+    def test_new_state_preserves_explicit_arguments(self):
+        data = state.new_state(self.tmp.name, "/skills/ccr", "min")
+        self.assertEqual(data["skill_dir"], "/skills/ccr")
+        self.assertEqual(data["effort"], "min")
+        created = state.State.create(
+            self.path, self.tmp.name, "/skills/ccr", "min"
+        )
+        self.assertEqual(created.data["skill_dir"], "/skills/ccr")
+        self.assertEqual(created.data["effort"], "min")
+
     def test_roundtrip(self):
         created = state.State.create(self.path, self.tmp.name)
         created.set_step("phase1:discovery")
@@ -42,6 +52,40 @@ class TestStateLifecycle(unittest.TestCase):
     def test_corrupt_state_rejected(self):
         self.path.parent.mkdir(parents=True)
         self.path.write_text('{"current_phase": 9}', encoding="utf-8")
+        with self.assertRaises(ValueError):
+            state.State.load(self.path)
+
+    def test_minimal_state_gets_defaults(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": str(Path(self.tmp.name).resolve()),
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": ["security", "code_quality"],
+        }), encoding="utf-8")
+        loaded = state.State.load(self.path)
+        self.assertEqual(loaded.data["total_agents"], 2)
+        self.assertEqual(loaded.data["agents_completed"], [])
+        self.assertEqual(loaded.completion_ratio(), 0.0)
+
+    def test_infinite_re_review_count_is_normalized(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(
+            '{"target_dir": ".", "current_phase": 1, "phase_gates": {}, '
+            '"agents_planned": [], "re_review_count": 1e999}',
+            encoding="utf-8",
+        )
+        loaded = state.State.load(self.path)
+        self.assertEqual(loaded.data["re_review_count"], 0)
+
+    def test_list_phase_gates_rejected(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 1,
+            "phase_gates": [],
+            "agents_planned": [],
+        }), encoding="utf-8")
         with self.assertRaises(ValueError):
             state.State.load(self.path)
 

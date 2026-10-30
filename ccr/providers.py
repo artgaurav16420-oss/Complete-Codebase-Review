@@ -17,6 +17,7 @@ those, and cross-domain duplicates inflate the report. If a finding is real
 but belongs to another domain, omit it.
 
 SKILL_DIR={skill_dir}
+MANIFEST_VERSION={manifest_version}
 Load 'karpathy-guidelines' from SKILL_DIR. Follow it: surface assumptions,
 simplicity/YAGNI, surgical changes only, verify before claiming done.
 
@@ -74,6 +75,7 @@ def build_prompt(agent, target, skill_dir, manifest_version=""):
         domain=agent["coverage"],
         target=target,
         skill_dir=skill_dir or "<SKILL_DIR>",
+        manifest_version=manifest_version or "unknown",
         coverage=agent["coverage"],
         agent_id=agent["id"],
         checks=checks_text,
@@ -98,7 +100,13 @@ def write_prompts(manifest, plan, out_dir, skill_dir=""):
     for agent_id in plan["agents"]:
         agent = next(a for a in manifest["agents"] if a["id"] == agent_id)
         path = prompt_path(cache, agent_id)
-        write_text(path, build_prompt(agent, plan["target"], skill_dir))
+        write_text(
+            path,
+            build_prompt(
+                agent, plan["target"], skill_dir,
+                manifest_version=manifest.get("version", ""),
+            ),
+        )
         written.append(path)
     return written
 

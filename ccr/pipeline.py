@@ -45,6 +45,49 @@ def check_completion(manifest, effort, planned, completed):
     return ratio
 
 
+def _collect_raw(manifest, results, planned):
+    """Flatten agent results into normalised finding dicts."""
+    agents_by_id = {a["id"]: a for a in manifest["agents"]}
+    raw = []
+    for agent_id in planned:
+        if agent_id not in results:
+            continue
+        agent = agents_by_id.get(agent_id)
+        if agent is None:
+            raise ValueError("unknown agent id: " + str(agent_id))
+        domain = agent["report"]
+        for item in results[agent_id].get("findings", []):
+            copy = dict(item)
+            copy["domain"] = domain
+            copy["agent"] = agent_id
+            raw.append(copy)
+    return raw
+
+
+def _codebase_size(facts):
+    """Map discovery facts to the report's codebase-size block."""
+    return {
+        "files": (facts or {}).get("files", 0),
+        "languages": len((facts or {}).get("languages", {})),
+        "modules": len((facts or {}).get("top_dirs", {})),
+        "truncated": bool((facts or {}).get("truncated", False)),
+    }
+
+
+def _canonicalize_baseline(model, manifest):
+    """Remap baseline domain keys from report names to agent ids."""
+    display_to_id = {a["report"]: a["id"] for a in manifest["agents"]}
+    baseline = model["baseline"]
+    baseline["per_domain_scores"] = {
+        display_to_id.get(name, name): value
+        for name, value in baseline["per_domain_scores"].items()
+    }
+    baseline["per_domain_open_findings"] = {
+        display_to_id.get(name, name): value
+        for name, value in baseline["per_domain_open_findings"].items()
+    }
+
+
 def synthesize(manifest, results, planned, completed=None, target="",
                facts=None, baseline=None, timestamp=None):
     """Merge agent results into a report model.
@@ -65,21 +108,7 @@ def synthesize(manifest, results, planned, completed=None, target="",
         dict: Report model.
     """
     completed = list(completed if completed is not None else results.keys())
-    agents_by_id = {a["id"]: a for a in manifest["agents"]}
-    raw = []
-    for agent_id in planned:
-        if agent_id not in results:
-            continue
-        agent = agents_by_id.get(agent_id)
-        if agent is None:
-            raise ValueError("unknown agent id: " + str(agent_id))
-        domain = agent["report"]
-        for item in results[agent_id].get("findings", []):
-            copy = dict(item)
-            copy.setdefault("domain", domain)
-            copy["agent"] = agent_id
-            raw.append(copy)
-
+    raw = _collect_raw(manifest, results, planned)
     kept, rejected = findings_mod.review_findings(
         raw, floors=manifest.get("tech_debt_floors")
     )
@@ -99,23 +128,8 @@ def synthesize(manifest, results, planned, completed=None, target="",
         kept, rejected, planned, completed,
         target=target, baseline=baseline,
     )
-    size = {
-        "files": (facts or {}).get("files", 0),
-        "languages": len((facts or {}).get("languages", {})),
-        "modules": len((facts or {}).get("top_dirs", {})),
-        "truncated": bool((facts or {}).get("truncated", False)),
-    }
-    model["codebase_size"] = size
-    display_to_id = {a["report"]: a["id"] for a in manifest["agents"]}
-    baseline = model["baseline"]
-    baseline["per_domain_scores"] = {
-        display_to_id.get(name, name): value
-        for name, value in baseline["per_domain_scores"].items()
-    }
-    baseline["per_domain_open_findings"] = {
-        display_to_id.get(name, name): value
-        for name, value in baseline["per_domain_open_findings"].items()
-    }
+    model["codebase_size"] = _codebase_size(facts)
+    _canonicalize_baseline(model, manifest)
     model["baseline"]["timestamp"] = timestamp or datetime.now(
         timezone.utc
     ).isoformat(timespec="seconds")

@@ -5,10 +5,29 @@
 # a mock skill evaluation against expected_issues.json, and
 # runs all Python unit tests.
 #
-# Usage: ./test.sh
+# Usage: ./test.sh [--skill-checks-only]
+#
+#   --skill-checks-only  Run only the SKILL.md / karpathy-guidelines.md
+#                        contract checks and exit.
 #
 # Returns 0 if all checks pass, 1 otherwise.
 set -euo pipefail
+
+SKILL_CHECKS_ONLY=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --skill-checks-only) SKILL_CHECKS_ONLY=1 ;;
+        -h|--help)
+            echo "Usage: ./test.sh [--skill-checks-only]"
+            exit 0
+            ;;
+        *)
+            echo "[ERROR] Unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
 
 PYTHON=$(command -v python3 || command -v python || echo "python")
 
@@ -35,6 +54,15 @@ if [ ! -f "karpathy-guidelines.md" ]; then
     FAIL=1
 else
     echo "[SUCCESS] karpathy-guidelines.md exists"
+fi
+
+if [ "$SKILL_CHECKS_ONLY" -eq 1 ]; then
+    if [ "$FAIL" -eq 1 ]; then
+        echo "[ERROR] Skill checks failed!"
+        exit 1
+    fi
+    echo "[SUCCESS] Skill checks passed"
+    exit 0
 fi
 
 echo "[INFO] Checking generated docs are current..."

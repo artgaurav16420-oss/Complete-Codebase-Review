@@ -10,11 +10,22 @@ verifies the orchestrator's structural logic, not the sub-agents.
 """
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+TESTS_DIR = Path(__file__).resolve().parent
+for _path in (str(REPO_ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+from test_env_config import TABLE_VARS  # noqa: E402
+from test_pipeline import (  # noqa: E402
+    SAMPLE_VALID_OUTPUT,
+    validate_markdown_output,
+)
 
 
 class TestDummyRepoDiscovery(unittest.TestCase):
@@ -53,43 +64,12 @@ class TestOutputValidation(unittest.TestCase):
     """Health report schema contract passes for dummy data."""
 
     def test_manual_sample_passes_strict(self):
-        old_path = list(__import__("sys").path)
-        try:
-            __import__("sys").path.insert(0, str(REPO_ROOT))
-            from tests.test_pipeline import validate_markdown_output
-        finally:
-            __import__("sys").path[:] = old_path
-
-        with open(REPO_ROOT / "tests" / "test_pipeline.py",
-                  encoding="utf-8") as f:
-            content = f.read()
-
-        import re
-        m = re.search(
-            r"SAMPLE_VALID_OUTPUT\s*=\s*r?'''"
-            r"(.*?)"
-            r"'''",
-            content, re.DOTALL,
+        errors = validate_markdown_output(SAMPLE_VALID_OUTPUT)
+        self.assertEqual(
+            errors, [],
+            "SAMPLE_VALID_OUTPUT failed validation:\n" +
+            "\n".join(f"  - {e}" for e in errors),
         )
-        if not m:
-            m = re.search(
-                r'SAMPLE_VALID_OUTPUT\s*=\s*r?"""'
-                r"(.*?)"
-                r'"""',
-                content, re.DOTALL,
-            )
-        self.assertIsNotNone(
-            m,
-            "Could not find SAMPLE_VALID_OUTPUT in test_pipeline.py",
-        )
-        if m:
-            sample = m.group(1)
-            errors = validate_markdown_output(sample)
-            self.assertEqual(
-                errors, [],
-                "SAMPLE_VALID_OUTPUT failed validation:\n" +
-                "\n".join(f"  - {e}" for e in errors),
-            )
 
 
 class TestExpectedIssuesJSON(unittest.TestCase):
@@ -110,13 +90,6 @@ class TestEnvVarIntegration(unittest.TestCase):
     """CODE_REVIEW_* env vars integrate correctly with SKILL.md spec."""
 
     def test_quick_mode_settings(self):
-        old_path = list(__import__("sys").path)
-        try:
-            __import__("sys").path.insert(0, str(REPO_ROOT))
-            from tests.test_env_config import TABLE_VARS
-        finally:
-            __import__("sys").path[:] = old_path
-
         expected_basics = {
             "CODE_REVIEW_EFFORT",
             "CODE_REVIEW_TIMEOUT_SEC",

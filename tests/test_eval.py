@@ -6,20 +6,23 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ccr import manifest as manifest_mod
-from ccr import pipeline
-
 ROOT = Path(__file__).resolve().parent.parent
-FIXTURES = ROOT / "tests" / "fixtures" / "agents"
-EXPECTED = ROOT / "tests" / "expected_issues.json"
+TESTS_DIR = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from tests.test_pipeline import (  # noqa: E402
+# Import the shared helpers from the bare module so discovery, direct runs
+# and these tests all share one module object (no duplicate copies).
+from ccr import manifest as manifest_mod  # noqa: E402
+from ccr import pipeline  # noqa: E402
+from test_pipeline import (  # noqa: E402
     validate_json_output,
     validate_markdown_output,
 )
+
+FIXTURES = ROOT / "tests" / "fixtures" / "agents"
+EXPECTED = ROOT / "tests" / "expected_issues.json"
 
 
 class TestEvalHarness(unittest.TestCase):

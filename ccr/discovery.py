@@ -90,11 +90,6 @@ CONTAINER_MARKERS = frozenset({
     "Dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml",
 })
 
-BASE_AGENTS = [
-    "architecture", "code_quality", "security", "tech_debt", "documentation",
-    "standards", "process_quality",
-]
-
 
 def _is_test_file(rel_parts, name):
     """Return True when a path looks like a test file."""
@@ -133,10 +128,8 @@ def _process_file(full, rel_root, name, size, state):
 
     if rel_root.parts:
         top = rel_root.parts[0]
-    else:
-        top = "."
-    top_dirs = state["top_dirs"]
-    top_dirs[top] = top_dirs.get(top, 0) + 1
+        top_dirs = state["top_dirs"]
+        top_dirs[top] = top_dirs.get(top, 0) + 1
 
 
 def _is_reparse_dir(path):
@@ -267,7 +260,7 @@ def discover(target_dir, max_files=None):
 
 def active_agents(manifest, facts):
     """Return the agent ids whose health dimensions apply to the target."""
-    active = list(manifest.get("base_agents") or BASE_AGENTS)
+    active = list(manifest.get("base_agents") or [])
     if facts.get("test_files"):
         active.append("test_health")
     if facts.get("dependency_manifests"):
@@ -326,6 +319,33 @@ def select_agents(manifest, facts, effort="max", override=None):
     return active_agents(manifest, facts)
 
 
+def _timeout_sec(manifest, effort):
+    """Resolve the agent timeout for the selected effort.
+
+    Full runs honour CODE_REVIEW_TIMEOUT_SEC, falling back to the manifest
+    env-var default. Quick Mode keeps its own manifest timeout.
+    """
+    if effort == "min":
+        return int(manifest["thresholds"]["quick_timeout_sec"])
+    default = 900
+    for var in manifest.get("env_vars", []):
+        if var.get("name") == "CODE_REVIEW_TIMEOUT_SEC":
+            default = var.get("default", default)
+            break
+    raw = os.environ.get("CODE_REVIEW_TIMEOUT_SEC", "")
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = 0
+        if value > 0:
+            return value
+    try:
+        return int(default)
+    except (TypeError, ValueError):
+        return 900
+
+
 def plan(manifest, target_dir, effort="max", override=None, max_files=None):
     """Build the Phase 1 + Phase 2 plan for a target.
 
@@ -334,9 +354,7 @@ def plan(manifest, target_dir, effort="max", override=None, max_files=None):
     """
     facts = discover(target_dir, max_files=max_files)
     agents = select_agents(manifest, facts, effort=effort, override=override)
-    timeout = 900
-    if effort == "min":
-        timeout = int(manifest["thresholds"]["quick_timeout_sec"])
+    timeout = _timeout_sec(manifest, effort)
     return {
         "target": facts["target"],
         "effort": effort,
