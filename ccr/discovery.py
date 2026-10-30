@@ -322,7 +322,7 @@ def active_agents(manifest, facts):
 def _normalize_agent_token(text):
     """Lower-case a token and drop the punctuation agent names carry."""
     return (
-        text.strip().lower()
+        str(text).strip().lower()
         .replace(" ", "_")
         .replace("-", "_")
         .replace("(", "")
