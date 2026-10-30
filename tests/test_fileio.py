@@ -150,14 +150,16 @@ class TestFileioWriteText(unittest.TestCase):
         )
 
     @unittest.skipUnless(os.name == "posix", "POSIX openat semantics")
-    def test_internal_symlink_is_refused_on_posix(self):
+    def test_internal_symlink_inside_root_is_allowed(self):
         root = self.dir / "root"
         other = root / "other"
         other.mkdir(parents=True)
         link = root / "sub"
         os.symlink(other, link, target_is_directory=True)
-        with self.assertRaises(OSError):
-            write_text(link / "note.txt", "x", root=root)
+        write_text(link / "note.txt", "x", root=root)
+        self.assertEqual(
+            (other / "note.txt").read_text(encoding="utf-8"), "x"
+        )
 
     @unittest.skipUnless(os.name == "posix", "POSIX symlink semantics")
     def test_symlinked_ancestor_accepts_canonical_path(self):

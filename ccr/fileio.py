@@ -138,8 +138,9 @@ def write_text(path, text, newline="\n", root=None):
     """Write UTF-8 text with explicit newline handling on Python 3.9+.
 
     Refuses to follow a symlink at the destination. When ``root`` is given,
-    the destination must resolve inside it; on POSIX every component from the
-    filesystem root down is opened with O_NOFOLLOW, so no symlink is followed.
+    the destination must resolve inside it; on POSIX every component below the
+    resolved root is opened with O_NOFOLLOW, so a link that resolves outside is
+    refused. A link that resolves inside the root is written through its target.
     On Windows the opened handle's final path is checked against the root.
     """
     path = os.fsdecode(os.fspath(path))
