@@ -169,11 +169,11 @@ def _scan_tree(target, limit, state):
 
 
 def _has_symlinked_component(target, marker):
-    """True when any component of target/marker is a symlink."""
+    """True when any component of target/marker is a link or junction."""
     current = target
     for part in Path(marker).parts:
         current = current / part
-        if current.is_symlink():
+        if _is_reparse_dir(current):
             return True
     return False
 

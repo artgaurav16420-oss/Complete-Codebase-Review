@@ -164,6 +164,19 @@ class TestActiveAgents(unittest.TestCase):
             facts = discovery.discover(str(root))
             self.assertEqual(facts["ci"], [])
 
+    def test_ci_tree_is_skipped_when_a_component_is_a_reparse_point(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "ci.yml").write_text("name: x\n", encoding="utf-8")
+            with mock.patch.object(
+                discovery, "_is_reparse_dir", return_value=True
+            ):
+                facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
 
 class TestSelectAgents(unittest.TestCase):
     """Selection precedence: override > quick > dimensions."""
