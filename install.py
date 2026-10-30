@@ -105,8 +105,11 @@ def _is_sha256(text):
 _SKILL_EXCLUDED = {
     # VCS and build artifacts — never ship these
     ".git", "__pycache__",
+    # Local environments and build output — a checkout's working state
+    ".venv", "venv", "node_modules", "build", "dist", "htmlcov",
+    ".mypy_cache", ".pytest_cache",
     # Installer scripts — not part of the skill itself
-    "install.py", "install.sh", "install.ps1",
+    "install.py", "install.sh", "install.ps1", "install.py.sha256",
     # CI, tests, design docs — runtime skill doesn't need these
     ".github", "tests", "ADRs", "test.sh", "Makefile",
     # Security/advisory files — GitHub standard files, not skill content
@@ -150,11 +153,33 @@ def _onerror(func, path, exc_info):
     func(path)
 
 
+_CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+_CREDENTIAL_NAMES = {
+    "credentials.json", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", ".netrc",
+}
+
+
+def _is_credential_name(name):
+    """True for names that commonly hold private keys or credentials.
+
+    Exact-name matching alone misses the variants that actually exist in a
+    checkout (.env.local, credentials.json, id_rsa, *.pem), and those files
+    would otherwise be copied into every agent skill directory.
+    """
+    lowered = name.lower()
+    return (
+        lowered in _CREDENTIAL_NAMES
+        or lowered.startswith(".env.")
+        or lowered.endswith(_CREDENTIAL_SUFFIXES)
+    )
+
+
 def _ignore_skill_files(path, names):
     """Filter files to exclude from skill copy based on _SKILL_EXCLUDED."""
     return [
         n for n in names
         if n in _SKILL_EXCLUDED
+        or _is_credential_name(n)
         or n.endswith(".pyc")
         or n.endswith(".egg-info")
         or n == ".coverage"
@@ -557,6 +582,11 @@ def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
         return
 
     print_success("Installation complete!")
+    print_info(
+        "The ccr core ships inside the skill directory and is not installed "
+        "as a console script. Run it with the skill directory on PYTHONPATH, "
+        'e.g. PYTHONPATH="<skill-dir>" python -m ccr plan .'
+    )
 
 
 def _parse_args():

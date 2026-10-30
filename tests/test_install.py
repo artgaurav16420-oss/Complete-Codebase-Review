@@ -1061,6 +1061,28 @@ class TestIgnoreSkillFiles(unittest.TestCase):
         self.assertIn(".skills-index.json", kept)
         self.assertNotIn("SKILL.md", kept)
 
+    def test_skips_local_environments_and_build_output(self):
+        install_mod = _import_install()
+        names = [".venv", "venv", "node_modules", "build", "dist",
+                 "htmlcov", ".mypy_cache", ".pytest_cache"]
+        kept = install_mod._ignore_skill_files(".", names)
+        for name in names:
+            self.assertIn(name, kept)
+
+    def test_skips_credential_variants(self):
+        install_mod = _import_install()
+        names = [".env.local", ".env.production", "credentials.json",
+                 "id_rsa", "server.pem", "client.key", "SKILL.md"]
+        kept = install_mod._ignore_skill_files(".", names)
+        for name in names[:-1]:
+            self.assertIn(name, kept)
+        self.assertNotIn("SKILL.md", kept)
+
+    def test_skips_installer_sidecar(self):
+        install_mod = _import_install()
+        kept = install_mod._ignore_skill_files(".", ["install.py.sha256"])
+        self.assertIn("install.py.sha256", kept)
+
 
 if __name__ == "__main__":
     unittest.main()
