@@ -59,13 +59,15 @@ python tools/generate.py --check  # CI mode: fail if stale
 
 ### Version Synchronization
 
-The version string is defined in **three places** and must stay in sync:
+`ccr/pipeline.json` is the canonical version source. `tools/generate.py` writes
+it into `SKILL.md`, `pyproject.toml`, and `help.md`, so those three are
+generated: change the manifest, run `python tools/generate.py`, and commit the
+result. `CHANGELOG.md` is the one hand-edited file — add the matching
+`## vX.Y.Z` heading yourself.
 
-- `SKILL.md` frontmatter
-- `pyproject.toml`
-- `CHANGELOG.md`
-
-The compliance test `compliance_test.py:test_version_sources_stay_in_sync` enforces this. If you bump the version in one file, update all three before committing.
+Two checks enforce this: `tests/compliance_test.py:test_version_sources_stay_in_sync`
+compares the manifest-backed files and the changelog, and CI runs
+`python tools/generate.py --check`, which fails on any stale generated file.
 
 ## Code Style
 

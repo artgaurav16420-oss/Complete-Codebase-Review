@@ -82,7 +82,7 @@ Architecture, Security, Code Quality, Tech Debt, Test Health, Dependencies, Docu
 <td width="50%">
 
 ### ✅ Devil's Advocate QA
-Every finding is independently challenged, web-verified, and classified (CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED). On the [Organizer benchmark](tests/fixtures/organizer/README.md), 17 of 18 findings were verified, with the known false positive listed by tag in `expected.json`.
+Every finding is independently challenged, web-verified, and classified (CONFIRMED / PLAUSIBLE / QUESTIONABLE / REJECTED). On the [Organizer benchmark](tests/fixtures/organizer/README.md), 17 of 18 findings were verified, with the known false positive recorded as text under `known_false_positives` in `expected.json` (its tag is deliberately excluded, so the FP stays unclaimed).
 
 </td>
 <td width="50%">
@@ -180,7 +180,7 @@ python install.py
 
 > **Python command name:** commands in this README use `python`. Where that shim is absent and only `python3` exists (common on Linux and macOS), substitute `python3`.
 
-> **Release-based verification:** For production environments, download the installer from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify its SHA-256 checksum published alongside the release notes — never rely on a checksum downloaded from the same source as the script.
+> **Release-based verification:** For production environments, download the installer from a [tagged release](https://github.com/artgaurav16420-oss/Complete-Codebase-Review/releases) and verify its SHA-256 checksum published alongside the release notes — never rely on a checksum downloaded from the same source as the script. No tag has been cut yet, so the releases page is empty until the first `v*` tag is pushed; until then install from the repository copy.
 
 That's it. You'll get a full health report in 5-15 minutes.
 
@@ -194,17 +194,24 @@ runs anywhere, without an LLM:
 | Command | What it does |
 |---------|--------------|
 | `python -m ccr plan .` | Discovery facts and which agents would run |
-| `python -m ccr record . --out .code-review-cache` | Writes one hardened prompt per agent plus `ccr-state.json` |
+| `python -m ccr record . --out .code-review-cache --skill-dir <skill-dir>` | Writes one hardened prompt per agent plus `ccr-state.json` |
 | `python -m ccr synthesize --in .code-review-cache --out report` | Normalizes, dedups, applies mechanical DA checks, renders Markdown/JSON |
 | `python -m ccr validate-results --in .code-review-cache` | Malformed-result check over cached agent results |
 | `python -m ccr eval` | Replays recorded fixtures and scores coverage against `expected_issues.json` (source checkout only) |
 
 `ccr eval` resolves its `--fixtures` and `--expected` defaults relative to the repository, so it runs only from a source checkout. From an installed wheel, pass both paths explicitly.
 
+`--skill-dir` is the absolute path of the installed skill directory. It is
+substituted into every agent prompt so each agent can load
+`karpathy-guidelines.md`; omitting it leaves the literal `<SKILL_DIR>`
+placeholder in the prompt.
+
 `record` / `synthesize` is the integration boundary: the host agent executes
 the prompts, and `ccr` never calls a model itself. That keeps the deterministic
-half testable in CI. `synthesize` enforces the 75% / 66% completion gate; use
-`--allow-partial` to override it deliberately.
+half testable in CI. `synthesize` enforces the 75% / 66% completion gate when a
+`ccr-state.json` or `--agents` supplies the planned set; without either it warns
+and infers the set from the result files. Use `--allow-partial` to override the
+gate deliberately.
 
 ---
 

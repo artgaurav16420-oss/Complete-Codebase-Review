@@ -89,6 +89,13 @@ class TestManifestValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             manifest_mod.validate(data)
 
+    def test_non_string_agent_alias(self):
+        data = self._broken()
+        data["agents"][0]["report"] = 7
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("must be a string", str(ctx.exception))
+
     def test_duplicate_env_var(self):
         data = self._broken()
         data["env_vars"].append(dict(data["env_vars"][0]))

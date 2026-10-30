@@ -147,7 +147,13 @@ def _is_reparse_dir(path):
 def _scan_tree(target, limit, state):
     """Walk the target tree into the state dict; report truncation."""
     truncated = False
-    for root, dirs, names in os.walk(str(target)):
+
+    def _fail(exc):
+        raise ValueError(
+            "cannot scan target directory: {} ({})".format(target, exc)
+        )
+
+    for root, dirs, names in os.walk(str(target), onerror=_fail):
         dirs[:] = sorted(
             d for d in dirs
             if d not in IGNORED_DIRS and not _is_reparse_dir(Path(root) / d)
@@ -168,6 +174,16 @@ def _scan_tree(target, limit, state):
     return truncated
 
 
+def _has_symlinked_component(target, marker):
+    """True when any component of target/marker is a link or junction."""
+    current = target
+    for part in Path(marker).parts:
+        current = current / part
+        if _is_reparse_dir(current):
+            return True
+    return False
+
+
 def _build_facts(target, state, truncated):
     """Derive the discovery facts dict from the accumulated state."""
     files = state["files"]
@@ -181,24 +197,38 @@ def _build_facts(target, state, truncated):
     test_files = state["test_files"]
 
     database = []
-    root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
+    try:
+        root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
+    except OSError as exc:
+        raise ValueError(
+            "cannot list target directory: {} ({})".format(target, exc)
+        )
     for marker in DB_MARKERS:
         if marker in root_entries:
             database.append(marker)
 
     ci = []
-    for marker in CI_PATHS:
-        candidate = target / marker
-        if candidate.is_file():
-            ci.append(marker)
-        elif candidate.is_dir():
-            ci.extend(
-                sorted(
-                    str((candidate / f.name).relative_to(target)).replace("\\", "/")
-                    for f in candidate.iterdir()
-                    if f.suffix.lower() in (".yml", ".yaml")
+    try:
+        for marker in CI_PATHS:
+            candidate = target / marker
+            if candidate.is_file() and not _has_symlinked_component(
+                target, marker
+            ):
+                ci.append(marker)
+            elif candidate.is_dir() and not _has_symlinked_component(target, marker):
+                ci.extend(
+                    sorted(
+                        str((candidate / f.name).relative_to(target)).replace("\\", "/")
+                        for f in candidate.iterdir()
+                        if f.is_file()
+                        and not _is_reparse_dir(f)
+                        and f.suffix.lower() in (".yml", ".yaml")
+                    )
                 )
-            )
+    except OSError as exc:
+        raise ValueError(
+            "cannot list CI directory under: {} ({})".format(target, exc)
+        )
 
     code_files = sum(
         count for language, count in languages.items()
@@ -259,7 +289,11 @@ def discover(target_dir, max_files=None):
 
 
 def active_agents(manifest, facts):
-    """Return the agent ids whose health dimensions apply to the target."""
+    """Return the agent ids whose health dimensions apply to the target.
+
+    Raises ValueError when a triggered id is missing from the manifest, so a
+    renamed agent fails loudly instead of silently dropping its domain.
+    """
     active = list(manifest.get("base_agents") or [])
     if facts.get("test_files"):
         active.append("test_health")
@@ -276,18 +310,40 @@ def active_agents(manifest, facts):
     if facts.get("code_files", 0) >= 20 or facts.get("ui_files"):
         active.append("performance")
     wanted = set(active)
+    known = {a["id"] for a in manifest["agents"]}
+    unknown = sorted(wanted - known)
+    if unknown:
+        raise ValueError(
+            "agent trigger not in manifest: " + ", ".join(unknown)
+        )
     return [a["id"] for a in manifest["agents"] if a["id"] in wanted]
 
 
-def _resolve_agent(manifest, token):
-    """Map an id or report name to a canonical agent id."""
-    cleaned = token.strip().lower().replace(" ", "_").replace("-", "_")
+def _normalize_agent_token(text):
+    """Lower-case a token and drop the punctuation agent names carry."""
+    return (
+        str(text).strip().lower()
+        .replace(" ", "_")
+        .replace("-", "_")
+        .replace("(", "")
+        .replace(")", "")
+    )
+
+
+def resolve_agent(manifest, token):
+    """Map an id, report name or display name to a canonical agent id.
+
+    Ids are matched across the whole roster before any alias, so an earlier
+    agent's display name cannot shadow a later agent's id.
+    """
+    cleaned = _normalize_agent_token(token)
     for agent in manifest["agents"]:
-        if agent["id"] == cleaned:
+        if _normalize_agent_token(agent["id"]) == cleaned:
             return agent["id"]
-        if agent["report"].lower().replace(" ", "_") == cleaned:
+    for agent in manifest["agents"]:
+        if _normalize_agent_token(agent["report"]) == cleaned:
             return agent["id"]
-        if agent["name"].lower().replace(" ", "_").replace("(", "").replace(")", "") == cleaned:
+        if _normalize_agent_token(agent["name"]) == cleaned:
             return agent["id"]
     raise ValueError("unknown agent: " + token)
 
@@ -311,7 +367,10 @@ def select_agents(manifest, facts, effort="max", override=None):
         raise ValueError("effort must be 'max' or 'min'")
     order = [a["id"] for a in manifest["agents"]]
     if override:
-        chosen = {_resolve_agent(manifest, token) for token in override.split(",")}
+        tokens = [token for token in override.split(",") if token.strip()]
+        if not tokens:
+            raise ValueError("--agents contained no agent ids")
+        chosen = {resolve_agent(manifest, token) for token in tokens}
         return [agent_id for agent_id in order if agent_id in chosen]
     if effort == "min":
         quick = set(manifest["thresholds"]["quick_agents"])

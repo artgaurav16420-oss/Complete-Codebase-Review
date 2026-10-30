@@ -1,5 +1,6 @@
 """Tests for ccr.discovery: facts, agent selection, and planning."""
 
+import copy
 import os
 import tempfile
 import unittest
@@ -37,6 +38,17 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(self.facts["ci"], [])
         self.assertEqual(self.facts["containers"], [])
         self.assertEqual(self.facts["dependency_manifests"], [])
+
+    def test_ci_directory_named_like_a_workflow_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "ci.yml").write_text("name: x\n", encoding="utf-8")
+            (workflows / "archive.yml").mkdir()
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [".github/workflows/ci.yml"])
 
     def test_target_is_resolved(self):
         self.assertTrue(self.facts["target"].endswith("dummy_repo"))
@@ -103,6 +115,121 @@ class TestActiveAgents(unittest.TestCase):
         active = discovery.active_agents(self.manifest, facts)
         order = [a["id"] for a in self.manifest["agents"]]
         self.assertEqual(active, [a for a in order if a in active])
+
+    def test_renamed_dimension_agent_fails_loudly(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["agents"] = [
+            a for a in manifest["agents"] if a["id"] != "test_health"
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            discovery.active_agents(manifest, {"test_files": 1})
+        self.assertIn("test_health", str(ctx.exception))
+
+    def test_override_tolerates_a_trailing_comma(self):
+        manifest = manifest_mod.load()
+        chosen = discovery.select_agents(
+            manifest, {}, override="security,"
+        )
+        self.assertEqual(chosen, ["security"])
+
+    def test_override_with_no_ids_fails_loudly(self):
+        manifest = manifest_mod.load()
+        with self.assertRaises(ValueError) as ctx:
+            discovery.select_agents(manifest, {}, override=", ,")
+        self.assertIn("no agent ids", str(ctx.exception))
+
+    def test_unreadable_nested_directory_raises(self):
+        def fake_walk(path, onerror=None):
+            if onerror is not None:
+                onerror(OSError("denied"))
+            return iter(())
+
+        with mock.patch.object(discovery.os, "walk", fake_walk):
+            with self.assertRaises(ValueError) as ctx:
+                discovery.discover(str(DUMMY))
+        self.assertIn("cannot scan target directory", str(ctx.exception))
+
+    def test_id_wins_over_an_earlier_agents_display_name(self):
+        manifest = copy.deepcopy(manifest_mod.load())
+        manifest["agents"][0]["name"] = manifest["agents"][1]["id"]
+        resolved = discovery.resolve_agent(
+            manifest, manifest["agents"][1]["id"]
+        )
+        self.assertEqual(resolved, manifest["agents"][1]["id"])
+
+    def test_symlinked_ci_directory_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "ci.yml").write_text("name: x\n", encoding="utf-8")
+            (root / ".github").mkdir()
+            link = root / ".github" / "workflows"
+            try:
+                link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
+    def test_symlinked_ci_parent_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            outside = root / "outside"
+            (outside / "workflows").mkdir(parents=True)
+            (outside / "workflows" / "ci.yml").write_text(
+                "name: x\n", encoding="utf-8"
+            )
+            try:
+                (root / ".github").symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
+    def test_ci_tree_is_skipped_when_a_component_is_a_reparse_point(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "ci.yml").write_text("name: x\n", encoding="utf-8")
+            with mock.patch.object(
+                discovery, "_is_reparse_dir", return_value=True
+            ):
+                facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
+    def test_symlinked_ci_file_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            (root / "outside.yml").write_text("name: x\n", encoding="utf-8")
+            (root / ".github").mkdir()
+            try:
+                (root / ".github" / "workflows").symlink_to(
+                    root / "outside.yml"
+                )
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
+    def test_symlinked_workflow_file_is_not_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            (root / "outside.yml").write_text("name: x\n", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            try:
+                (workflows / "linked.yml").symlink_to(root / "outside.yml")
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
 
 
 class TestSelectAgents(unittest.TestCase):

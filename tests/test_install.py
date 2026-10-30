@@ -1061,6 +1061,57 @@ class TestIgnoreSkillFiles(unittest.TestCase):
         self.assertIn(".skills-index.json", kept)
         self.assertNotIn("SKILL.md", kept)
 
+    def test_skips_local_environments_and_build_output(self):
+        install_mod = _import_install()
+        names = [".venv", "venv", "node_modules", "build", "dist",
+                 "htmlcov", ".mypy_cache", ".pytest_cache"]
+        kept = install_mod._ignore_skill_files(".", names)
+        for name in names:
+            self.assertIn(name, kept)
+
+    def test_skips_credential_variants(self):
+        install_mod = _import_install()
+        names = [".env.local", ".env.production", "credentials.json",
+                 "credentials", ".aws", ".ssh",
+                 "id_rsa", "id_rsa_work", "id_ed25519_personal",
+                 "server.pem", "client.key", "SKILL.md"]
+        kept = install_mod._ignore_skill_files(".", names)
+        for name in names[:-1]:
+            self.assertIn(name, kept)
+        self.assertNotIn("SKILL.md", kept)
+
+    def test_skips_installer_sidecar(self):
+        install_mod = _import_install()
+        kept = install_mod._ignore_skill_files(".", ["install.py.sha256"])
+        self.assertIn("install.py.sha256", kept)
+
+    def test_skips_symlinked_entries(self):
+        install_mod = _import_install()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".env").write_text("SECRET=1\n", encoding="utf-8")
+            link = root / "deploy-notes.txt"
+            try:
+                link.symlink_to(root / ".env")
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            kept = install_mod._ignore_skill_files(str(root), ["deploy-notes.txt"])
+            self.assertIn("deploy-notes.txt", kept)
+
+
+class TestCcrHint(unittest.TestCase):
+    """The post-install hint explains how to run the bundled module."""
+
+    def test_hint_covers_both_shells(self):
+        install_mod = _import_install()
+        buffer = io.StringIO()
+        with patch("sys.stdout", buffer):
+            install_mod._print_ccr_hint()
+        text = buffer.getvalue()
+        self.assertIn("PYTHONPATH", text)
+        self.assertIn("PowerShell", text)
+        self.assertIn("python -m ccr", text)
+
 
 if __name__ == "__main__":
     unittest.main()

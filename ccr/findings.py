@@ -324,6 +324,17 @@ def find_large_file_clusters(findings, min_hours=LARGE_FIX_HOURS):
 QUICK_WIN_CAP_HOURS = 40.0
 
 
+def _is_security(item):
+    """True when a finding came from the security agent.
+
+    Keys on the stable agent id first: the display label is editable in the
+    manifest, and matching it silently demotes HIGH findings when it changes.
+    """
+    if item.get("agent"):
+        return item.get("agent") == "security"
+    return item.get("domain") == "Security"
+
+
 def place_roadmap(findings):
     """Split eligible findings into three phases.
 
@@ -341,7 +352,7 @@ def place_roadmap(findings):
         hours = _as_hours(item.get("est_hours"))
         if severity == "CRITICAL":
             phases[1].append(item)
-        elif severity == "HIGH" and item.get("domain") == "Security":
+        elif severity == "HIGH" and _is_security(item):
             phases[1].append(item)
         elif severity in ("MEDIUM", "LOW") and hours <= 2:
             quick_wins.append(item)

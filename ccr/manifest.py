@@ -44,6 +44,13 @@ def _validate_agents(data):
         for field in ("id", "name", "report", "coverage", "skill"):
             if field not in agent:
                 raise ValueError("agent missing field: " + field)
+        for field in ("id", "name", "report"):
+            if not isinstance(agent[field], str):
+                raise ValueError(
+                    "agent {} field {} must be a string".format(
+                        agent["id"], field
+                    )
+                )
         agent_ids.append(agent["id"])
     if len(agent_ids) != len(set(agent_ids)):
         raise ValueError("duplicate agent id in manifest")

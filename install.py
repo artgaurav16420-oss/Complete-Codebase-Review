@@ -105,8 +105,13 @@ def _is_sha256(text):
 _SKILL_EXCLUDED = {
     # VCS and build artifacts — never ship these
     ".git", "__pycache__",
+    # Local environments and build output — a checkout's working state
+    ".venv", "venv", "node_modules", "build", "dist", "htmlcov",
+    ".mypy_cache", ".pytest_cache",
+    # Credential stores — whole directories, not just files
+    ".aws", ".ssh", ".gnupg", ".docker", ".kube",
     # Installer scripts — not part of the skill itself
-    "install.py", "install.sh", "install.ps1",
+    "install.py", "install.sh", "install.ps1", "install.py.sha256",
     # CI, tests, design docs — runtime skill doesn't need these
     ".github", "tests", "ADRs", "test.sh", "Makefile",
     # Security/advisory files — GitHub standard files, not skill content
@@ -150,11 +155,51 @@ def _onerror(func, path, exc_info):
     func(path)
 
 
+_CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+_CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
+_CREDENTIAL_NAMES = {"credentials", "credentials.json", ".netrc"}
+
+
+def _is_credential_name(name):
+    """True for names that commonly hold private keys or credentials.
+
+    Exact-name matching alone misses the variants that actually exist in a
+    checkout (.env.local, credentials.json, id_rsa_work, *.pem), and those
+    files would otherwise be copied into every agent skill directory.
+    """
+    lowered = name.lower()
+    return (
+        lowered in _CREDENTIAL_NAMES
+        or lowered.startswith(".env.")
+        or lowered.startswith(_CREDENTIAL_PREFIXES)
+        or lowered.endswith(_CREDENTIAL_SUFFIXES)
+    )
+
+
+def _is_link_like(path):
+    """True for a symlink, a Windows junction, or any reparse point."""
+    try:
+        if os.path.islink(str(path)):
+            return True
+        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
+    except OSError:
+        return False
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(flag and attrs & flag)
+
+
 def _ignore_skill_files(path, names):
-    """Filter files to exclude from skill copy based on _SKILL_EXCLUDED."""
+    """Filter files to exclude from skill copy based on _SKILL_EXCLUDED.
+
+    Links are skipped outright: a copy either dangles (its target was filtered)
+    or resolves outside the checkout (a junction on Windows is not a symlink,
+    so ``copytree`` follows it). The skill tree needs neither.
+    """
     return [
         n for n in names
         if n in _SKILL_EXCLUDED
+        or _is_credential_name(n)
+        or _is_link_like(Path(path) / n)
         or n.endswith(".pyc")
         or n.endswith(".egg-info")
         or n == ".coverage"
@@ -389,6 +434,20 @@ def _validate_target_path(path):
     return resolved
 
 
+def _print_ccr_hint():
+    """Explain how to run the bundled ccr module after installation."""
+    print_info(
+        "The ccr core ships inside the skill directory and is not installed "
+        "as a console script. Run it with the skill directory on PYTHONPATH:"
+    )
+    print_info(
+        '  POSIX:      PYTHONPATH="<skill-dir>" python -m ccr plan .'
+    )
+    print_info(
+        '  PowerShell: $env:PYTHONPATH="<skill-dir>"; python -m ccr plan .'
+    )
+
+
 def _run_target_install(src_dir, target, dry_run):
     """Install skill to a user-specified --target directory, exiting on error."""
     try:
@@ -408,6 +467,7 @@ def _run_target_install(src_dir, target, dry_run):
         print_error(f"Install failed: {e}")
         sys.exit(1)
     print_success("Installation complete!")
+    _print_ccr_hint()
 
 
 def _run_auto_install(src_dir, target_dirs, dry_run):
@@ -557,6 +617,7 @@ def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
         return
 
     print_success("Installation complete!")
+    _print_ccr_hint()
 
 
 def _parse_args():

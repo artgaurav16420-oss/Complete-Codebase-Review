@@ -26,6 +26,11 @@ def run_cli(argv):
 class TestPlanCommand(unittest.TestCase):
     """plan subcommand."""
 
+    def test_conflicting_targets_exit_two(self):
+        code, output = run_cli(["plan", "ccr", "--target", "tests"])
+        self.assertEqual(code, 2)
+        self.assertIn("target given twice", output)
+
     def test_plan_human(self):
         code, output = run_cli(["plan", "--target", str(DUMMY)])
         self.assertEqual(code, 0)
@@ -324,6 +329,35 @@ class TestResolvePlanned(unittest.TestCase):
         cached = None
         self.assertEqual(cli._resolve_planned(args, cached), [])
 
+    def test_agents_flag_accepts_display_names(self):
+        import argparse
+        from ccr import manifest as manifest_mod
+        args = argparse.Namespace(agents="Security,Architecture", cache=".")
+        planned = cli._resolve_planned(
+            args, None, manifest=manifest_mod.load()
+        )
+        self.assertEqual(planned, ["security", "architecture"])
+
+    def test_agents_flag_accepts_parenthesized_name(self):
+        import argparse
+        from ccr import manifest as manifest_mod
+        args = argparse.Namespace(
+            agents="Process Quality (Karpathy Compliance)", cache="."
+        )
+        planned = cli._resolve_planned(
+            args, None, manifest=manifest_mod.load()
+        )
+        self.assertEqual(planned, ["process_quality"])
+
+    def test_agents_flag_dedupes_spellings(self):
+        import argparse
+        from ccr import manifest as manifest_mod
+        args = argparse.Namespace(agents="security,Security", cache=".")
+        planned = cli._resolve_planned(
+            args, None, manifest=manifest_mod.load()
+        )
+        self.assertEqual(planned, ["security"])
+
 
 class TestCheckCompletionGate(unittest.TestCase):
     def test_allow_partial(self):
@@ -439,8 +473,26 @@ class TestValidateResults(unittest.TestCase):
                 ]
             }), encoding="utf-8")
             code, output = run_cli(["validate-results", "--in", tmp])
-            self.assertEqual(code, 1)
+            self.assertEqual(code, 0)
             self.assertIn("security: 1 valid, 1 malformed", output)
+
+    def test_malformed_over_threshold_exits_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "security.json").write_text(json.dumps({
+                "findings": [
+                    {"finding": "no anchor", "severity": "LOW",
+                     "est_hours": 1},
+                    {"finding": "no anchor", "severity": "LOW",
+                     "est_hours": 1},
+                    {"finding": "no anchor", "severity": "LOW",
+                     "est_hours": 1},
+                    {"finding": "no anchor", "severity": "LOW",
+                     "est_hours": 1},
+                ]
+            }), encoding="utf-8")
+            code, output = run_cli(["validate-results", "--in", tmp])
+            self.assertEqual(code, 1)
+            self.assertIn("0 valid, 4 malformed", output)
 
     def test_clean_results_exit_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -459,6 +511,23 @@ class TestValidateResults(unittest.TestCase):
             code, output = run_cli(["validate-results", "--in", tmp])
             self.assertEqual(code, 2)
             self.assertIn("no agent results", output)
+
+
+class TestEvalExit(unittest.TestCase):
+    """eval returns 1 when an expected issue goes unreported."""
+
+    def test_unmatched_expected_issue_exits_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            expected = Path(tmp) / "expected.json"
+            expected.write_text(
+                json.dumps(["no-such-issue-xyz"]), encoding="utf-8"
+            )
+            code, output = run_cli([
+                "eval", "--fixtures", str(FIXTURES),
+                "--expected", str(expected),
+            ])
+            self.assertEqual(code, 1)
+            self.assertIn("missing: no-such-issue-xyz", output)
 
 
 class TestModuleEntrypoint(unittest.TestCase):

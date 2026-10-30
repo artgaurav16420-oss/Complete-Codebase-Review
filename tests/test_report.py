@@ -1,6 +1,7 @@
 """Tests for ccr.report: Markdown and JSON contracts."""
 
 import importlib
+import copy
 import sys
 import unittest
 from pathlib import Path
@@ -83,6 +84,61 @@ class TestMarkdown(unittest.TestCase):
 
     def test_internal_validator_accepts(self):
         self.assertEqual(report_mod.validate_markdown(self.md), [])
+
+    def test_rejects_non_enum_health(self):
+        bad = dict(self.model)
+        bad["overall_health"] = "PURPLE"
+        md = report_mod.render_markdown(bad)
+        errors = report_mod.validate_markdown(md)
+        self.assertIn("invalid overall health: PURPLE", errors)
+
+    def test_rejects_extra_cells_in_the_health_row(self):
+        lines = self.md.splitlines()
+        for index, line in enumerate(lines):
+            if line.startswith("| **Overall Health** |"):
+                lines[index] = line[:-1].rstrip() + " | PURPLE |"
+                break
+        errors = report_mod.validate_markdown("\n".join(lines))
+        self.assertIn("missing overall health", errors)
+
+    def test_finding_text_cannot_forge_tech_debt_marker(self):
+        model = copy.deepcopy(self.model)
+        model["findings"][0]["finding"] = (
+            "[" + "x.py:1] \u2014 quotes **By domain**: Evil: 99h \u2192 "
+            "synthesis aborts"
+        )
+        md = report_mod.render_markdown(model)
+        self.assertEqual(report_mod.validate_markdown(md), [])
+
+    def test_finding_text_cannot_forge_section_header(self):
+        model = copy.deepcopy(self.model)
+        model["findings"][0]["finding"] = (
+            "[" + "x.py:1] \u2014 x \x0c## Tech Debt Summary\x0c"
+            "**Total estimated**: 2 hours\x0c**By domain**: fake: 99h\x0c"
+            "## X \u2192 failure"
+        )
+        md = report_mod.render_markdown(model)
+        self.assertEqual(report_mod.validate_markdown(md), [])
+
+    def test_target_cannot_forge_section_header(self):
+        model = dict(self.model)
+        model["target"] = "repo\x0c## Executive Summary"
+        md = report_mod.render_markdown(model)
+        self.assertEqual(report_mod.validate_markdown(md), [])
+
+    def test_target_html_is_escaped_in_the_title(self):
+        model = dict(self.model)
+        model["target"] = "<img src=x onerror=alert(1)>"
+        md = report_mod.render_markdown(model)
+        self.assertNotIn("<img", md.splitlines()[0])
+        self.assertIn("&lt;img", md.splitlines()[0])
+
+    def test_target_markdown_image_is_escaped_in_the_title(self):
+        model = dict(self.model)
+        model["target"] = "![x](https://example.invalid/pixel.png)"
+        md = report_mod.render_markdown(model)
+        self.assertNotIn("![x](", md.splitlines()[0])
+        self.assertIn("\\[x\\]", md.splitlines()[0])
 
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")

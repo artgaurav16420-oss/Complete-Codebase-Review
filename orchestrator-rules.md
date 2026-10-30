@@ -21,13 +21,14 @@ Drift happens when you lose track mid-run. Use external memory, not internal rec
   "target_dir": "",
   "skill_dir": "",
   "effort": "max|min",
-  "current_phase": "1|2|3|4|5",
+  "current_phase": 1,
   "current_step": "",
   "agents_planned": [],
   "agents_completed": [],
   "agents_failed": [],
   "completed_count": 0,
   "total_agents": 0,
+  "facts": {},
   "phase_gates": {
     "p1_discovery": false,
     "p2_analysis": false,
@@ -146,7 +147,7 @@ Mentally run the checks `tests/test_pipeline.py` would run, before printing anyt
 5. `## Tech Debt Summary` has `**Total estimated**`, `**By domain**`, `**Trend**` — roadmap phase-hour sum, total, and domain-breakdown sum reconcile within 0.5h (compute this, don't eyeball)
 6. `## Agent Status` includes `Completed: X/X agents` and DA verdict tally
 
-If any of these fail your mental check → fix before printing. Never ship output that would fail `validate_markdown_output()`.
+If any of these fail your mental check → fix before printing. Never ship output that would fail `validate_markdown(md)` from `ccr.report`.
 
 ## 8. Context-Loss / Compaction Recovery
 

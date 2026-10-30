@@ -6,7 +6,7 @@ from ccr import findings as f
 
 
 def make(finding, severity="HIGH", domain="Security", hours=2.0,
-         verdict="CONFIRMED", tags=None, finding_type=None):
+         verdict="CONFIRMED", tags=None, finding_type=None, agent=None):
     """Build a finding dict for tests."""
     data = {
         "finding": finding,
@@ -18,6 +18,8 @@ def make(finding, severity="HIGH", domain="Security", hours=2.0,
     }
     if finding_type:
         data["finding_type"] = finding_type
+    if agent:
+        data["agent"] = agent
     return data
 
 
@@ -159,6 +161,21 @@ class TestRoadmap(unittest.TestCase):
     def test_rejected_excluded(self):
         phases = f.place_roadmap([make(GOOD, verdict="REJECTED")])
         self.assertEqual(sum(len(items) for items in phases.values()), 0)
+
+    def test_high_security_keys_on_agent_id(self):
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", hours=5,
+                 domain="AppSec", agent="security")
+        ])
+        self.assertEqual(len(phases[1]), 1)
+
+    def test_non_security_agent_with_security_label_is_not_phase_1(self):
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", hours=5,
+                 domain="Security", agent="code_quality")
+        ])
+        self.assertEqual(len(phases[1]), 0)
+        self.assertEqual(len(phases[2]), 1)
 
     def test_questionable_excluded(self):
         phases = f.place_roadmap([make(GOOD, verdict="QUESTIONABLE")])

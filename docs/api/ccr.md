@@ -110,8 +110,9 @@ All return values are plain dicts/lists unless stated otherwise.
 | Function | Signature | Returns |
 |----------|-----------|---------|
 | `discover` | `discover(target_dir, max_files=None)` | Facts dict (`files`, `bytes`, `languages`, `top_dirs`, `ci`, `truncated`, ...) |
-| `active_agents` | `active_agents(manifest, facts)` | Agent ids whose dimensions apply; test health only when tests exist |
+| `active_agents` | `active_agents(manifest, facts)` | Agent ids whose dimensions apply; test health only when tests exist. Raises `ValueError` when a triggered id is absent from the manifest |
 | `select_agents` | `select_agents(manifest, facts, effort='max', override=None)` | Planned ids; precedence is override > Quick Mode > dimensions |
+| `resolve_agent` | `resolve_agent(manifest, token)` | Canonical agent id for an id, report name, or display name |
 | `plan` | `plan(manifest, target_dir, effort='max', override=None, max_files=None)` | `{target, effort, quick_mode, timeout_sec, agents, agent_names, facts}` |
 
 `discover` raises `ValueError` when the target is not a directory or
@@ -146,7 +147,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `review_findings` | `review_findings(raw_findings, floors=None)` | `(kept, rejected)` after mechanical DA checks |
 | `dedup` | `dedup(findings)` | Deduplicated list |
 | `assign_ids` | `assign_ids(findings)` | Same list with `F-001` style ids |
-| `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED` and `INFO` are never eligible |
+| `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED`, `QUESTIONABLE` and `INFO` are never eligible |
 | `place_roadmap` | `place_roadmap(findings)` | `{1, 2, 3}` phases; quick wins capped at 40h, HIGH never quick-win |
 | `find_overlaps` | `find_overlaps(findings)` | Near-identical same-file clusters (auto-merged once) |
 | `find_large_file_clusters` | `find_large_file_clusters(findings, min_hours=8.0)` | Advisory same-file clusters of expensive findings |
@@ -180,6 +181,7 @@ All return values are plain dicts/lists unless stated otherwise.
 |----------|-----------|---------|
 | `check_completion` | `check_completion(manifest, effort, planned, completed)` | Float completion ratio; raises `RuntimeError` below the gate |
 | `synthesize` | `synthesize(manifest, results, planned, completed=None, target='', facts=None, baseline=None, timestamp=None)` | Report model |
+| `malformed_exceeded` | `malformed_exceeded(raw_count, malformed_count)` | `bool`; the single malformed-results rule shared by `synthesize` and `validate-results` |
 | `render` | `render(model, fmt='markdown')` | `{"markdown": ...}`, `{"json": ...}`, or both |
 | `write_outputs` | `write_outputs(model, out_path, fmt='markdown')` | Written paths |
 | `load_spec` | `load_spec(path)` | 2-tuple `(expected_issues, known_false_positives)`; a bare list yields `([...], [])` |
@@ -197,7 +199,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `cmd_validate_results` | `cmd_validate_results(args)` | Implements `validate-results` |
 | `cmd_eval` | `cmd_eval(args)` | Implements `eval` |
 | `build_parser` | `build_parser(version=None)` | `argparse` parser for `plan/record/synthesize/validate-results/eval` |
-| `write_text` | `write_text(path, text, newline='\n')` | UTF-8 write with explicit newline (3.9-compatible) |
+| `write_text` | `write_text(path, text, newline='\n', root=None)` | UTF-8 write with explicit newline (3.9-compatible); `root` confines the write beneath a directory |
 
 ## Tests
 
