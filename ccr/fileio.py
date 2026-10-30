@@ -79,10 +79,12 @@ def _windows_final_path(fd):
 
 
 def _verify_handle(root, fd, path):
-    """Refuse when the opened handle resolves outside ``root``."""
+    """Refuse when the opened handle cannot be proven to be inside root."""
     final = _windows_final_path(fd)
     if not final:
-        return
+        raise OSError(
+            "refusing to write: cannot verify the opened file path: " + path
+        )
     if not _inside(root, final):
         raise OSError("refusing to write outside root: " + path)
 
@@ -157,7 +159,7 @@ def write_text(path, text, newline="\n", root=None):
                     [root_abs, os.path.realpath(path)]
             ) != root_abs:
                 raise OSError("refusing to write outside root: " + path)
-            rel = os.path.relpath(os.path.abspath(path), os.path.abspath(root))
+            rel = os.path.relpath(os.path.realpath(path), root_abs)
         except ValueError:
             raise OSError("refusing to write outside root: " + path)
         if rel == os.pardir or rel.startswith(os.pardir + os.sep):
@@ -168,6 +170,10 @@ def write_text(path, text, newline="\n", root=None):
     flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     if root_real is not None and os.name == "posix":
+        if not hasattr(os, "O_NOFOLLOW"):
+            raise OSError(
+                "platform lacks O_NOFOLLOW; refusing rooted write: " + path
+            )
         fd = _open_beneath(root_abs, rel, flags)
     else:
         fd = _open_checked(path, flags, root=root_abs)

@@ -159,6 +159,17 @@ class TestFileioWriteText(unittest.TestCase):
         with self.assertRaises(OSError):
             write_text(link / "note.txt", "x", root=root)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX symlink semantics")
+    def test_symlinked_ancestor_accepts_canonical_path(self):
+        base = self.dir / "base"
+        real = base / "real"
+        (real / "sub").mkdir(parents=True)
+        link = base / "link"
+        os.symlink(real, link, target_is_directory=True)
+        path = real / "sub" / "note.txt"
+        write_text(path, "x", root=link / "sub")
+        self.assertEqual(path.read_text(encoding="utf-8"), "x")
+
     def test_verify_handle_refuses_outside_path(self):
         outside = str(Path(self.tmp.name).parent / "outside.txt")
         with mock.patch(
@@ -172,9 +183,10 @@ class TestFileioWriteText(unittest.TestCase):
                 "ccr.fileio._windows_final_path", return_value=final):
             _verify_handle(str(self.dir), 1, "note.txt")
 
-    def test_verify_handle_skips_when_api_unavailable(self):
+    def test_verify_handle_refuses_unavailable_path(self):
         with mock.patch("ccr.fileio._windows_final_path", return_value=""):
-            _verify_handle(str(self.dir), 1, "note.txt")
+            with self.assertRaises(OSError):
+                _verify_handle(str(self.dir), 1, "note.txt")
 
     def _final_path(self, response):
         import types
