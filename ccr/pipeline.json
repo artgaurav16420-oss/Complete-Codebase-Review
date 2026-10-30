@@ -227,11 +227,6 @@
       "security",
       "code_quality",
       "architecture"
-    ],
-    "gate_loop_severities": [
-      "CRITICAL",
-      "HIGH",
-      "MEDIUM"
     ]
   },
   "tech_debt_floors": {

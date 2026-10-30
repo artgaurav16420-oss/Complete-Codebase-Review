@@ -9,6 +9,8 @@ test-windows:
 
 test-py:
 	python -m unittest discover -s tests -p "test_*.py" -v
+	python tests/compliance_test.py
+	python tests/review_compliance_test.py
 
 test-bash:
 	./test.sh

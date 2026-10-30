@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -41,7 +41,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.os == 'Linux' && '~/.cache/pip' || (runner.os == 'macOS' && '~/Library/Caches/pip' || '~/AppData/Local/pip/Cache') }}
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          # No dependency manifest to hash: the only package installed is the
+          # coverage range below, so the key tracks that range directly.
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-coverage7
           restore-keys: |
             ${{ runner.os }}-pip-
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
