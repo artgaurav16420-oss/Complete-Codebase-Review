@@ -1072,6 +1072,7 @@ class TestIgnoreSkillFiles(unittest.TestCase):
     def test_skips_credential_variants(self):
         install_mod = _import_install()
         names = [".env.local", ".env.production", "credentials.json",
+                 "credentials", ".aws", ".ssh",
                  "id_rsa", "id_rsa_work", "id_ed25519_personal",
                  "server.pem", "client.key", "SKILL.md"]
         kept = install_mod._ignore_skill_files(".", names)

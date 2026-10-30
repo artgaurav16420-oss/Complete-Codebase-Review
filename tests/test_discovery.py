@@ -39,6 +39,17 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(self.facts["containers"], [])
         self.assertEqual(self.facts["dependency_manifests"], [])
 
+    def test_ci_directory_named_like_a_workflow_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "ci.yml").write_text("name: x\n", encoding="utf-8")
+            (workflows / "archive.yml").mkdir()
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [".github/workflows/ci.yml"])
+
     def test_target_is_resolved(self):
         self.assertTrue(self.facts["target"].endswith("dummy_repo"))
 

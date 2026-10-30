@@ -113,7 +113,7 @@ class TestMarkdown(unittest.TestCase):
 
     def test_target_cannot_forge_section_header(self):
         model = dict(self.model)
-        model["target"] = "repo ## Executive Summary"
+        model["target"] = "repo\x0c## Executive Summary"
         md = report_mod.render_markdown(model)
         self.assertEqual(report_mod.validate_markdown(md), [])
 
@@ -123,6 +123,13 @@ class TestMarkdown(unittest.TestCase):
         md = report_mod.render_markdown(model)
         self.assertNotIn("<img", md.splitlines()[0])
         self.assertIn("&lt;img", md.splitlines()[0])
+
+    def test_target_markdown_image_is_escaped_in_the_title(self):
+        model = dict(self.model)
+        model["target"] = "![x](https://example.invalid/pixel.png)"
+        md = report_mod.render_markdown(model)
+        self.assertNotIn("![x](", md.splitlines()[0])
+        self.assertIn("\\[x\\]", md.splitlines()[0])
 
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")

@@ -108,6 +108,8 @@ _SKILL_EXCLUDED = {
     # Local environments and build output — a checkout's working state
     ".venv", "venv", "node_modules", "build", "dist", "htmlcov",
     ".mypy_cache", ".pytest_cache",
+    # Credential stores — whole directories, not just files
+    ".aws", ".ssh", ".gnupg", ".docker", ".kube",
     # Installer scripts — not part of the skill itself
     "install.py", "install.sh", "install.ps1", "install.py.sha256",
     # CI, tests, design docs — runtime skill doesn't need these
@@ -155,7 +157,7 @@ def _onerror(func, path, exc_info):
 
 _CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
 _CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
-_CREDENTIAL_NAMES = {"credentials.json", ".netrc"}
+_CREDENTIAL_NAMES = {"credentials", "credentials.json", ".netrc"}
 
 
 def _is_credential_name(name):

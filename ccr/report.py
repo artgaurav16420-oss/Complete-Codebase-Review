@@ -215,12 +215,14 @@ def _overlap_candidates(model):
 
 
 def _title(text):
-    """Escape the heading text so a path cannot inject raw HTML."""
+    """Escape the heading text so a path cannot inject HTML or a link."""
     return (
         _cell(text)
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
     )
 
 

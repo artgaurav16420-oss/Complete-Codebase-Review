@@ -202,7 +202,8 @@ def _build_facts(target, state, truncated):
                     sorted(
                         str((candidate / f.name).relative_to(target)).replace("\\", "/")
                         for f in candidate.iterdir()
-                        if f.suffix.lower() in (".yml", ".yaml")
+                        if f.is_file()
+                        and f.suffix.lower() in (".yml", ".yaml")
                     )
                 )
     except OSError as exc:
