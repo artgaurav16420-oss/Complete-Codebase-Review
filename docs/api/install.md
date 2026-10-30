@@ -21,6 +21,7 @@ Minimal module-level reference for `install.py`.
 | `_run_auto_install(src_dir, target_dirs, dry_run)` | Install into all detected targets. |
 | `_run_local_fallback(src_dir, dry_run)` | Local `./.skills` fallback install. |
 | `_run_auto_or_local_install(src_dir, target_dirs, dry_run)` | Auto install, falling back to local. |
+| `_run_uninstall(target, dry_run)` | Uninstall from one target dir, or all targets when `target` is unset. |
 
 ## Public
 
@@ -34,7 +35,6 @@ Minimal module-level reference for `install.py`.
 | `copy_skill(src_dir, dest_dir)` | Copy skill files, returns dest Path. |
 | `main()` | CLI entry - argparse, --target/--dry-run/--version/--self-verify/--checksum/--uninstall. |
 | `remove_skill(dest_dir, dry_run)` | Remove `complete-codebase-review` under a target dir, refusing paths outside it. |
-| `_run_uninstall(target, dry_run)` | Uninstall from one target dir, or all targets when `target` is unset. |
 
 ## Integrity
 

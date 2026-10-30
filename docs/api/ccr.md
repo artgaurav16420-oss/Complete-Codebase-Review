@@ -158,7 +158,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `fmt_hours` | `fmt_hours(value)` | `2` -> `"2h"`, `2.5` -> `"2.5h"` |
 | `fmt_hours_long` | `fmt_hours_long(value)` | `2` -> `"2 hours"` |
 | `render_markdown` | `render_markdown(model)` | Markdown string |
-| `validate_markdown` | `validate_markdown(md)` | Error list for missing sections, non-numeric scores, tech-debt mismatch |
+| `validate_markdown` | `validate_markdown(md)` | Error list for missing sections, N/A scores, tech-debt mismatch |
 | `render_json` | `render_json(model)` | JSON-ready dict; `INFO` is mapped to `LOW` |
 
 ### `ccr.providers`
@@ -171,7 +171,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `write_prompts` | `write_prompts(manifest, plan, out_dir, skill_dir='')` | Written paths |
 | `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |
 | `load_results` | `load_results(out_dir, agent_ids, required=True)` | `{agent_id: result}`; `phase_<id>.json` wins over `<id>.json` |
-| `RecordedProvider` | `RecordedProvider(fixtures_dir)` | Fixture replay used by `ccr eval` |
+| `RecordedProvider` | `RecordedProvider(fixtures_dir)` | Class holding the fixture dir; `agent_ids()` lists ids for `ccr eval` |
 
 ### `ccr.pipeline`
 
