@@ -11,7 +11,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ccr.fileio import write_text  # noqa: E402
+from ccr.fileio import (  # noqa: E402
+    _directory_flags,
+    _open_beneath,
+    _verify_handle,
+    _windows_final_path,
+    write_text,
+)
 
 
 class TestFileioWriteText(unittest.TestCase):
@@ -102,11 +108,146 @@ class TestFileioWriteText(unittest.TestCase):
                 "ccr.fileio.os.stat",
                 side_effect=[first, second, second]):
             with self.assertRaises(OSError):
-                write_text(self.dir / "note.txt", "x", root=self.dir)
+                write_text(self.dir / "note.txt", "x")
+
+    def test_opened_descriptor_identity_is_checked(self):
+        fake = os.stat_result((0, 999, 999, 0, 0, 0, 0, 0, 0, 0))
+        with mock.patch("ccr.fileio.os.fstat", return_value=fake):
+            with self.assertRaises(OSError):
+                write_text(self.dir / "note.txt", "x")
+
+    def test_open_beneath_walks_every_component(self):
+        calls = []
+
+        def fake_open(target, flags, mode=0o777, dir_fd=None):
+            calls.append((target, flags, dir_fd))
+            return 10 + len(calls)
+
+        root = os.path.abspath(os.sep + "root")
+        rel = os.sep.join(["a", "b", "f.txt"])
+        with mock.patch("ccr.fileio.os.open", side_effect=fake_open), \
+                mock.patch("ccr.fileio.os.close"):
+            fd = _open_beneath(root, rel, os.O_WRONLY)
+        self.assertEqual(fd, 10 + len(calls))
+        self.assertEqual(calls[0][0], os.sep)
+        self.assertEqual(calls[-1][0], "f.txt")
+        self.assertEqual(calls[-1][2], fd - 1)
+        if hasattr(os, "O_NOFOLLOW"):
+            for _target, flags, _dir_fd in calls[:-1]:
+                self.assertTrue(flags & os.O_NOFOLLOW)
+
+    def test_open_beneath_refuses_parent_traversal(self):
+        rel = os.sep.join([os.pardir, "etc", "passwd"])
+        with self.assertRaises(OSError):
+            _open_beneath(os.path.abspath(os.sep + "root"), rel, os.O_WRONLY)
+
+    def test_directory_flags_prefer_search_flags(self):
+        with mock.patch.object(os, "O_PATH", 0o10000000, create=True):
+            self.assertTrue(_directory_flags() & 0o10000000)
+
+    def test_bytes_path_and_root_are_accepted(self):
+        write_text(
+            os.fsencode(str(self.dir / "note.txt")), "x",
+            root=os.fsencode(str(self.dir)),
+        )
+        self.assertEqual(
+            (self.dir / "note.txt").read_text(encoding="utf-8"), "x"
+        )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX openat semantics")
+    def test_internal_symlink_inside_root_is_allowed(self):
+        root = self.dir / "root"
+        other = root / "other"
+        other.mkdir(parents=True)
+        link = root / "sub"
+        os.symlink(other, link, target_is_directory=True)
+        write_text(link / "note.txt", "x", root=root)
+        self.assertEqual(
+            (other / "note.txt").read_text(encoding="utf-8"), "x"
+        )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX symlink semantics")
+    def test_symlinked_ancestor_accepts_canonical_path(self):
+        base = self.dir / "base"
+        real = base / "real"
+        (real / "sub").mkdir(parents=True)
+        link = base / "link"
+        os.symlink(real, link, target_is_directory=True)
+        path = real / "sub" / "note.txt"
+        write_text(path, "x", root=link / "sub")
+        self.assertEqual(path.read_text(encoding="utf-8"), "x")
+
+    def test_verify_handle_refuses_outside_path(self):
+        outside = str(Path(self.tmp.name).parent / "outside.txt")
+        with mock.patch(
+                "ccr.fileio._windows_final_path", return_value=outside):
+            with self.assertRaises(OSError):
+                _verify_handle(str(self.dir), 1, "note.txt")
+
+    def test_verify_handle_accepts_inside_path(self):
+        final = str(self.dir / "note.txt")
+        with mock.patch(
+                "ccr.fileio._windows_final_path", return_value=final):
+            _verify_handle(str(self.dir), 1, "note.txt")
+
+    def test_verify_handle_refuses_unavailable_path(self):
+        with mock.patch("ccr.fileio._windows_final_path", return_value=""):
+            with self.assertRaises(OSError):
+                _verify_handle(str(self.dir), 1, "note.txt")
+
+    def _final_path(self, response):
+        import types
+
+        class FakeFunction:
+            argtypes = None
+            restype = None
+
+            def __call__(self, handle, buf, size, flags):
+                if response is None:
+                    return 0
+                if buf is None:
+                    return 100
+                buf.value = response
+                return 100
+
+        fake_ctypes = types.ModuleType("ctypes")
+        fake_ctypes.c_void_p = object
+        fake_ctypes.c_wchar_p = object
+        fake_ctypes.c_uint32 = object
+        fake_ctypes.windll = types.SimpleNamespace(
+            kernel32=types.SimpleNamespace(
+                GetFinalPathNameByHandleW=FakeFunction()
+            )
+        )
+        fake_ctypes.create_unicode_buffer = (
+            lambda size: types.SimpleNamespace(value="")
+        )
+        fake_msvcrt = types.ModuleType("msvcrt")
+        fake_msvcrt.get_osfhandle = lambda fd: 1
+        with mock.patch.dict(
+                sys.modules,
+                {"ctypes": fake_ctypes, "msvcrt": fake_msvcrt}):
+            return _windows_final_path(1)
+
+    def test_windows_final_path_strips_verbatim_prefix(self):
+        self.assertEqual(
+            self._final_path("\\\\?\\C:\\root\\note.txt"),
+            "C:\\root\\note.txt",
+        )
+
+    def test_windows_final_path_strips_unc_prefix(self):
+        self.assertEqual(
+            self._final_path("\\\\?\\UNC\\server\\share\\x"),
+            "\\\\server\\share\\x",
+        )
+
+    def test_windows_final_path_reports_unavailable(self):
+        self.assertEqual(self._final_path(None), "")
 
     def test_parent_that_is_a_symlink_after_open_is_refused(self):
         with mock.patch(
-                "ccr.fileio.os.path.islink", side_effect=[False, True]):
+                "ccr.fileio.os.path.islink",
+                side_effect=[False, False, True]):
             with self.assertRaises(OSError):
                 write_text(self.dir / "note.txt", "x")
 
