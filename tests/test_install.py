@@ -1086,5 +1086,19 @@ class TestIgnoreSkillFiles(unittest.TestCase):
         self.assertIn("install.py.sha256", kept)
 
 
+class TestCcrHint(unittest.TestCase):
+    """The post-install hint explains how to run the bundled module."""
+
+    def test_hint_covers_both_shells(self):
+        install_mod = _import_install()
+        buffer = io.StringIO()
+        with patch("sys.stdout", buffer):
+            install_mod._print_ccr_hint()
+        text = buffer.getvalue()
+        self.assertIn("PYTHONPATH", text)
+        self.assertIn("PowerShell", text)
+        self.assertIn("python -m ccr", text)
+
+
 if __name__ == "__main__":
     unittest.main()

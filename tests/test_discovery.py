@@ -125,6 +125,13 @@ class TestActiveAgents(unittest.TestCase):
             discovery.active_agents(manifest, {"test_files": 1})
         self.assertIn("test_health", str(ctx.exception))
 
+    def test_override_tolerates_a_trailing_comma(self):
+        manifest = manifest_mod.load()
+        chosen = discovery.select_agents(
+            manifest, {}, override="security,"
+        )
+        self.assertEqual(chosen, ["security"])
+
     def test_symlinked_ci_directory_is_not_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -136,6 +143,22 @@ class TestActiveAgents(unittest.TestCase):
             link = root / ".github" / "workflows"
             try:
                 link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation needs privilege here")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["ci"], [])
+
+    def test_symlinked_ci_parent_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            outside = root / "outside"
+            (outside / "workflows").mkdir(parents=True)
+            (outside / "workflows" / "ci.yml").write_text(
+                "name: x\n", encoding="utf-8"
+            )
+            try:
+                (root / ".github").symlink_to(outside, target_is_directory=True)
             except (OSError, NotImplementedError):
                 self.skipTest("symlink creation needs privilege here")
             facts = discovery.discover(str(root))

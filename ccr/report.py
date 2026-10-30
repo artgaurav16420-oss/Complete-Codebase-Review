@@ -299,8 +299,10 @@ def validate_markdown(md):
 
     health = None
     for line in _section_text(md, "## Executive Summary").splitlines():
-        if line.startswith("| **Overall Health** |"):
-            health = line.split("|")[2].strip()
+        cells = line.split("|")
+        # A well-formed row is "| **Overall Health** | VALUE |" -> 4 parts.
+        if len(cells) == 4 and cells[1].strip() == "**Overall Health**":
+            health = cells[2].strip()
             break
     if health is None:
         errors.append("missing overall health")

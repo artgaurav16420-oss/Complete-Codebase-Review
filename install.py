@@ -416,6 +416,20 @@ def _validate_target_path(path):
     return resolved
 
 
+def _print_ccr_hint():
+    """Explain how to run the bundled ccr module after installation."""
+    print_info(
+        "The ccr core ships inside the skill directory and is not installed "
+        "as a console script. Run it with the skill directory on PYTHONPATH:"
+    )
+    print_info(
+        '  POSIX:      PYTHONPATH="<skill-dir>" python -m ccr plan .'
+    )
+    print_info(
+        '  PowerShell: $env:PYTHONPATH="<skill-dir>"; python -m ccr plan .'
+    )
+
+
 def _run_target_install(src_dir, target, dry_run):
     """Install skill to a user-specified --target directory, exiting on error."""
     try:
@@ -435,6 +449,7 @@ def _run_target_install(src_dir, target, dry_run):
         print_error(f"Install failed: {e}")
         sys.exit(1)
     print_success("Installation complete!")
+    _print_ccr_hint()
 
 
 def _run_auto_install(src_dir, target_dirs, dry_run):
@@ -584,16 +599,7 @@ def _run_auto_or_local_install(src_dir, target_dirs, dry_run):
         return
 
     print_success("Installation complete!")
-    print_info(
-        "The ccr core ships inside the skill directory and is not installed "
-        "as a console script. Run it with the skill directory on PYTHONPATH:"
-    )
-    print_info(
-        '  POSIX:      PYTHONPATH="<skill-dir>" python -m ccr plan .'
-    )
-    print_info(
-        '  PowerShell: $env:PYTHONPATH="<skill-dir>"; python -m ccr plan .'
-    )
+    _print_ccr_hint()
 
 
 def _parse_args():

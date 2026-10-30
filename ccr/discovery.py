@@ -168,6 +168,16 @@ def _scan_tree(target, limit, state):
     return truncated
 
 
+def _has_symlinked_component(target, marker):
+    """True when any component of target/marker is a symlink."""
+    current = target
+    for part in Path(marker).parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def _build_facts(target, state, truncated):
     """Derive the discovery facts dict from the accumulated state."""
     files = state["files"]
@@ -197,7 +207,7 @@ def _build_facts(target, state, truncated):
             candidate = target / marker
             if candidate.is_file():
                 ci.append(marker)
-            elif candidate.is_dir() and not candidate.is_symlink():
+            elif candidate.is_dir() and not _has_symlinked_component(target, marker):
                 ci.extend(
                     sorted(
                         str((candidate / f.name).relative_to(target)).replace("\\", "/")
@@ -343,7 +353,8 @@ def select_agents(manifest, facts, effort="max", override=None):
         raise ValueError("effort must be 'max' or 'min'")
     order = [a["id"] for a in manifest["agents"]]
     if override:
-        chosen = {resolve_agent(manifest, token) for token in override.split(",")}
+        tokens = [token for token in override.split(",") if token.strip()]
+        chosen = {resolve_agent(manifest, token) for token in tokens}
         return [agent_id for agent_id in order if agent_id in chosen]
     if effort == "min":
         quick = set(manifest["thresholds"]["quick_agents"])

@@ -92,6 +92,15 @@ class TestMarkdown(unittest.TestCase):
         errors = report_mod.validate_markdown(md)
         self.assertIn("invalid overall health: PURPLE", errors)
 
+    def test_rejects_extra_cells_in_the_health_row(self):
+        lines = self.md.splitlines()
+        for index, line in enumerate(lines):
+            if line.startswith("| **Overall Health** |"):
+                lines[index] = line[:-1].rstrip() + " | PURPLE |"
+                break
+        errors = report_mod.validate_markdown("\n".join(lines))
+        self.assertIn("missing overall health", errors)
+
     def test_finding_text_cannot_forge_tech_debt_marker(self):
         model = copy.deepcopy(self.model)
         model["findings"][0]["finding"] = (
