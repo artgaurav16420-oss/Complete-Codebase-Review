@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ccr.fileio import write_text  # noqa: E402
+from ccr.fileio import _open_beneath, write_text  # noqa: E402
 
 
 class TestFileioWriteText(unittest.TestCase):
@@ -102,7 +102,51 @@ class TestFileioWriteText(unittest.TestCase):
                 "ccr.fileio.os.stat",
                 side_effect=[first, second, second]):
             with self.assertRaises(OSError):
-                write_text(self.dir / "note.txt", "x", root=self.dir)
+                write_text(self.dir / "note.txt", "x")
+
+    def test_opened_descriptor_identity_is_checked(self):
+        fake = os.stat_result((0, 999, 999, 0, 0, 0, 0, 0, 0, 0))
+        with mock.patch("ccr.fileio.os.fstat", return_value=fake):
+            with self.assertRaises(OSError):
+                write_text(self.dir / "note.txt", "x")
+
+    def test_open_beneath_walks_every_component(self):
+        calls = []
+
+        def fake_open(target, flags, mode=0o777, dir_fd=None):
+            calls.append((target, dir_fd))
+            return 10 + len(calls)
+
+        with mock.patch("ccr.fileio.os.open", side_effect=fake_open), \
+                mock.patch("ccr.fileio.os.close"):
+            fd = _open_beneath("/root/a/b/f.txt", "/root", os.O_WRONLY)
+        self.assertEqual(fd, 14)
+        self.assertEqual(
+            [call[0] for call in calls], ["/root", "a", "b", "f.txt"]
+        )
+        self.assertEqual(
+            [call[1] for call in calls], [None, 11, 12, 13]
+        )
+
+    def test_open_beneath_refuses_parent_traversal(self):
+        with self.assertRaises(OSError):
+            _open_beneath("/root/../etc/passwd", "/root", os.O_WRONLY)
+
+    def test_open_beneath_refuses_another_drive(self):
+        with mock.patch(
+                "ccr.fileio.os.path.relpath", side_effect=ValueError):
+            with self.assertRaises(OSError):
+                _open_beneath("/root/a", "/root", os.O_WRONLY)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX openat semantics")
+    def test_internal_symlink_is_refused_on_posix(self):
+        root = self.dir / "root"
+        other = root / "other"
+        other.mkdir(parents=True)
+        link = root / "sub"
+        os.symlink(other, link, target_is_directory=True)
+        with self.assertRaises(OSError):
+            write_text(link / "note.txt", "x", root=root)
 
     def test_parent_that_is_a_symlink_after_open_is_refused(self):
         with mock.patch(
