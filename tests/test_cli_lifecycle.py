@@ -114,6 +114,27 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("could not archive stale results", out)
 
+    def test_archive_directory_creation_is_atomic(self):
+        (self.cache / "phase_security.json").write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        (self.cache / "previous-results").mkdir()
+        real_mkdir = Path.mkdir
+        calls = []
+
+        def flaky_mkdir(path, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 1:
+                raise FileExistsError("simulated concurrent record")
+            return real_mkdir(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "mkdir", flaky_mkdir):
+            written = cli._archive_results(self.cache)
+        self.assertEqual(written, 1)
+        dirs = list((self.cache / "previous-results").iterdir())
+        self.assertEqual(len(dirs), 1)
+        self.assertTrue(dirs[0].name.endswith("-1"))
+
     def test_archive_refuses_symlinked_previous_results(self):
         target = Path(self.tmp.name) / "elsewhere"
         target.mkdir()

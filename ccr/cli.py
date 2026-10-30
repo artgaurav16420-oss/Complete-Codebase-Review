@@ -74,10 +74,13 @@ def _archive_results(cache, agent_ids=()):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     dest = base / stamp
     suffix = 1
-    while dest.exists():
-        dest = base / f"{stamp}-{suffix}"
-        suffix += 1
-    dest.mkdir(parents=True)
+    while True:
+        try:
+            dest.mkdir(parents=True)
+            break
+        except FileExistsError:
+            dest = base / f"{stamp}-{suffix}"
+            suffix += 1
     for path in stale:
         shutil.move(str(path), str(dest / path.name))
     return len(stale)
