@@ -95,6 +95,15 @@ class TestFileioWriteText(unittest.TestCase):
             with self.assertRaises(OSError):
                 write_text(self.dir / "note.txt", "x", root=self.dir)
 
+    def test_parent_swap_is_detected(self):
+        first = os.stat_result((0, 11, 22, 0, 0, 0, 0, 0, 0, 0))
+        second = os.stat_result((0, 33, 44, 0, 0, 0, 0, 0, 0, 0))
+        with mock.patch(
+                "ccr.fileio.os.stat",
+                side_effect=[first, second, second]):
+            with self.assertRaises(OSError):
+                write_text(self.dir / "note.txt", "x", root=self.dir)
+
 
 if __name__ == "__main__":
     unittest.main()

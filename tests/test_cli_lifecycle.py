@@ -289,6 +289,29 @@ class TestCliSynthesizeOptions(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("tech_debt_hours must be a finite number", out)
 
+    def test_huge_integer_baseline_exits_two(self):
+        bad = self.dir / "baseline.json"
+        bad.write_text(
+            '{"tech_debt_hours": 1' + "0" * 400 + "}", encoding="utf-8"
+        )
+        code, out, _ = run([
+            "synthesize", "--in", str(FIXTURES), "--agents", "security",
+            "--baseline", str(bad),
+        ])
+        self.assertEqual(code, 2)
+        self.assertIn("tech_debt_hours must be a finite number", out)
+
+    def test_report_write_failure_exits_two(self):
+        with mock.patch.object(
+                cli.pipeline, "write_outputs",
+                side_effect=OSError("bad output")):
+            code, out, _ = run([
+                "synthesize", "--in", str(FIXTURES), "--agents", "security",
+                "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 2)
+        self.assertIn("could not write report", out)
+
     def test_eval_runs_from_any_directory(self):
         old = os.getcwd()
         try:

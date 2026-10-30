@@ -31,10 +31,30 @@ def write_text(path, text, newline="\n", root=None):
         if not inside:
             raise OSError("refusing to write outside root: " + path)
     # O_NOFOLLOW closes the race on POSIX. Windows has no equivalent flag, so
-    # the islink pre-check is best effort there.
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    # the islink pre-check is best effort there. The parent identity is checked
+    # again after open so a directory swapped for a symlink in between aborts
+    # the write before the file is truncated.
+    parent = os.path.dirname(os.path.abspath(path)) or "."
+    try:
+        before = os.stat(parent)
+    except OSError:
+        before = None
+    flags = os.O_WRONLY | os.O_CREAT
     flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags, 0o666)
+    try:
+        after = os.stat(parent)
+        if before is not None and (
+                (before.st_dev, before.st_ino)
+                != (after.st_dev, after.st_ino)):
+            raise OSError(
+                "refusing to write: parent directory changed during open: "
+                + parent
+            )
+        os.ftruncate(fd, 0)
+    except BaseException:
+        os.close(fd)
+        raise
     with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:
         handle.write(text)

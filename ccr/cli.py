@@ -258,13 +258,19 @@ def _load_baseline(path):
     if not isinstance(data, dict):
         raise ValueError("baseline must be a JSON object: " + path)
     previous = data.get("tech_debt_hours")
-    if previous is not None and (
-            isinstance(previous, bool)
-            or not isinstance(previous, (int, float))
-            or not math.isfinite(previous)):
-        raise ValueError(
-            "baseline tech_debt_hours must be a finite number: " + path
+    if previous is not None:
+        invalid = isinstance(previous, bool) or not isinstance(
+            previous, (int, float)
         )
+        if not invalid:
+            try:
+                invalid = not math.isfinite(previous)
+            except OverflowError:
+                invalid = True
+        if invalid:
+            raise ValueError(
+                "baseline tech_debt_hours must be a finite number: " + path
+            )
     return data
 
 
@@ -335,7 +341,11 @@ def cmd_synthesize(args):
     except ValueError as exc:
         print("[ERROR] " + str(exc))
         return 2
-    return _emit_synthesis_output(model, args)
+    try:
+        return _emit_synthesis_output(model, args)
+    except OSError as exc:
+        print("[ERROR] could not write report: " + str(exc))
+        return 2
 
 
 def cmd_validate_results(args):
