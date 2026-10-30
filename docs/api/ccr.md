@@ -158,7 +158,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `fmt_hours` | `fmt_hours(value)` | `2` -> `"2h"`, `2.5` -> `"2.5h"` |
 | `fmt_hours_long` | `fmt_hours_long(value)` | `2` -> `"2 hours"` |
 | `render_markdown` | `render_markdown(model)` | Markdown string |
-| `validate_markdown` | `validate_markdown(md)` | Error list; empty when the report meets the schema |
+| `validate_markdown` | `validate_markdown(md)` | Error list for missing sections, non-numeric scores, tech-debt mismatch |
 | `render_json` | `render_json(model)` | JSON-ready dict; `INFO` is mapped to `LOW` |
 
 ### `ccr.providers`

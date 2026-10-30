@@ -15,7 +15,7 @@ Minimal module-level reference for `install.py`.
 | `_print(msg, label, color)` | Core printer: `[label] msg` with ANSI color. |
 | `_validate_xdg_path(xdg_path)` | Reject unsafe XDG overrides. |
 | `_xdg_or_home_dir(home, app_dir)` | Resolve skill dir: XDG on Linux, `~/.app_dir/skills` otherwise. |
-| `_validate_no_escaped_symlinks(skill_dest)` | Refuse archives that escape the dest dir. |
+| `_validate_no_escaped_symlinks(skill_dest)` | Reject copied symlinks that resolve outside the skill dir. |
 | `_validate_target_path(path)` | Sanitize path - reject `..`, resolve symlinks. Raises `ValueError`. |
 | `_run_target_install(src_dir, target, dry_run)` | Install into one target dir. |
 | `_run_auto_install(src_dir, target_dirs, dry_run)` | Install into all detected targets. |
