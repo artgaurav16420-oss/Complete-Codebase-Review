@@ -8,19 +8,23 @@ import os
 
 
 def _open_beneath(root, rel, flags):
-    """Open ``root/rel`` without following any symlink component.
+    """Open ``root/rel`` without following a symlink below ``root``.
 
-    ``root`` must be a resolved absolute path. The walk starts at the
-    filesystem root so swapping an ancestor cannot redirect it: every
-    directory is opened relative to its parent with O_NOFOLLOW.
+    ``root`` must be a resolved absolute path. Every component of ``rel`` is
+    opened relative to its parent with O_NOFOLLOW, so a link swapped in below
+    the validated root fails the open instead of redirecting the write.
+    Ancestors of the resolved root are outside the guarantee.
     """
     if rel in (os.curdir, os.pardir) or rel.startswith(os.pardir + os.sep):
         raise OSError("refusing to write outside root: " + rel)
-    root_parts = [part for part in root.split(os.sep) if part]
-    rel_parts = rel.split(os.sep)
-    dir_fd = os.open(os.sep, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    parts = rel.split(os.sep)
+    dir_fd = os.open(
+        root,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
     try:
-        for part in root_parts + rel_parts[:-1]:
+        for part in parts[:-1]:
             next_fd = os.open(
                 part,
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
@@ -29,7 +33,7 @@ def _open_beneath(root, rel, flags):
             )
             os.close(dir_fd)
             dir_fd = next_fd
-        return os.open(rel_parts[-1], flags, 0o666, dir_fd=dir_fd)
+        return os.open(parts[-1], flags, 0o666, dir_fd=dir_fd)
     finally:
         os.close(dir_fd)
 
@@ -74,6 +78,15 @@ def _windows_final_path(fd):
     return path
 
 
+def _verify_handle(root, fd, path):
+    """Refuse when the opened handle resolves outside ``root``."""
+    final = _windows_final_path(fd)
+    if not final:
+        return
+    if not _inside(root, final):
+        raise OSError("refusing to write outside root: " + path)
+
+
 def _open_checked(path, flags, root=None):
     """Open a file with path-level checks (no POSIX dir_fd walk).
 
@@ -111,10 +124,8 @@ def _open_checked(path, flags, root=None):
                 "refusing to write: opened file is not the named file: "
                 + path
             )
-        if root is not None and os.name == "nt":
-            final = _windows_final_path(fd)
-            if final and not _inside(root, final):
-                raise OSError("refusing to write outside root: " + path)
+        if root is not None:
+            _verify_handle(root, fd, path)
     except BaseException:
         os.close(fd)
         raise

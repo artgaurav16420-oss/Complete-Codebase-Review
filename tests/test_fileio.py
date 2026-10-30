@@ -11,7 +11,12 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ccr.fileio import _open_beneath, write_text  # noqa: E402
+from ccr.fileio import (  # noqa: E402
+    _open_beneath,
+    _verify_handle,
+    _windows_final_path,
+    write_text,
+)
 
 
 class TestFileioWriteText(unittest.TestCase):
@@ -122,10 +127,13 @@ class TestFileioWriteText(unittest.TestCase):
         with mock.patch("ccr.fileio.os.open", side_effect=fake_open), \
                 mock.patch("ccr.fileio.os.close"):
             fd = _open_beneath(root, rel, os.O_WRONLY)
-        self.assertEqual(fd, 10 + len(calls))
-        self.assertEqual(calls[-1][0], "f.txt")
-        self.assertEqual(calls[-1][1], fd - 1)
-        self.assertIsNone(calls[0][1])
+        self.assertEqual(fd, 14)
+        self.assertEqual(
+            [call[0] for call in calls], [root, "a", "b", "f.txt"]
+        )
+        self.assertEqual(
+            [call[1] for call in calls], [None, 11, 12, 13]
+        )
 
     def test_open_beneath_refuses_parent_traversal(self):
         rel = os.sep.join([os.pardir, "etc", "passwd"])
@@ -151,21 +159,61 @@ class TestFileioWriteText(unittest.TestCase):
         with self.assertRaises(OSError):
             write_text(link / "note.txt", "x", root=root)
 
-    @unittest.skipUnless(os.name == "nt", "Windows handle path API")
-    def test_windows_handle_outside_root_is_refused(self):
+    def test_verify_handle_refuses_outside_path(self):
         outside = str(Path(self.tmp.name).parent / "outside.txt")
         with mock.patch(
                 "ccr.fileio._windows_final_path", return_value=outside):
             with self.assertRaises(OSError):
-                write_text(self.dir / "note.txt", "x", root=self.dir)
+                _verify_handle(str(self.dir), 1, "note.txt")
 
-    @unittest.skipUnless(os.name == "nt", "Windows handle path API")
-    def test_windows_handle_inside_root_is_accepted(self):
+    def test_verify_handle_accepts_inside_path(self):
         final = str(self.dir / "note.txt")
         with mock.patch(
                 "ccr.fileio._windows_final_path", return_value=final):
-            write_text(self.dir / "note.txt", "x", root=self.dir)
-        self.assertTrue((self.dir / "note.txt").exists())
+            _verify_handle(str(self.dir), 1, "note.txt")
+
+    def test_verify_handle_skips_when_api_unavailable(self):
+        with mock.patch("ccr.fileio._windows_final_path", return_value=""):
+            _verify_handle(str(self.dir), 1, "note.txt")
+
+    def _final_path(self, response):
+        import types
+
+        class FakeKernel:
+            def GetFinalPathNameByHandleW(self, handle, buf, size, flags):
+                if response is None:
+                    return 0
+                if buf is None:
+                    return 100
+                buf.value = response
+                return 100
+
+        fake_ctypes = types.ModuleType("ctypes")
+        fake_ctypes.windll = types.SimpleNamespace(kernel32=FakeKernel())
+        fake_ctypes.create_unicode_buffer = (
+            lambda size: types.SimpleNamespace(value="")
+        )
+        fake_msvcrt = types.ModuleType("msvcrt")
+        fake_msvcrt.get_osfhandle = lambda fd: 1
+        with mock.patch.dict(
+                sys.modules,
+                {"ctypes": fake_ctypes, "msvcrt": fake_msvcrt}):
+            return _windows_final_path(1)
+
+    def test_windows_final_path_strips_verbatim_prefix(self):
+        self.assertEqual(
+            self._final_path("\\\\?\\C:\\root\\note.txt"),
+            "C:\\root\\note.txt",
+        )
+
+    def test_windows_final_path_strips_unc_prefix(self):
+        self.assertEqual(
+            self._final_path("\\\\?\\UNC\\server\\share\\x"),
+            "\\\\server\\share\\x",
+        )
+
+    def test_windows_final_path_reports_unavailable(self):
+        self.assertEqual(self._final_path(None), "")
 
     def test_parent_that_is_a_symlink_after_open_is_refused(self):
         with mock.patch(
