@@ -7,27 +7,20 @@ project supports 3.9. Route explicit newline writes through `open()`.
 import os
 
 
-def _open_beneath(path, root, flags):
-    """Open ``path`` under ``root`` without following any symlink component.
+def _open_beneath(root, rel, flags):
+    """Open ``root/rel`` without following any symlink component.
 
-    Every directory from ``root`` down is opened relative to its parent with
-    O_NOFOLLOW, so a link swapped in at any level fails the open instead of
-    redirecting the write.
+    ``root`` must be a resolved absolute path. The walk starts at the
+    filesystem root so swapping an ancestor cannot redirect it: every
+    directory is opened relative to its parent with O_NOFOLLOW.
     """
-    try:
-        rel = os.path.relpath(path, root)
-    except ValueError:
-        raise OSError("refusing to write outside root: " + path)
     if rel in (os.curdir, os.pardir) or rel.startswith(os.pardir + os.sep):
-        raise OSError("refusing to write outside root: " + path)
-    parts = rel.split(os.sep)
-    dir_fd = os.open(
-        root,
-        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0),
-    )
+        raise OSError("refusing to write outside root: " + rel)
+    root_parts = [part for part in root.split(os.sep) if part]
+    rel_parts = rel.split(os.sep)
+    dir_fd = os.open(os.sep, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     try:
-        for part in parts[:-1]:
+        for part in root_parts + rel_parts[:-1]:
             next_fd = os.open(
                 part,
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
@@ -36,7 +29,7 @@ def _open_beneath(path, root, flags):
             )
             os.close(dir_fd)
             dir_fd = next_fd
-        return os.open(parts[-1], flags, 0o666, dir_fd=dir_fd)
+        return os.open(rel_parts[-1], flags, 0o666, dir_fd=dir_fd)
     finally:
         os.close(dir_fd)
 
@@ -44,7 +37,8 @@ def _open_beneath(path, root, flags):
 def _open_checked(path, flags):
     """Open a file with path-level checks (no POSIX dir_fd walk).
 
-    Records the parent identity before the open and compares it after, and
+    Records the parent identity before the open and compares it after,
+    re-checks that neither the leaf nor the parent is now a symlink, and
     verifies that the descriptor names the file the path currently names.
     """
     parent = os.path.dirname(os.path.abspath(path)) or "."
@@ -54,6 +48,8 @@ def _open_checked(path, flags):
         before = None
     fd = os.open(path, flags, 0o666)
     try:
+        if os.path.islink(path):
+            raise OSError("refusing to write through symlink: " + path)
         if os.path.islink(parent):
             raise OSError(
                 "refusing to write: parent is a symlink: " + parent
@@ -84,34 +80,38 @@ def write_text(path, text, newline="\n", root=None):
     """Write UTF-8 text with explicit newline handling on Python 3.9+.
 
     Refuses to follow a symlink at the destination. When ``root`` is given,
-    the destination must resolve inside it; on POSIX every component is opened
-    with O_NOFOLLOW, so no symlink below the root is followed. On Windows the
-    leaf and parent checks are best effort and an internal link that stays
-    inside the root may be followed.
+    the destination must resolve inside it; on POSIX every component from the
+    filesystem root down is opened with O_NOFOLLOW, so no symlink is followed.
+    On Windows the leaf and parent checks are best effort.
     """
-    path = os.fspath(path)
+    path = os.fsdecode(os.fspath(path))
     if os.path.islink(path):
         raise OSError("refusing to write through symlink: " + path)
+    root_real = None
+    rel = None
     if root is not None:
-        root = os.fspath(root)
+        root = os.fsdecode(os.fspath(root))
         if os.path.islink(root):
             raise OSError("refusing to write under symlinked root: " + root)
         root_real = os.path.realpath(root)
+        root_real_abs = os.path.abspath(root_real)
         try:
-            inside = os.path.commonpath(
-                [root_real, os.path.realpath(path)]
-            ) == root_real
+            if os.path.commonpath(
+                    [root_real_abs, os.path.realpath(path)]
+            ) != root_real_abs:
+                raise OSError("refusing to write outside root: " + path)
+            rel = os.path.relpath(os.path.abspath(path), os.path.abspath(root))
         except ValueError:
-            inside = False
-        if not inside:
+            raise OSError("refusing to write outside root: " + path)
+        if rel == os.pardir or rel.startswith(os.pardir + os.sep):
             raise OSError("refusing to write outside root: " + path)
     # O_NOFOLLOW closes the leaf race on POSIX. Windows has no equivalent
     # flag, so _open_checked verifies the descriptor identity instead.
     flags = os.O_WRONLY | os.O_CREAT
     flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
-    if root is not None and os.name == "posix":
-        fd = _open_beneath(os.path.abspath(path), os.path.abspath(root), flags)
+    if root_real is not None and os.name == "posix":
+        fd = _open_beneath(root_real_abs, rel, flags)
     else:
         fd = _open_checked(path, flags)
     try:
