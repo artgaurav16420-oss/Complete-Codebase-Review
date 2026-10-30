@@ -193,8 +193,11 @@ class TestFileioWriteText(unittest.TestCase):
     def _final_path(self, response):
         import types
 
-        class FakeKernel:
-            def GetFinalPathNameByHandleW(self, handle, buf, size, flags):
+        class FakeFunction:
+            argtypes = None
+            restype = None
+
+            def __call__(self, handle, buf, size, flags):
                 if response is None:
                     return 0
                 if buf is None:
@@ -203,7 +206,14 @@ class TestFileioWriteText(unittest.TestCase):
                 return 100
 
         fake_ctypes = types.ModuleType("ctypes")
-        fake_ctypes.windll = types.SimpleNamespace(kernel32=FakeKernel())
+        fake_ctypes.c_void_p = object
+        fake_ctypes.c_wchar_p = object
+        fake_ctypes.c_uint32 = object
+        fake_ctypes.windll = types.SimpleNamespace(
+            kernel32=types.SimpleNamespace(
+                GetFinalPathNameByHandleW=FakeFunction()
+            )
+        )
         fake_ctypes.create_unicode_buffer = (
             lambda size: types.SimpleNamespace(value="")
         )

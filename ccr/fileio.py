@@ -60,14 +60,18 @@ def _windows_final_path(fd):
     except ImportError:
         return ""
     kernel32 = ctypes.windll.kernel32
+    function = kernel32.GetFinalPathNameByHandleW
+    function.argtypes = [
+        ctypes.c_void_p, ctypes.c_wchar_p,
+        ctypes.c_uint32, ctypes.c_uint32,
+    ]
+    function.restype = ctypes.c_uint32
     handle = msvcrt.get_osfhandle(fd)
-    length = kernel32.GetFinalPathNameByHandleW(handle, None, 0, 0)
+    length = function(handle, None, 0, 0)
     if not length:
         return ""
     buffer = ctypes.create_unicode_buffer(length + 1)
-    written = kernel32.GetFinalPathNameByHandleW(
-        handle, buffer, length + 1, 0
-    )
+    written = function(handle, buffer, length + 1, 0)
     if not written:
         return ""
     path = buffer.value
