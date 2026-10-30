@@ -27,16 +27,15 @@ def _open_beneath(root, rel, flags):
     """
     if rel in (os.curdir, os.pardir) or rel.startswith(os.pardir + os.sep):
         raise OSError("refusing to write outside root: " + rel)
-    parts = rel.split(os.sep)
-    dir_fd = os.open(root, _directory_flags())
+    root_parts = [part for part in root.split(os.sep) if part]
+    rel_parts = rel.split(os.sep)
+    dir_fd = os.open(os.sep, _directory_flags())
     try:
-        for part in parts[:-1]:
-            next_fd = os.open(
-                part, _directory_flags(), dir_fd=dir_fd
-            )
+        for part in root_parts + rel_parts[:-1]:
+            next_fd = os.open(part, _directory_flags(), dir_fd=dir_fd)
             os.close(dir_fd)
             dir_fd = next_fd
-        return os.open(parts[-1], flags, 0o666, dir_fd=dir_fd)
+        return os.open(rel_parts[-1], flags, 0o666, dir_fd=dir_fd)
     finally:
         os.close(dir_fd)
 

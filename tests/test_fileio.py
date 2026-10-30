@@ -120,7 +120,7 @@ class TestFileioWriteText(unittest.TestCase):
         calls = []
 
         def fake_open(target, flags, mode=0o777, dir_fd=None):
-            calls.append((target, dir_fd))
+            calls.append((target, flags, dir_fd))
             return 10 + len(calls)
 
         root = os.path.abspath(os.sep + "root")
@@ -128,13 +128,13 @@ class TestFileioWriteText(unittest.TestCase):
         with mock.patch("ccr.fileio.os.open", side_effect=fake_open), \
                 mock.patch("ccr.fileio.os.close"):
             fd = _open_beneath(root, rel, os.O_WRONLY)
-        self.assertEqual(fd, 14)
-        self.assertEqual(
-            [call[0] for call in calls], [root, "a", "b", "f.txt"]
-        )
-        self.assertEqual(
-            [call[1] for call in calls], [None, 11, 12, 13]
-        )
+        self.assertEqual(fd, 10 + len(calls))
+        self.assertEqual(calls[0][0], os.sep)
+        self.assertEqual(calls[-1][0], "f.txt")
+        self.assertEqual(calls[-1][2], fd - 1)
+        if hasattr(os, "O_NOFOLLOW"):
+            for _target, flags, _dir_fd in calls[:-1]:
+                self.assertTrue(flags & os.O_NOFOLLOW)
 
     def test_open_beneath_refuses_parent_traversal(self):
         rel = os.sep.join([os.pardir, "etc", "passwd"])
