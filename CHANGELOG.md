@@ -14,6 +14,11 @@
   a test file, so repos whose suites live in `tools/*-harness.js` are no longer reported with
   zero tests and silently lose the `test_health` agent.
 - **Tests**: normalization, rejection wiring, env fallback, and harness detection cases.
+- **Review follow-ups**: the anchor prefix consumes the whole dash run (`[a.py:1] -- flaw` no
+  longer leaves a stray hyphen), `=>` is only treated as the arrow when no `—`/`->` exists
+  (so a JavaScript arrow inside the flaw is not the separator), an explicit `--agents ""`
+  no longer falls back to `CODE_REVIEW_AGENTS`, and the harness-token rule applies only to
+  source extensions (`docs/load-harness.md` is not a test).
 
 ## v2.4.0 (2026-10-20)
 

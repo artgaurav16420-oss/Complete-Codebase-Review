@@ -473,16 +473,30 @@ class TestAnchorParsing(unittest.TestCase):
         self.assertTrue(f.ANCHOR_RE.match("[src/a.py:1] \u2014 flaw \u2192 failure"))
 
     def test_ascii_separators_are_normalized(self):
+        expected = "[a.py:42] \u2014 flaw \u2192 failure"
         for text in (
             "[a.py:42] - flaw -> failure",
             "[a.py:42] -- flaw => failure",
             "[a.py:42] flaw -> failure",
             "[a.py:42] \u2013 flaw \u2192 failure",
         ):
-            parts = f.anchor_parts(text)
-            self.assertIsNotNone(parts, text)
-            self.assertEqual(parts[0], "a.py", text)
-            self.assertEqual(parts[1], 42, text)
+            self.assertEqual(f.normalize_anchor(text), expected, text)
+            self.assertEqual(
+                f.anchor_parts(text), ("a.py", 42, "flaw", "failure"), text
+            )
+
+    def test_arrow_inside_the_flaw_is_not_the_separator(self):
+        # `=>` is a source token; the documented `->` separator comes later.
+        self.assertEqual(
+            f.anchor_parts("[js/a.js:5] - handler => promise is dropped -> crash"),
+            ("js/a.js", 5, "handler => promise is dropped", "crash"),
+        )
+
+    def test_rocket_is_used_when_no_other_arrow_exists(self):
+        self.assertEqual(
+            f.anchor_parts("[a.rb:9] -- opts => nil is dereferenced"),
+            ("a.rb", 9, "opts", "nil is dereferenced"),
+        )
 
     def test_normalize_anchor_is_idempotent(self):
         canon = "[a.py:42] \u2014 flaw \u2192 failure"

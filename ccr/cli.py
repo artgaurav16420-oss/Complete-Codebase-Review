@@ -28,13 +28,15 @@ def _manifest():
 
 
 def _agents_override(flag_value):
-    """Return the --agents value, falling back to CODE_REVIEW_AGENTS.
+    """Return the explicit --agents value, else CODE_REVIEW_AGENTS.
 
-    The environment variable is documented as the way to restrict the agent
-    set, so `plan` and `record` have to honour it; the flag still wins.
+    An explicit empty flag means "no override": it must not fall through to the
+    environment, which would select a different agent set than the one the
+    caller asked for.
     """
-    value = flag_value if flag_value else os.environ.get("CODE_REVIEW_AGENTS", "")
-    return value.strip() or None
+    if flag_value is not None:
+        return flag_value.strip() or None
+    return os.environ.get("CODE_REVIEW_AGENTS", "").strip() or None
 
 
 def _resolve_target(args):

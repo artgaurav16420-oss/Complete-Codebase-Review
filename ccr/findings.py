@@ -39,11 +39,21 @@ WEASEL_PATTERNS = [
 # The prompts show the canonical em dash + arrow pair, but providers (and
 # humans writing fixtures) reliably emit ASCII. Rejecting a sound finding for
 # punctuation costs a whole finding, so the separators are normalised before
-# the anchor gate looks at them.
+# the anchor gate looks at them. The prefix consumes a whole run of dashes so
+# `-- flaw` does not leave a stray hyphen behind.
 _ANCHOR_PREFIX_RE = re.compile(
-    r"^(\[[^\]\n]+:\d+(?:-\d+)?\])\s*(?:[\u2014\u2013:-]\s*)?"
+    r"^(\[[^\]\n]+:\d+(?:-\d+)?\])\s*(?:(?:[\u2014\u2013]{1,2}|-{1,3}|:)\s*)?"
 )
-_ANCHOR_ARROW_RE = re.compile(r"\s(?:->|=>|\u2192|\u2014>|\u2013>)\s")
+# Preference order matters: "->" is the documented ASCII stand-in, while "=>"
+# is also a source token (a JavaScript arrow, a Ruby hash rocket) that can
+# appear inside the flaw itself. A flaw that mentions `=>` must not be split
+# there when a real arrow follows.
+_ARROW_PATTERNS = (
+    re.compile(r"\s\u2192\s"),
+    re.compile(r"\s->\s"),
+    re.compile(r"\s=>\s"),
+    re.compile(r"\s[\u2013\u2014]>\s"),
+)
 
 
 def normalize_anchor(finding_text):
@@ -60,10 +70,11 @@ def normalize_anchor(finding_text):
     if not match:
         return text
     rest = text[match.end():]
-    if not _ANCHOR_ARROW_RE.search(rest):
-        return text
-    rest = _ANCHOR_ARROW_RE.sub(" \u2192 ", rest, count=1)
-    return match.group(1) + " \u2014 " + rest
+    for pattern in _ARROW_PATTERNS:
+        if pattern.search(rest):
+            rest = pattern.sub(" \u2192 ", rest, count=1)
+            return match.group(1) + " \u2014 " + rest
+    return text
 
 
 MALFORMED_REASONS = ("anchor", "empty finding")

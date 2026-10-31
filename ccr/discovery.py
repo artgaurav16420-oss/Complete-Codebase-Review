@@ -79,6 +79,9 @@ TEST_FILE_SUFFIXES = ("_test.py", "_test.go", ".test.js", ".test.ts", ".spec.js"
 # Token match so `tools/main-harness.js` and `parser_spec.rb` count, while
 # `contest.js` and `latest.js` do not.
 TEST_NAME_TOKENS = frozenset({"test", "tests", "spec", "specs", "harness"})
+# The token rule only applies to source files: `docs/load-harness.md` is
+# documentation about a harness, not a test.
+TEST_FILE_EXTENSIONS = frozenset(LANGUAGE_BY_EXT)
 
 ENTRY_POINT_NAMES = frozenset({
     "__main__.py", "main.py", "cli.py", "app.py", "manage.py", "server.py",
@@ -117,6 +120,8 @@ def _is_test_file(rel_parts, name):
         return True
     if name.endswith(TEST_FILE_SUFFIXES):
         return True
+    if Path(name).suffix.lower() not in TEST_FILE_EXTENSIONS:
+        return False
     stem = Path(name).stem.lower()
     for separator in ("-", "_", "."):
         stem = stem.replace(separator, " ")

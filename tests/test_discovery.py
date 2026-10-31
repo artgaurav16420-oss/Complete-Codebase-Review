@@ -505,6 +505,10 @@ class TestTestFileDetection(unittest.TestCase):
         self.assertFalse(discovery._is_test_file(("src",), "latest.js"))
         self.assertFalse(discovery._is_test_file(("tools",), "smoke.js"))
 
+    def test_documentation_about_a_harness_is_not_a_test(self):
+        self.assertFalse(discovery._is_test_file(("docs",), "load-harness.md"))
+        self.assertFalse(discovery._is_test_file(("docs",), "harness.txt"))
+
     def test_discover_counts_a_harness_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

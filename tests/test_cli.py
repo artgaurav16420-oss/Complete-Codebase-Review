@@ -622,6 +622,10 @@ class TestAgentsOverride(unittest.TestCase):
                 cli._agents_override(None), "architecture , test_health"
             )
 
+    def test_explicit_empty_flag_ignores_env(self):
+        with mock.patch.dict(os.environ, {"CODE_REVIEW_AGENTS": "security"}, clear=False):
+            self.assertIsNone(cli._agents_override(""))
+
     def test_none_when_neither_is_set(self):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("CODE_REVIEW_AGENTS", None)
