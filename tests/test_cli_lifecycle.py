@@ -618,6 +618,32 @@ class TestCliReReviewBaseline(unittest.TestCase):
         # A foreign target's counter must not advance either.
         self.assertEqual(self._state_count(), 2)
 
+    def test_null_target_dir_is_treated_as_absent(self):
+        self._write_state(target_dir=None)
+        code, _, err = run([
+            "synthesize", "--in", str(self.cache),
+            "--format", "json", "--out", str(self.dir / "report"),
+        ])
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("Traceback", err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        # The state carries no facts, so the size block stays empty instead
+        # of crashing on a null target.
+        self.assertEqual(report["report"]["codebase_size"]["files"], 0)
+
+    def test_counter_save_failure_still_emits_the_report(self):
+        self._write_state(re_review_count=2)
+        with mock.patch.object(
+                cli.state.State, "save", side_effect=OSError("read-only")):
+            code, _, err = run([
+                "synthesize", "--in", str(self.cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0)
+        self.assertIn("[WARN] could not update re-review counter", err)
+        self.assertTrue((self.dir / "report.json").is_file())
+
 
 class TestCliVersionGuard(unittest.TestCase):
     """A broken manifest must not raise JSONDecodeError at import."""

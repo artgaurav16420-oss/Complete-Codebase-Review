@@ -234,9 +234,14 @@ def _overlap_candidates(model):
 
 
 def _title(text):
-    """Escape the heading text so a path cannot inject HTML or a link."""
+    """Escape the heading text so a path cannot inject HTML or a link.
+
+    Backslashes are escaped first: a target carrying ``\\[`` would otherwise
+    turn the bracket escape into ``\\\\[`` and leave the ``[`` active.
+    """
     return (
         _cell(text)
+        .replace("\\", "\\\\")
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")

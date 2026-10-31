@@ -197,35 +197,66 @@ def _has_symlinked_component(target, marker):
     return False
 
 
+def _bounded_entries(directory, limit):
+    """Return at most ``limit`` entries of a directory, sorted by name.
+
+    Scans incrementally so a pathologically wide directory is not
+    materialised and sorted in full before the entry budget applies; only the
+    bounded slice is sorted. Normal directories fit in the limit and keep
+    their previous sorted order.
+    """
+    entries = []
+    try:
+        with os.scandir(str(directory)) as iterator:
+            for entry in iterator:
+                entries.append(entry)
+                if len(entries) >= limit:
+                    break
+    except OSError as exc:
+        raise ValueError(
+            "cannot list directory: {} ({})".format(directory, exc)
+        )
+    entries.sort(key=lambda entry: entry.name)
+    return entries
+
+
 def _find_db_markers(directory, depth, found, budget=None):
     """Collect DB marker names under directory, down to DB_SCAN_DEPTH levels.
 
     ``budget`` is a one-element list shared by the recursion so the whole
     scan stops after ``DB_SCAN_MAX_ENTRIES`` entries, independent of the
-    ``max_files`` cap applied to the main walk.
+    ``max_files`` cap applied to the main walk. Every entry at the current
+    level is checked before any subtree is entered, so a wide early subtree
+    cannot spend the budget ahead of a marker beside it.
     """
     if budget is None:
         budget = [DB_SCAN_MAX_ENTRIES]
-    try:
-        entries = sorted(directory.iterdir(), key=lambda p: p.name)
-    except OSError as exc:
-        raise ValueError(
-            "cannot list directory: {} ({})".format(directory, exc)
-        )
+    if budget[0] <= 0:
+        return
+    limit = min(budget[0], DB_SCAN_MAX_ENTRIES)
+    entries = _bounded_entries(directory, limit)
+    budget[0] -= len(entries)
+    subdirs = []
     for entry in entries:
-        if budget[0] <= 0:
-            return
-        budget[0] -= 1
         # Check for links before recording: a junction named "migrations" or
         # "prisma" must not activate the database agent from outside the tree.
-        if _is_reparse_dir(entry):
+        if _is_reparse_dir(entry.path):
             continue
         if entry.name in DB_MARKERS:
             found.append(entry.name)
-        if depth < DB_SCAN_DEPTH and entry.is_dir():
-            if entry.name in IGNORED_DIRS:
-                continue
-            _find_db_markers(entry, depth + 1, found, budget)
+        if depth >= DB_SCAN_DEPTH or entry.name in IGNORED_DIRS:
+            continue
+        try:
+            is_dir = entry.is_dir()
+        except OSError:
+            # The entry vanished between listing and inspection.
+            is_dir = False
+        if is_dir:
+            subdirs.append(entry.path)
+    for path in subdirs:
+        if budget[0] <= 0:
+            return
+        _find_db_markers(path, depth + 1, found, budget)
 
 
 def _build_facts(target, state, truncated):

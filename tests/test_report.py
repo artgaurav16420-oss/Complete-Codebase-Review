@@ -54,6 +54,27 @@ def result(agent, findings):
     return {"agent": agent, "findings": findings}
 
 
+def _active_brackets(text):
+    """Return the brackets Markdown would read as unescaped.
+
+    A bracket is escaped when an odd number of backslashes precedes it;
+    an even count means the first pair is a literal backslash and the
+    bracket stays active.
+    """
+    active = []
+    for index, char in enumerate(text):
+        if char not in "[]":
+            continue
+        slashes = 0
+        cursor = index - 1
+        while cursor >= 0 and text[cursor] == "\\":
+            slashes += 1
+            cursor -= 1
+        if slashes % 2 == 0:
+            active.append(char)
+    return active
+
+
 class TestMarkdown(unittest.TestCase):
     """Rendered Markdown passes the schema contract."""
 
@@ -139,6 +160,20 @@ class TestMarkdown(unittest.TestCase):
         md = report_mod.render_markdown(model)
         self.assertNotIn("![x](", md.splitlines()[0])
         self.assertIn("\\[x\\]", md.splitlines()[0])
+
+    def test_target_backslash_does_not_cancel_a_bracket_escape(self):
+        for target in (
+            "C:\\a\\[click](https://example.com)\\b",
+            "C:\\a\\[click\\](https://example.com)\\b",
+        ):
+            with self.subTest(target=target):
+                model = dict(self.model)
+                model["target"] = target
+                heading = report_mod.render_markdown(model).splitlines()[0]
+                # A live "[" ... "](url)" pair would become a clickable link.
+                self.assertEqual(_active_brackets(heading), [])
+                self.assertIn("click", heading)
+                self.assertIn("example.com", heading)
 
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")

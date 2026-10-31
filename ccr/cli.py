@@ -143,9 +143,12 @@ def _archive_results(cache, agent_ids=()):
             dest = base / f"{stamp}-{suffix}"
             suffix += 1
             attempts += 1
-    # The checks above are racy: previous-results can be swapped for a link
-    # between them and the mkdir, which would move stale results outside the
-    # cache. Re-assert both the parent and the created directory.
+    # The pre-check above and the mkdir are racy: previous-results can be
+    # swapped for a link between them and the moves, which would send stale
+    # results outside the cache. Re-assert the parent and the created
+    # directory right before the moves. A window remains between this check
+    # and each shutil.move, and is accepted: an attacker able to rewrite the
+    # cache while record runs already controls the archived results.
     if _is_link_like(base):
         raise OSError("refusing to archive through symlink: " + str(base))
     if _is_link_like(dest) or not dest.is_dir():
@@ -392,7 +395,7 @@ def cmd_synthesize(args):
     re_review_count = 0
     counted_state = None
     if cached is not None:
-        stored = cached.data.get("target_dir", "")
+        stored = cached.data.get("target_dir") or ""
         try:
             same_target = (
                 not stored or Path(target).resolve() == Path(stored).resolve()
@@ -457,7 +460,15 @@ def cmd_synthesize(args):
     if code == 0 and counted_state is not None:
         # Only a report that reached the user completes the re-review.
         counted_state.data["re_review_count"] = re_review_count + 1
-        counted_state.save()
+        try:
+            counted_state.save()
+        except OSError as exc:
+            # The report is already out; a read-only cache must not turn a
+            # successful run into a traceback.
+            print(
+                "[WARN] could not update re-review counter: {}".format(exc),
+                file=sys.stderr,
+            )
     return code
 
 

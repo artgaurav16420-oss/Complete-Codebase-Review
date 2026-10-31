@@ -15,6 +15,25 @@ ROOT = Path(__file__).resolve().parent.parent
 DUMMY = ROOT / "tests" / "dummy_repo"
 
 
+class _CountingScan:
+    """Wrap os.scandir and record the entry names actually yielded."""
+
+    def __init__(self, handle, seen):
+        self._handle = handle
+        self._seen = seen
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._handle.close()
+
+    def __iter__(self):
+        for entry in self._handle:
+            self._seen.append(entry.name)
+            yield entry
+
+
 class TestDiscover(unittest.TestCase):
     """Discovery facts for the dummy repository."""
 
@@ -74,19 +93,42 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(facts["database"], ["prisma"])
 
     def test_db_scan_stops_at_the_entry_budget(self):
-        # A tree wider than the budget must terminate and still keep a marker
-        # seen early in sorted order, while a later marker is not reached.
+        # The budget bounds the entries read, so a wide directory is never
+        # materialised in full.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "alembic.ini").write_text("[alembic]\n", encoding="utf-8")
             for index in range(20):
                 (root / ("bbb_dir_{:02d}".format(index))).mkdir()
+            seen = []
+            real_scandir = os.scandir
+
+            def counting_scandir(path):
+                return _CountingScan(real_scandir(path), seen)
+
+            with mock.patch.object(discovery, "DB_SCAN_MAX_ENTRIES", 10):
+                with mock.patch.object(
+                        discovery.os, "scandir", counting_scandir):
+                    found = []
+                    discovery._find_db_markers(root, 1, found)
+        self.assertEqual(len(seen), 10)
+
+    def test_root_marker_is_seen_before_a_wide_subtree_spends_the_budget(self):
+        # A wide directory sorts before schema.sql; its subtree must not use
+        # the shared budget up before the marker beside it is checked.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wide = root / "aaa_dir"
+            wide.mkdir()
+            for index in range(20):
+                (wide / ("f{:02d}.txt".format(index))).write_text(
+                    "x", encoding="utf-8"
+                )
             (root / "schema.sql").write_text(
                 "create table t (id int);\n", encoding="utf-8"
             )
             with mock.patch.object(discovery, "DB_SCAN_MAX_ENTRIES", 10):
                 facts = discovery.discover(str(root))
-        self.assertEqual(facts["database"], ["alembic.ini"])
+        self.assertEqual(facts["database"], ["schema.sql"])
 
     def test_linked_migrations_directory_is_not_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
