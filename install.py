@@ -361,6 +361,14 @@ def copy_skill(src_dir, dest_dir):
                 else:
                     resolved.unlink()
 
+        # Re-assert at the last moment: these guards run before the previous
+        # install is removed, and a swap in between would send copytree into
+        # the link's target instead of the named directory.
+        if _is_link_like(dest_dir):
+            raise ValueError(
+                "Refusing to install through a link-like target: "
+                + str(dest_dir)
+            )
         shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
         _validate_no_escaped_symlinks(skill_dest)
 
