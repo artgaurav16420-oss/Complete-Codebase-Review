@@ -75,8 +75,20 @@ def _codebase_size(facts):
 
 
 def _canonicalize_baseline(model, manifest):
-    """Remap baseline domain keys from report names to agent ids."""
-    display_to_id = {a["report"]: a["id"] for a in manifest["agents"]}
+    """Remap baseline domain keys from report names to agent ids.
+
+    ``aggregate`` already keys the baseline by agent id; the remap only exists
+    for a baseline read from an older report. A key that is itself a known
+    agent id is an id, not a label, so it passes through unchanged even when
+    some other agent's report name happens to match it. Without that, one
+    agent's score would be redirected onto another's and overwritten.
+    """
+    agent_ids = {a["id"] for a in manifest["agents"]}
+    display_to_id = {
+        a["report"]: a["id"]
+        for a in manifest["agents"]
+        if a["report"] not in agent_ids
+    }
     baseline = model["baseline"]
     baseline["per_domain_scores"] = {
         display_to_id.get(name, name): value

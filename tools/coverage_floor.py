@@ -64,12 +64,37 @@ def _shape_error(report):
             if not isinstance(entry, dict):
                 return ("file entries must be JSON objects, got "
                         + type(entry).__name__)
+            summary = entry.get("summary")
+            if summary is not None and not isinstance(summary, dict):
+                return ("file summary must be a JSON object, got "
+                        + type(summary).__name__)
     return ""
+
+
+def _parse_floor(value):
+    """Return the floor as a finite float in 0..100, or None when invalid.
+
+    ``float`` accepts "nan" and "inf", and every ``percent < nan`` comparison
+    is False, so an unvalidated floor silently disables the gate.
+    """
+    try:
+        floor = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(floor) or not 0.0 <= floor <= 100.0:
+        return None
+    return floor
 
 
 def main(argv):
     path = argv[1] if len(argv) > 1 else "coverage.json"
-    floor = float(argv[2]) if len(argv) > 2 else DEFAULT_FLOOR
+    if len(argv) > 2:
+        floor = _parse_floor(argv[2])
+        if floor is None:
+            print("[ERROR] invalid floor: " + argv[2])
+            return 1
+    else:
+        floor = DEFAULT_FLOOR
     try:
         with open(path, encoding="utf-8") as handle:
             report = json.load(handle)

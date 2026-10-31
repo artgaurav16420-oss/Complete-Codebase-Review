@@ -866,6 +866,8 @@ class TestLocalSkillsPointingAtWorkingTree(_BaseInstallTest):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / "work"
             work.mkdir()
+            sentinel = Path(tmp) / "sentinel.txt"
+            sentinel.write_text("keep", encoding="utf-8")
             try:
                 create_directory_link(work / ".skills", Path(tmp))
             except OSError as exc:
@@ -873,12 +875,20 @@ class TestLocalSkillsPointingAtWorkingTree(_BaseInstallTest):
             old = os.getcwd()
             try:
                 os.chdir(str(work))
-                # _validate_target_path already rejects ancestors; the
-                # helper is the second layer for the working-directory case.
-                with self.assertRaises(ValueError):
-                    self.install._resolve_local_skills()
+                # _validate_target_path rejects the escape on its own, so stub
+                # it out (as the link-like check is stubbed) to keep the
+                # resolved-ancestor guard the branch under test.
+                with patch.object(self.install, "_is_link_like",
+                                  return_value=False), \
+                        patch.object(self.install, "_validate_target_path",
+                                     side_effect=lambda path: path.resolve()):
+                    with self.assertRaises(ValueError) as ctx:
+                        self.install._resolve_local_skills()
             finally:
                 os.chdir(old)
+            self.assertIn("working directory or a parent", str(ctx.exception))
+            self.assertTrue(sentinel.is_file())
+            self.assertFalse((Path(tmp) / "complete-codebase-review").exists())
 
     def test_working_tree_target_is_refused_without_the_link_check(self):
         # The link-like rejection runs first; patch it off to keep the

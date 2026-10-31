@@ -470,20 +470,33 @@ def cmd_synthesize(args):
         print("[ERROR] could not write report: " + str(exc))
         return 2
     if code == 0 and counted_state is not None:
-        # Only a report that reached the user completes the re-review, and a
-        # rerun on unchanged results is the same review, not a new one.
-        if counted_state.data.get("last_synth_signature") != signature:
-            counted_state.data["re_review_count"] = re_review_count + 1
-        counted_state.data["last_synth_signature"] = signature
+        # Re-read the file instead of saving the snapshot loaded before
+        # synthesis: a concurrent `record` may have rewritten the state, and
+        # saving the stale object would drop its planned agents and facts.
         try:
-            counted_state.save()
-        except OSError as exc:
-            # The report is already out; a read-only cache must not turn a
-            # successful run into a traceback.
+            fresh = state.State.load(counted_state.path)
+            if fresh is None:
+                raise ValueError("state file disappeared")
+        except (OSError, ValueError) as exc:
             print(
                 "[WARN] could not update re-review counter: {}".format(exc),
                 file=sys.stderr,
             )
+        else:
+            # Only a report that reached the user completes the re-review, and
+            # a rerun on unchanged results is the same review, not a new one.
+            if fresh.data.get("last_synth_signature") != signature:
+                fresh.data["re_review_count"] = re_review_count + 1
+            fresh.data["last_synth_signature"] = signature
+            try:
+                fresh.save()
+            except OSError as exc:
+                # The report is already out; a read-only cache must not turn a
+                # successful run into a traceback.
+                print(
+                    "[WARN] could not update re-review counter: {}".format(exc),
+                    file=sys.stderr,
+                )
     return code
 
 

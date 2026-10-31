@@ -667,6 +667,53 @@ class TestCliReReviewBaseline(unittest.TestCase):
         self.assertIn("[WARN] could not update re-review counter", err)
         self.assertTrue((self.dir / "report.json").is_file())
 
+    def test_concurrent_record_rewrite_survives_the_counter_update(self):
+        # A `record` may rewrite the state while this run is synthesizing.
+        # Saving the snapshot loaded at startup would drop the new plan.
+        self._write_state(re_review_count=2)
+        state_path = self.cache / "ccr-state.json"
+        emit = cli._emit_synthesis_output
+
+        def rewrite_then_emit(*args, **kwargs):
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            data["agents_planned"] = ["security", "architecture"]
+            data["facts"] = {"files": 42, "languages": {"py": 1}}
+            data["current_step"] = "phase2:awaiting_agent_results"
+            state_path.write_text(json.dumps(data), encoding="utf-8")
+            return emit(*args, **kwargs)
+
+        with mock.patch.object(cli, "_emit_synthesis_output",
+                               rewrite_then_emit):
+            code, _, err = run([
+                "synthesize", "--in", str(self.cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, err)
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["agents_planned"], ["security", "architecture"])
+        self.assertEqual(data["facts"]["files"], 42)
+        self.assertEqual(data["current_step"], "phase2:awaiting_agent_results")
+        self.assertEqual(data["re_review_count"], 3)
+
+    def test_vanished_state_file_warns_without_failing_the_run(self):
+        self._write_state(re_review_count=2)
+        state_path = self.cache / "ccr-state.json"
+        emit = cli._emit_synthesis_output
+
+        def remove_then_emit(*args, **kwargs):
+            state_path.unlink()
+            return emit(*args, **kwargs)
+
+        with mock.patch.object(cli, "_emit_synthesis_output",
+                               remove_then_emit):
+            code, _, err = run([
+                "synthesize", "--in", str(self.cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0)
+        self.assertIn("[WARN] could not update re-review counter", err)
+        self.assertFalse(state_path.exists())
+
 
 class TestCliVersionGuard(unittest.TestCase):
     """A broken manifest must not raise JSONDecodeError at import."""

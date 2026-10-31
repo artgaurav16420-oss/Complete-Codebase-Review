@@ -69,9 +69,9 @@ class TestCoverageFloorMain(unittest.TestCase):
             code = main(argv)
         return code, buffer.getvalue()
 
-    def _run_script(self, path):
+    def _run_script(self, path, *extra):
         return subprocess.run(
-            [sys.executable, str(SCRIPT), path],
+            [sys.executable, str(SCRIPT), path] + list(extra),
             capture_output=True, text=True,
         )
 
@@ -124,6 +124,33 @@ class TestCoverageFloorMain(unittest.TestCase):
         self.assertEqual(passing, 0)
         self.assertEqual(failing, 1)
 
+    def test_invalid_floor_is_rejected_before_reading_the_report(self):
+        # nan/inf make every `percent < floor` comparison False, and -1/101
+        # are outside the only range a percentage can have. The report path is
+        # missing so a validating main reports the floor, not the file.
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = str(Path(tmp) / "absent.json")
+            for value in ("nan", "inf", "-1", "101", "not-a-number"):
+                with self.subTest(floor=value):
+                    code, output = self._run_main(
+                        ["coverage_floor.py", missing, value])
+                    self.assertEqual(code, 1)
+                    self.assertIn("[ERROR] invalid floor: " + value, output)
+                    self.assertNotIn("cannot read coverage report", output)
+
+    def test_invalid_floor_exits_one_from_the_script(self):
+        result = self._run_script("absent-coverage.json", "nan")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("[ERROR] invalid floor: nan", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_boundary_floors_are_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": {"ccr/a.py": entry(100.0)}})
+            code, output = self._run_main(["coverage_floor.py", path, "100"])
+        self.assertEqual(code, 0)
+        self.assertIn("[SUCCESS] all modules >= 100.0%", output)
+
     def test_missing_report_exits_one(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = str(Path(tmp) / "absent.json")
@@ -161,6 +188,19 @@ class TestCoverageFloorMain(unittest.TestCase):
         self.assertIn("[ERROR] cannot read coverage report " + path,
                       result.stdout)
         self.assertIn("file entries must be JSON objects", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_scalar_summary_exits_cleanly(self):
+        # A truthy non-object summary used to reach summary.get() and raise
+        # an uncaught AttributeError.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": {"ccr/a.py": {"summary": 5}}})
+            result = self._run_script(path)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("[ERROR] cannot read coverage report " + path,
+                      result.stdout)
+        self.assertIn("file summary must be a JSON object, got int",
+                      result.stdout)
         self.assertNotIn("Traceback", result.stderr)
 
     def test_module_guard_turns_main_result_into_exit_code(self):
