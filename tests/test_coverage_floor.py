@@ -106,6 +106,16 @@ class TestCoverageFloorMain(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("[FAIL] ccr/a.py: 0.0% < 80.0%", output)
 
+    def test_huge_integer_percent_fails_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": {
+                "ccr/a.py": entry(10 ** 400),
+            }})
+            result = self._run_script(path)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("[FAIL] ccr/a.py: 0.0% < 80.0%", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_floor_argument_overrides_the_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._write_report(tmp, {"files": {"ccr/a.py": entry(75.0)}})

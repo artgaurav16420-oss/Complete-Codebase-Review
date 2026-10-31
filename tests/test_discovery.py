@@ -73,6 +73,21 @@ class TestDiscover(unittest.TestCase):
             facts = discovery.discover(str(root))
         self.assertEqual(facts["database"], ["prisma"])
 
+    def test_db_scan_stops_at_the_entry_budget(self):
+        # A tree wider than the budget must terminate and still keep a marker
+        # seen early in sorted order, while a later marker is not reached.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "alembic.ini").write_text("[alembic]\n", encoding="utf-8")
+            for index in range(20):
+                (root / ("bbb_dir_{:02d}".format(index))).mkdir()
+            (root / "schema.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
+            with mock.patch.object(discovery, "DB_SCAN_MAX_ENTRIES", 10):
+                facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], ["alembic.ini"])
+
     def test_linked_migrations_directory_is_not_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"

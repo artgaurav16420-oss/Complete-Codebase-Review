@@ -32,6 +32,38 @@ def run(argv):
     return code, out.getvalue(), err.getvalue()
 
 
+class TestCreateDirectoryLink(unittest.TestCase):
+    """Directory links must survive spaces and refuse cmd metacharacters."""
+
+    def test_link_inside_a_path_with_spaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "space dir"
+            (root / "inner dir").mkdir(parents=True)
+            target = root / "target dir"
+            target.mkdir()
+            (target / "marker.txt").write_text("ok", encoding="utf-8")
+            link = root / "inner dir" / "link dir"
+            try:
+                create_directory_link(link, target)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            self.assertTrue((link / "marker.txt").is_file())
+
+    def test_cmd_metacharacters_are_rejected(self):
+        for char in ('"', "&", "|", "<", ">", "^", "%"):
+            with self.subTest(char=char):
+                with self.assertRaises(OSError) as ctx:
+                    create_directory_link(
+                        Path("bad") / ("a" + char + "b"), Path("target")
+                    )
+                self.assertIn(repr(char), str(ctx.exception))
+
+    def test_metacharacter_in_target_is_rejected(self):
+        with self.assertRaises(OSError) as ctx:
+            create_directory_link(Path("link"), Path("a&b"))
+        self.assertIn("a&b", str(ctx.exception))
+
+
 class TestCliRecordLifecycle(unittest.TestCase):
     """record must start a clean run and archive every result layout."""
 
@@ -69,7 +101,7 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(data["total_agents"], 3)
         self.assertEqual(data["current_step"], "phase2:awaiting_agent_results")
 
-    def test_null_re_review_count_is_tolerated(self):
+    def test_null_re_review_count_is_carried_forward_as_zero(self):
         code, _, _ = run([
             "record", str(TARGET), "--out", str(self.cache),
             "--agents", "security",
@@ -85,7 +117,7 @@ class TestCliRecordLifecycle(unittest.TestCase):
         ])
         self.assertEqual(code, 0)
         data = json.loads(state_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["re_review_count"], 1)
+        self.assertEqual(data["re_review_count"], 0)
 
     def test_non_numeric_re_review_count_is_normalized(self):
         code, _, _ = run([
@@ -103,7 +135,26 @@ class TestCliRecordLifecycle(unittest.TestCase):
         ])
         self.assertEqual(code, 0)
         data = json.loads(state_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["re_review_count"], 1)
+        self.assertEqual(data["re_review_count"], 0)
+
+    def test_record_does_not_advance_completed_re_reviews(self):
+        # An abandoned run must not count as a finished re-review.
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        state_path = self.cache / "ccr-state.json"
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        data["re_review_count"] = 4
+        state_path.write_text(json.dumps(data), encoding="utf-8")
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["re_review_count"], 4)
 
     def test_archive_failure_exits_two(self):
         with mock.patch.object(
@@ -221,6 +272,33 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("[ERROR] could not archive stale results", out)
         self.assertEqual(list(target.iterdir()), [])
+
+    def test_archive_rechecks_after_directory_creation(self):
+        # Deterministic race: the parent is swapped for a link after the
+        # pre-check, just before the archive directory is created.
+        outside = Path(self.tmp.name) / "elsewhere"
+        outside.mkdir()
+        base = self.cache / "previous-results"
+        base.mkdir()
+        (self.cache / "phase_security.json").write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        real_mkdir = Path.mkdir
+
+        def racing_mkdir(path, *args, **kwargs):
+            if path.parent == base and not cli._is_link_like(base):
+                base.rmdir()
+                try:
+                    create_directory_link(base, outside)
+                except OSError as exc:
+                    self.skipTest("directory links unavailable: " + str(exc))
+            return real_mkdir(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "mkdir", racing_mkdir):
+            with self.assertRaises(OSError):
+                cli._archive_results(self.cache)
+        self.assertEqual(list(outside.rglob("*.json")), [])
+        self.assertTrue((self.cache / "phase_security.json").exists())
 
     def test_bare_agent_result_is_archived(self):
         result = self.cache / "security.json"
@@ -477,10 +555,29 @@ class TestCliReReviewBaseline(unittest.TestCase):
         return json.loads((self.dir / "report.json").read_text(
             encoding="utf-8"))
 
+    def _state_count(self):
+        data = json.loads((self.cache / "ccr-state.json").read_text(
+            encoding="utf-8"))
+        return data["re_review_count"]
+
     def test_state_re_review_count_reaches_baseline(self):
         self._write_state(re_review_count=2)
         report = self._synthesize_json()
         self.assertEqual(report["baseline"]["re_review_count"], 2)
+        # The emitted report completes the re-review, so the next run sees 3.
+        self.assertEqual(self._state_count(), 3)
+
+    def test_failed_report_write_does_not_advance_count(self):
+        self._write_state(re_review_count=2)
+        with mock.patch.object(
+                cli, "_emit_synthesis_output", side_effect=OSError("disk full")):
+            code, out, _ = run([
+                "synthesize", "--in", str(self.cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 2)
+        self.assertIn("could not write report", out)
+        self.assertEqual(self._state_count(), 2)
 
     def test_absent_re_review_count_defaults_to_zero(self):
         self._write_state()
@@ -518,6 +615,8 @@ class TestCliReReviewBaseline(unittest.TestCase):
         report = json.loads((self.dir / "report.json").read_text(
             encoding="utf-8"))
         self.assertEqual(report["baseline"]["re_review_count"], 0)
+        # A foreign target's counter must not advance either.
+        self.assertEqual(self._state_count(), 2)
 
 
 class TestCliVersionGuard(unittest.TestCase):

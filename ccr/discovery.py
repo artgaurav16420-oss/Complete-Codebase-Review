@@ -92,6 +92,13 @@ DB_MARKERS = frozenset({
 # whole tree that _scan_tree already covers.
 DB_SCAN_DEPTH = 3
 
+# Upper bound on directory entries the DB scan visits. 5000 still covers a
+# root plus the first levels of a monorepo, where markers live (prisma/,
+# migrations/ at depth <= 3), while stopping a pathological wide tree that
+# max_files does not bound. Root markers remain reachable because the root
+# alone rarely exceeds a few hundred entries.
+DB_SCAN_MAX_ENTRIES = 5000
+
 CONTAINER_MARKERS = frozenset({
     "Dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml",
 })
@@ -190,8 +197,15 @@ def _has_symlinked_component(target, marker):
     return False
 
 
-def _find_db_markers(directory, depth, found):
-    """Collect DB marker names under directory, down to DB_SCAN_DEPTH levels."""
+def _find_db_markers(directory, depth, found, budget=None):
+    """Collect DB marker names under directory, down to DB_SCAN_DEPTH levels.
+
+    ``budget`` is a one-element list shared by the recursion so the whole
+    scan stops after ``DB_SCAN_MAX_ENTRIES`` entries, independent of the
+    ``max_files`` cap applied to the main walk.
+    """
+    if budget is None:
+        budget = [DB_SCAN_MAX_ENTRIES]
     try:
         entries = sorted(directory.iterdir(), key=lambda p: p.name)
     except OSError as exc:
@@ -199,6 +213,9 @@ def _find_db_markers(directory, depth, found):
             "cannot list directory: {} ({})".format(directory, exc)
         )
     for entry in entries:
+        if budget[0] <= 0:
+            return
+        budget[0] -= 1
         # Check for links before recording: a junction named "migrations" or
         # "prisma" must not activate the database agent from outside the tree.
         if _is_reparse_dir(entry):
@@ -208,7 +225,7 @@ def _find_db_markers(directory, depth, found):
         if depth < DB_SCAN_DEPTH and entry.is_dir():
             if entry.name in IGNORED_DIRS:
                 continue
-            _find_db_markers(entry, depth + 1, found)
+            _find_db_markers(entry, depth + 1, found, budget)
 
 
 def _build_facts(target, state, truncated):

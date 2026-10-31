@@ -73,8 +73,9 @@ takes the floor, and an explicit estimate is raised to at least half the floor
 `synthesize` flags: `--baseline <file>` for the tech-debt trend line,
 `--format markdown|json|both` (default `markdown`), `--effort max|min` (defaults
 to the state file), and `--allow-partial` to emit a report below the gate.
-Exit codes: `0` success, `1` completion gate or eval miss, `2` usage, manifest,
-or baseline error.
+Exit codes: `0` success, `1` completion gate, malformed-results threshold,
+or eval miss, `2` usage, manifest, invalid state, unreadable or missing
+results, malformed agent JSON, baseline, or cache/report write error.
 
 ## Benchmarks
 

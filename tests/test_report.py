@@ -381,6 +381,29 @@ class TestFormatting(unittest.TestCase):
         self.assertEqual(report_mod.fmt_hours_long(2), "2 hours")
         self.assertEqual(report_mod.fmt_hours_long(2.5), "2.5 hours")
 
+    def test_non_finite_hours_do_not_raise(self):
+        self.assertEqual(report_mod.fmt_hours(float("inf")), "infh")
+        self.assertEqual(report_mod.fmt_hours_long(float("-inf")), "-inf hours")
+        # Finite estimates can sum past the float range.
+        self.assertEqual(report_mod.fmt_hours(1e308 + 1e308), "infh")
+        huge = 10 ** 400
+        self.assertEqual(report_mod.fmt_hours(huge), str(huge) + "h")
+
+    def test_markdown_renders_a_non_finite_debt_total(self):
+        model = pipeline.synthesize(
+            _manifest(),
+            {"security": result("security", [
+                {"finding": GOOD, "severity": "LOW", "est_hours": 1,
+                 "da_verdict": "CONFIRMED"},
+            ])},
+            ["security"],
+        )
+        model["tech_debt"]["total_hours"] = float("inf")
+        model["tech_debt"]["by_domain"] = {"security": float("inf")}
+        md = report_mod.render_markdown(model)
+        self.assertIn("**Total estimated**: inf hours", md)
+        self.assertIn("security: infh", md)
+
     def test_pipe_escaped(self):
         model = pipeline.synthesize(
             _manifest(),

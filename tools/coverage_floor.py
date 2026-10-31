@@ -37,9 +37,15 @@ def check(report, floor=DEFAULT_FLOOR):
             failures.append((path, 0.0))
             continue
         percent = summary.get("percent_covered")
-        # json.load accepts NaN and Infinity; NaN < floor is always False, so
-        # a malformed report would otherwise pass the gate.
-        if percent is None or not math.isfinite(percent):
+        # json.load accepts NaN, Infinity and huge integers; NaN < floor is
+        # always False and math.isfinite(10**400) raises OverflowError, so
+        # coerce first and fail anything that cannot be a finite float.
+        try:
+            percent = float(percent)
+            valid = math.isfinite(percent)
+        except (OverflowError, TypeError, ValueError):
+            valid = False
+        if not valid:
             failures.append((path, 0.0))
         elif percent < floor:
             failures.append((path, percent))

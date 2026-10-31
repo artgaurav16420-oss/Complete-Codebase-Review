@@ -808,6 +808,79 @@ class TestLocalFallbackLinkLikeSkills(_BaseInstallTest):
             self.assertEqual(list(outside.iterdir()), [])
 
 
+class TestLocalSkillsPointingAtWorkingTree(_BaseInstallTest):
+    """A .skills link to the working tree is refused by install and uninstall."""
+
+    def _work_tree(self, tmp):
+        work = Path(tmp) / "work"
+        work.mkdir()
+        (work / "SKILL.md").write_text("repo sentinel", encoding="utf-8")
+        try:
+            create_directory_link(work / ".skills", work)
+        except OSError as exc:
+            self.skipTest("directory links unavailable: " + str(exc))
+        return work
+
+    def test_install_refused_and_tree_intact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = self._work_tree(tmp)
+            src = Path(tmp) / "src"
+            src.mkdir()
+            (src / "SKILL.md").write_text("body", encoding="utf-8")
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    with self.assertRaises(SystemExit) as ctx:
+                        self.install._run_local_fallback(src, False)
+            finally:
+                os.chdir(old)
+            self.assertEqual(ctx.exception.code, 1)
+            self.assertIn("Local installation failed", out.getvalue())
+            self.assertIn("working directory or a parent", out.getvalue())
+            self.assertFalse((work / "complete-codebase-review").exists())
+            self.assertTrue((work / "SKILL.md").exists())
+
+    def test_uninstall_refused_and_tree_intact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = self._work_tree(tmp)
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install, "get_target_dirs",
+                                  return_value={}), \
+                     patch("sys.argv", ["install.py", "--uninstall"]), \
+                     patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    code = self.install.main()
+            finally:
+                os.chdir(old)
+            self.assertEqual(code, 1)
+            self.assertIn("Uninstall incomplete", out.getvalue())
+            self.assertIn("working directory or a parent", out.getvalue())
+            self.assertTrue((work / "SKILL.md").exists())
+            self.assertFalse((work / "complete-codebase-review").exists())
+
+    def test_ancestor_target_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            work.mkdir()
+            try:
+                create_directory_link(work / ".skills", Path(tmp))
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                # _validate_target_path already rejects ancestors; the
+                # helper is the second layer for the working-directory case.
+                with self.assertRaises(ValueError):
+                    self.install._resolve_local_skills()
+            finally:
+                os.chdir(old)
+
+
 class TestCredentialName(_BaseInstallTest):
     """Credential stores must never be copied into a skill directory."""
 

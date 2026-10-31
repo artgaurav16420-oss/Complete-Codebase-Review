@@ -143,6 +143,15 @@ def _archive_results(cache, agent_ids=()):
             dest = base / f"{stamp}-{suffix}"
             suffix += 1
             attempts += 1
+    # The checks above are racy: previous-results can be swapped for a link
+    # between them and the mkdir, which would move stale results outside the
+    # cache. Re-assert both the parent and the created directory.
+    if _is_link_like(base):
+        raise OSError("refusing to archive through symlink: " + str(base))
+    if _is_link_like(dest) or not dest.is_dir():
+        raise OSError(
+            "archive directory is not a real directory: " + str(dest)
+        )
     moved = []
     try:
         for path in stale:
@@ -214,9 +223,11 @@ def cmd_record(args):
         state_path, plan["target"], args.skill_dir, args.effort
     )
     if previous is not None:
+        # A re-review counts only once synthesize emits its report; an
+        # abandoned run must not advance the every-3rd full-rescan rule.
         current.data["re_review_count"] = int(
             previous.get("re_review_count") or 0
-        ) + 1
+        )
     current.data["effort"] = args.effort
     current.data["skill_dir"] = args.skill_dir
     current.data["facts"] = plan["facts"]
@@ -379,6 +390,7 @@ def cmd_synthesize(args):
     target = args.target or (cached.data["target_dir"] if cached else args.cache)
     facts = None
     re_review_count = 0
+    counted_state = None
     if cached is not None:
         stored = cached.data.get("target_dir", "")
         try:
@@ -392,6 +404,7 @@ def cmd_synthesize(args):
         if same_target:
             facts = cached.data.get("facts")
             re_review_count = cached.data.get("re_review_count", 0)
+            counted_state = cached
         else:
             print(
                 "[WARN] cached facts belong to " + stored
@@ -437,10 +450,15 @@ def cmd_synthesize(args):
         print("[ERROR] " + str(exc))
         return 2
     try:
-        return _emit_synthesis_output(model, args)
+        code = _emit_synthesis_output(model, args)
     except (OSError, UnicodeError, ValueError) as exc:
         print("[ERROR] could not write report: " + str(exc))
         return 2
+    if code == 0 and counted_state is not None:
+        # Only a report that reached the user completes the re-review.
+        counted_state.data["re_review_count"] = re_review_count + 1
+        counted_state.save()
+    return code
 
 
 def cmd_validate_results(args):

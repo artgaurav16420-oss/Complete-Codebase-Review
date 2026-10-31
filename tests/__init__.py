@@ -12,27 +12,34 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 
+def _reject_cmd_metacharacters(path):
+    """Refuse a path that cmd.exe would re-parse inside the junction call."""
+    for char in ('"', "&", "|", "<", ">", "^", "%"):
+        if char in path:
+            raise OSError(
+                "cannot link a path containing {!r}: {}".format(char, path)
+            )
+
+
 def create_directory_link(link, target):
     """Link ``link`` to the ``target`` directory.
 
     On Windows a junction (``mklink /J``) is tried first because
-    ``os.symlink`` needs Developer Mode or the symlink privilege; every
-    other platform starts with ``os.symlink``. Each mechanism falls back to
-    the other. Raises OSError when neither works.
+    ``os.symlink`` needs Developer Mode or the symlink privilege, with
+    ``os.symlink`` as the fallback. On POSIX ``os.symlink`` is the only
+    mechanism. Raises OSError when no mechanism works.
     """
     link, target = str(link), str(target)
-    if '"' in link or '"' in target:
-        raise OSError(
-            "cannot link a path containing a double quote: "
-            "{} -> {}".format(link, target)
-        )
+    _reject_cmd_metacharacters(link)
+    _reject_cmd_metacharacters(target)
     junction_error = None
     if sys.platform == "win32":
-        # cmd.exe re-parses its command line, so both paths are quoted; a
-        # double quote inside a path cannot be escaped and is rejected above.
-        command = 'mklink /J "{}" "{}"'.format(link, target)
+        # A separate argv element per argument lets list2cmdline quote spaces
+        # correctly; cmd.exe still re-parses the line, so characters it
+        # treats specially are rejected above.
         result = subprocess.run(
-            ["cmd", "/c", command], capture_output=True, text=True
+            ["cmd", "/c", "mklink", "/J", link, target],
+            capture_output=True, text=True,
         )
         if result.returncode == 0:
             return

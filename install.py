@@ -425,6 +425,31 @@ def _validate_target_path(path):
     return resolved
 
 
+def _resolve_local_skills():
+    """Resolve .skills/ in the working directory, refusing links to the tree.
+
+    A .skills junction pointing at the working directory (or an ancestor)
+    resolves to the repo root, so installing would copy the skill into the
+    checkout and uninstall would delete it from there. Both are refused.
+
+    Returns:
+        Path: The resolved local .skills directory.
+
+    Raises:
+        ValueError: If the path is invalid or resolves to the working
+            directory or one of its parents.
+    """
+    local = Path.cwd() / ".skills"
+    resolved = _validate_target_path(local)
+    cwd = Path.cwd().resolve()
+    if resolved == cwd or cwd.is_relative_to(resolved):
+        raise ValueError(
+            "Refusing to use a .skills directory that resolves to the "
+            "working directory or a parent: {} -> {}".format(local, resolved)
+        )
+    return resolved
+
+
 def _print_ccr_hint():
     """Explain how to run the bundled ccr module after installation."""
     print_info(
@@ -545,7 +570,7 @@ def _run_uninstall(target, dry_run):
         local = Path.cwd() / ".skills"
         if local.exists():
             try:
-                local = _validate_target_path(local)
+                local = _resolve_local_skills()
                 if remove_skill(local, dry_run):
                     removed += 1
                     print_info("Removed local .skills install")
@@ -568,7 +593,7 @@ def _run_local_fallback(src_dir, dry_run):
     """Install to .skills/ under the current working directory, exiting on error."""
     local_target = Path.cwd() / ".skills"
     try:
-        local_target = _validate_target_path(local_target)
+        local_target = _resolve_local_skills()
     except ValueError as e:
         print_error(f"Local installation failed: {e}")
         sys.exit(1)

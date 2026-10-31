@@ -4,10 +4,20 @@ The Markdown contract is validated by tests/test_pipeline.py; keep the
 section names and table headers exactly as written here.
 """
 
+import math
+
 
 def _fmt_number(value):
     """Format a number without trailing zeros: 2.0 -> '2', 2.5 -> '2.5'."""
-    number = round(float(value), 2)
+    try:
+        number = round(float(value), 2)
+    except OverflowError:
+        # An integer beyond float range is still finite; render it as given.
+        return str(value)
+    if not math.isfinite(number):
+        # Finite estimates can sum past the float range, and int(inf) raises.
+        # The float repr ("inf"/"-inf") is the honest value here.
+        return str(number)
     if number == int(number):
         return str(int(number))
     return str(number)
@@ -345,7 +355,7 @@ def validate_markdown(md):
         # Require a total: even a zero-finding report renders
         # "**Total estimated**: 0 hours", so there is no legitimate gap.
         errors.append("tech-debt total missing")
-    elif total is not None and found_domain and abs(domain_sum - total) >= 0.5:
+    elif found_domain and abs(domain_sum - total) >= 0.5:
         errors.append(
             "tech-debt mismatch: by-domain {:.2f}h != total {:.2f}h".format(
                 domain_sum, total
