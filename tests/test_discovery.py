@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parent.parent
 DUMMY = ROOT / "tests" / "dummy_repo"
 
 
-class _CountingScan:
-    """Wrap os.scandir and record the entry names actually yielded."""
+class _MarkerLastScan:
+    """Yield every non-marker entry before any marker-named entry."""
 
-    def __init__(self, handle, seen):
+    def __init__(self, handle, marker):
         self._handle = handle
-        self._seen = seen
+        self._marker = marker
 
     def __enter__(self):
         return self
@@ -29,9 +29,13 @@ class _CountingScan:
         self._handle.close()
 
     def __iter__(self):
-        for entry in self._handle:
-            self._seen.append(entry.name)
-            yield entry
+        entries = list(self._handle)
+        for entry in entries:
+            if entry.name != self._marker:
+                yield entry
+        for entry in entries:
+            if entry.name == self._marker:
+                yield entry
 
 
 class TestDiscover(unittest.TestCase):
@@ -92,25 +96,40 @@ class TestDiscover(unittest.TestCase):
             facts = discovery.discover(str(root))
         self.assertEqual(facts["database"], ["prisma"])
 
-    def test_db_scan_stops_at_the_entry_budget(self):
-        # The budget bounds the entries read, so a wide directory is never
-        # materialised in full.
+    def test_marker_in_the_tail_of_a_wide_directory_is_found(self):
+        # Every entry is streamed for markers; the entry cap only bounds how
+        # many subdirectories are recursed into.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for index in range(20):
-                (root / ("bbb_dir_{:02d}".format(index))).mkdir()
-            seen = []
+                (root / ("aaa_dir_{:02d}".format(index))).mkdir()
+            (root / "schema.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
             real_scandir = os.scandir
 
-            def counting_scandir(path):
-                return _CountingScan(real_scandir(path), seen)
+            def tailed_scandir(path):
+                return _MarkerLastScan(real_scandir(path), "schema.sql")
+
+            visited = []
+            real_find = discovery._find_db_markers
+
+            def counting_find(directory, depth, found, budget=None):
+                visited.append(directory)
+                return real_find(directory, depth, found, budget)
 
             with mock.patch.object(discovery, "DB_SCAN_MAX_ENTRIES", 10):
                 with mock.patch.object(
-                        discovery.os, "scandir", counting_scandir):
-                    found = []
-                    discovery._find_db_markers(root, 1, found)
-        self.assertEqual(len(seen), 10)
+                        discovery, "_find_db_markers", counting_find):
+                    with mock.patch.object(
+                            discovery.os, "scandir", tailed_scandir):
+                        found = []
+                        discovery._find_db_markers(root, 1, found)
+        self.assertIn("schema.sql", found)
+        # The root plus at most the entry budget of recursed subdirectories,
+        # and the scan did recurse rather than give up at the root.
+        self.assertGreater(len(visited), 1)
+        self.assertLessEqual(len(visited), 11)
 
     def test_root_marker_is_seen_before_a_wide_subtree_spends_the_budget(self):
         # A wide directory sorts before schema.sql; its subtree must not use

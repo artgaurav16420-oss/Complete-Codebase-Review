@@ -92,11 +92,11 @@ DB_MARKERS = frozenset({
 # whole tree that _scan_tree already covers.
 DB_SCAN_DEPTH = 3
 
-# Upper bound on directory entries the DB scan visits. 5000 still covers a
-# root plus the first levels of a monorepo, where markers live (prisma/,
-# migrations/ at depth <= 3), while stopping a pathological wide tree that
-# max_files does not bound. Root markers remain reachable because the root
-# alone rarely exceeds a few hundred entries.
+# Upper bound on subdirectories the DB scan recurses into. Every directory
+# that is entered is streamed in full, so a marker in the tail of a wide
+# directory is still seen; this bound stops a pathological tree that
+# max_files does not bound. 5000 still covers a root plus the first levels of
+# a monorepo, where markers live (prisma/, migrations/ at depth <= 3).
 DB_SCAN_MAX_ENTRIES = 5000
 
 CONTAINER_MARKERS = frozenset({
@@ -197,66 +197,50 @@ def _has_symlinked_component(target, marker):
     return False
 
 
-def _bounded_entries(directory, limit):
-    """Return at most ``limit`` entries of a directory, sorted by name.
+def _find_db_markers(directory, depth, found, budget=None):
+    """Collect DB marker names under directory, down to DB_SCAN_DEPTH levels.
 
-    Scans incrementally so a pathologically wide directory is not
-    materialised and sorted in full before the entry budget applies; only the
-    bounded slice is sorted. Normal directories fit in the limit and keep
-    their previous sorted order.
+    ``budget`` is a one-element list shared by the recursion; it bounds how
+    many subdirectories the whole scan recurses into, independent of the
+    ``max_files`` cap applied to the main walk. Each directory is streamed in
+    full, so a marker in the tail of a wide directory is still seen, while
+    only marker names and at most the remaining budget of subdirectory names
+    are held in memory. Collected subdirectories are sorted so the walk stays
+    deterministic.
     """
-    entries = []
+    if budget is None:
+        budget = [DB_SCAN_MAX_ENTRIES]
+    subdirs = []
     try:
         with os.scandir(str(directory)) as iterator:
             for entry in iterator:
-                entries.append(entry)
-                if len(entries) >= limit:
-                    break
+                # Check for links before recording: a junction named
+                # "migrations" or "prisma" must not activate the database
+                # agent from outside the tree.
+                if _is_reparse_dir(entry.path):
+                    continue
+                if entry.name in DB_MARKERS:
+                    found.append(entry.name)
+                if depth >= DB_SCAN_DEPTH or entry.name in IGNORED_DIRS:
+                    continue
+                if len(subdirs) >= budget[0]:
+                    continue
+                try:
+                    is_dir = entry.is_dir()
+                except OSError:
+                    # The entry vanished between listing and inspection.
+                    is_dir = False
+                if is_dir:
+                    subdirs.append(entry.name)
     except OSError as exc:
         raise ValueError(
             "cannot list directory: {} ({})".format(directory, exc)
         )
-    entries.sort(key=lambda entry: entry.name)
-    return entries
-
-
-def _find_db_markers(directory, depth, found, budget=None):
-    """Collect DB marker names under directory, down to DB_SCAN_DEPTH levels.
-
-    ``budget`` is a one-element list shared by the recursion so the whole
-    scan stops after ``DB_SCAN_MAX_ENTRIES`` entries, independent of the
-    ``max_files`` cap applied to the main walk. Every entry at the current
-    level is checked before any subtree is entered, so a wide early subtree
-    cannot spend the budget ahead of a marker beside it.
-    """
-    if budget is None:
-        budget = [DB_SCAN_MAX_ENTRIES]
-    if budget[0] <= 0:
-        return
-    limit = min(budget[0], DB_SCAN_MAX_ENTRIES)
-    entries = _bounded_entries(directory, limit)
-    budget[0] -= len(entries)
-    subdirs = []
-    for entry in entries:
-        # Check for links before recording: a junction named "migrations" or
-        # "prisma" must not activate the database agent from outside the tree.
-        if _is_reparse_dir(entry.path):
-            continue
-        if entry.name in DB_MARKERS:
-            found.append(entry.name)
-        if depth >= DB_SCAN_DEPTH or entry.name in IGNORED_DIRS:
-            continue
-        try:
-            is_dir = entry.is_dir()
-        except OSError:
-            # The entry vanished between listing and inspection.
-            is_dir = False
-        if is_dir:
-            subdirs.append(entry.path)
-    for path in subdirs:
-        if budget[0] <= 0:
-            return
-        _find_db_markers(path, depth + 1, found, budget)
+    subdirs.sort()
+    # Pay for every descent up front so the whole scan stays inside budget.
+    budget[0] -= len(subdirs)
+    for name in subdirs:
+        _find_db_markers(Path(directory) / name, depth + 1, found, budget)
 
 
 def _build_facts(target, state, truncated):

@@ -838,7 +838,7 @@ class TestLocalSkillsPointingAtWorkingTree(_BaseInstallTest):
                 os.chdir(old)
             self.assertEqual(ctx.exception.code, 1)
             self.assertIn("Local installation failed", out.getvalue())
-            self.assertIn("working directory or a parent", out.getvalue())
+            self.assertIn("link-like .skills", out.getvalue())
             self.assertFalse((work / "complete-codebase-review").exists())
             self.assertTrue((work / "SKILL.md").exists())
 
@@ -858,7 +858,7 @@ class TestLocalSkillsPointingAtWorkingTree(_BaseInstallTest):
                 os.chdir(old)
             self.assertEqual(code, 1)
             self.assertIn("Uninstall incomplete", out.getvalue())
-            self.assertIn("working directory or a parent", out.getvalue())
+            self.assertIn("link-like .skills", out.getvalue())
             self.assertTrue((work / "SKILL.md").exists())
             self.assertFalse((work / "complete-codebase-review").exists())
 
@@ -879,6 +879,86 @@ class TestLocalSkillsPointingAtWorkingTree(_BaseInstallTest):
                     self.install._resolve_local_skills()
             finally:
                 os.chdir(old)
+
+    def test_working_tree_target_is_refused_without_the_link_check(self):
+        # The link-like rejection runs first; patch it off to keep the
+        # cwd/ancestor guard exercised on its own.
+        with tempfile.TemporaryDirectory() as tmp:
+            work = self._work_tree(tmp)
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install, "_is_link_like",
+                                  return_value=False):
+                    with self.assertRaises(ValueError) as ctx:
+                        self.install._resolve_local_skills()
+            finally:
+                os.chdir(old)
+            self.assertIn("working directory or a parent", str(ctx.exception))
+
+
+class TestLocalSkillsPointingAtCheckoutChild(_BaseInstallTest):
+    """A .skills link to a child of the checkout is refused, not followed."""
+
+    def _work_tree(self, tmp):
+        work = Path(tmp) / "work"
+        child = work / "source"
+        child.mkdir(parents=True)
+        (child / "SKILL.md").write_text("source sentinel", encoding="utf-8")
+        installed = child / "complete-codebase-review"
+        installed.mkdir()
+        (installed / "SKILL.md").write_text("installed sentinel",
+                                            encoding="utf-8")
+        try:
+            create_directory_link(work / ".skills", child)
+        except OSError as exc:
+            self.skipTest("directory links unavailable: " + str(exc))
+        return work, child
+
+    def test_install_refused_and_tree_intact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, child = self._work_tree(tmp)
+            src = Path(tmp) / "src"
+            src.mkdir()
+            (src / "SKILL.md").write_text("body", encoding="utf-8")
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    with self.assertRaises(SystemExit) as ctx:
+                        self.install._run_local_fallback(src, False)
+            finally:
+                os.chdir(old)
+            self.assertEqual(ctx.exception.code, 1)
+            self.assertIn("Local installation failed", out.getvalue())
+            self.assertIn("link-like .skills", out.getvalue())
+            self.assertTrue((child / "SKILL.md").exists())
+            self.assertEqual(
+                (child / "complete-codebase-review" / "SKILL.md").read_text(
+                    encoding="utf-8"),
+                "installed sentinel",
+            )
+
+    def test_uninstall_refused_and_tree_intact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, child = self._work_tree(tmp)
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install, "get_target_dirs",
+                                  return_value={}), \
+                     patch("sys.argv", ["install.py", "--uninstall"]), \
+                     patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    code = self.install.main()
+            finally:
+                os.chdir(old)
+            self.assertEqual(code, 1)
+            self.assertIn("Uninstall incomplete", out.getvalue())
+            self.assertIn("link-like .skills", out.getvalue())
+            self.assertTrue(
+                (child / "complete-codebase-review" / "SKILL.md").exists())
 
 
 class TestCredentialName(_BaseInstallTest):

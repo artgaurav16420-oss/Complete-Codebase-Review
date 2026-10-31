@@ -289,11 +289,32 @@ def find_overlaps(findings):
     return clusters
 
 
-def _overlap_representative(members):
+def _phase_one_promoted(item, security_domains=frozenset()):
+    """True when place_roadmap would promote this finding to Phase 1.
+
+    CRITICAL always reaches Phase 1; HIGH only when the security agent raised
+    it. An ineligible finding is never placed, so it cannot be promoted.
+    """
+    if not roadmap_eligible(item):
+        return False
+    severity = normalize_severity(item.get("severity"))
+    return severity == "CRITICAL" or (
+        severity == "HIGH" and _is_security(item, security_domains)
+    )
+
+
+def _overlap_representative(members, security_domains=frozenset()):
+    """Pick the member whose roadmap placement the cluster keeps.
+
+    Eligible first, then a finding place_roadmap promotes to Phase 1: merging
+    a HIGH security finding under a costlier non-security HIGH would lose the
+    Phase 1 promotion the security finding earned.
+    """
     return sorted(
         members,
         key=lambda item: (
             0 if roadmap_eligible(item) else 1,
+            0 if _phase_one_promoted(item, security_domains) else 1,
             SEVERITY_WEIGHT[normalize_severity(item.get("severity"))],
             -_as_hours(item.get("est_hours")),
             item.get("id", ""),
@@ -614,10 +635,16 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
 
     scores, total_counts = _score_domains(open_findings)
 
+    # Same set place_roadmap applies (it always adds the literal "Security").
+    security_domains = {
+        display for display, agent_id in domain_agents.items()
+        if agent_id == SECURITY_AGENT_ID
+    } | {"Security"}
+
     overlap_candidates = []
     merged_ids = set()
     for members in find_overlaps(findings):
-        rep = _overlap_representative(members)
+        rep = _overlap_representative(members, security_domains)
         merged = [item for item in members if item is not rep]
         for item in merged:
             item["overlap_of"] = rep.get("id", "")
@@ -634,7 +661,7 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
         if len(remaining) < 2:
             continue
         members = remaining
-        rep = _overlap_representative(members)
+        rep = _overlap_representative(members, security_domains)
         overlap_candidates.append({
             "file": anchor_parts(rep.get("finding", ""))[0],
             "kept": rep.get("id", ""),
@@ -647,10 +674,7 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
 
     phases = place_roadmap(
         roadmap_source,
-        security_domains={
-            display for display, agent_id in domain_agents.items()
-            if agent_id == SECURITY_AGENT_ID
-        },
+        security_domains=security_domains,
     )
     roadmap_hours, total_hours, by_domain = _roadmap_summary(phases)
 

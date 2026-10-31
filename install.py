@@ -426,20 +426,26 @@ def _validate_target_path(path):
 
 
 def _resolve_local_skills():
-    """Resolve .skills/ in the working directory, refusing links to the tree.
+    """Resolve .skills/ in the working directory, refusing links.
 
-    A .skills junction pointing at the working directory (or an ancestor)
-    resolves to the repo root, so installing would copy the skill into the
-    checkout and uninstall would delete it from there. Both are refused.
+    A link-like .skills is never a legitimate local install. One pointing at
+    the working directory (or an ancestor) resolves to the repo root, so
+    installing would copy the skill into the checkout and uninstall would
+    delete it from there; one pointing at a child of the checkout would copy
+    or delete the source tree inside itself.
 
     Returns:
         Path: The resolved local .skills directory.
 
     Raises:
-        ValueError: If the path is invalid or resolves to the working
+        ValueError: If the path is a link, or resolves to the working
             directory or one of its parents.
     """
     local = Path.cwd() / ".skills"
+    if _is_link_like(local):
+        raise ValueError(
+            "Refusing to use a link-like .skills directory: " + str(local)
+        )
     resolved = _validate_target_path(local)
     cwd = Path.cwd().resolve()
     if resolved == cwd or cwd.is_relative_to(resolved):

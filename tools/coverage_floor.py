@@ -54,6 +54,19 @@ def check(report, floor=DEFAULT_FLOOR):
     return failures
 
 
+def _shape_error(report):
+    """Describe why a report cannot be coverage JSON, or return ""."""
+    files = report.get("files")
+    if files is not None and not isinstance(files, dict):
+        return "expected a files object, got " + type(files).__name__
+    if isinstance(files, dict):
+        for entry in files.values():
+            if not isinstance(entry, dict):
+                return ("file entries must be JSON objects, got "
+                        + type(entry).__name__)
+    return ""
+
+
 def main(argv):
     path = argv[1] if len(argv) > 1 else "coverage.json"
     floor = float(argv[2]) if len(argv) > 2 else DEFAULT_FLOOR
@@ -66,6 +79,11 @@ def main(argv):
     if not isinstance(report, dict):
         print("[ERROR] cannot read coverage report {}: expected a JSON object, "
               "got {}".format(path, type(report).__name__))
+        return 1
+    shape_error = _shape_error(report)
+    if shape_error:
+        print("[ERROR] cannot read coverage report {}: {}".format(
+            path, shape_error))
         return 1
     failures = check(report, floor)
     for path, percent in failures:

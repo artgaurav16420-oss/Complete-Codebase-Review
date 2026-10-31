@@ -536,6 +536,26 @@ class TestOverlaps(unittest.TestCase):
         rep = f._overlap_representative(items)
         self.assertEqual(rep["da_verdict"], "CONFIRMED")
 
+    def test_security_high_survives_a_costlier_non_security_high(self):
+        # Merging the security finding away would drop the Phase 1 promotion
+        # place_roadmap gives a HIGH security finding.
+        items = f.assign_ids([
+            make("[app.py:7] \u2014 unsanitised input in query \u2192 injection",
+                 severity="HIGH", domain="Security", agent="security", hours=2),
+            make("[app.py:7] \u2014 unsanitised input in query \u2192 injection",
+                 severity="HIGH", domain="Architecture",
+                 agent="architecture", hours=40),
+        ])
+        model = f.aggregate(
+            items, [], ["security", "architecture"],
+            ["security", "architecture"],
+        )
+        candidate = model["overlap_candidates"][0]
+        self.assertEqual(candidate["kept"], items[0]["id"])
+        self.assertEqual(candidate["merged"], [items[1]["id"]])
+        phase_one = [item.get("id") for item in model["roadmap"][1]]
+        self.assertIn(items[0]["id"], phase_one)
+
     def test_different_failures_stay_separate(self):
         items = f.assign_ids(f.dedup([
             make("[a.py:1] \u2014 unbounded dependency range \u2192 stale "

@@ -143,6 +143,26 @@ class TestCoverageFloorMain(unittest.TestCase):
                       result.stdout)
         self.assertNotIn("Traceback", result.stderr)
 
+    def test_files_value_that_is_not_an_object_exits_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": ["ccr/a.py"]})
+            result = self._run_script(path)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("[ERROR] cannot read coverage report " + path,
+                      result.stdout)
+        self.assertIn("files object", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_file_entry_that_is_not_an_object_exits_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": {"ccr/a.py": 95.0}})
+            result = self._run_script(path)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("[ERROR] cannot read coverage report " + path,
+                      result.stdout)
+        self.assertIn("file entries must be JSON objects", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_module_guard_turns_main_result_into_exit_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._write_report(tmp, {"files": {"ccr/a.py": entry(70.0)}})

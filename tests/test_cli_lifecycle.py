@@ -567,6 +567,29 @@ class TestCliReReviewBaseline(unittest.TestCase):
         # The emitted report completes the re-review, so the next run sees 3.
         self.assertEqual(self._state_count(), 3)
 
+    def test_rerun_on_identical_results_counts_once(self):
+        self._write_state(re_review_count=2)
+        self._synthesize_json()
+        self._synthesize_json()
+        # Same payload reviewed twice is one completed review, not two.
+        self.assertEqual(self._state_count(), 3)
+
+    def test_changed_results_advance_the_count_again(self):
+        self._write_state(re_review_count=2)
+        self._synthesize_json()
+        path = self.cache / "phase_security.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["findings"].append({
+            "finding": "[app.py:9] \u2014 unchecked index \u2192 crash on "
+                       "empty list",
+            "severity": "LOW",
+            "est_hours": 1,
+            "da_verdict": "CONFIRMED",
+        })
+        path.write_text(json.dumps(data), encoding="utf-8")
+        self._synthesize_json()
+        self.assertEqual(self._state_count(), 4)
+
     def test_failed_report_write_does_not_advance_count(self):
         self._write_state(re_review_count=2)
         with mock.patch.object(

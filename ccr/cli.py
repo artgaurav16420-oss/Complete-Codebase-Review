@@ -1,6 +1,7 @@
 """Command-line interface for the review pipeline."""
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -318,6 +319,16 @@ def _load_synthesis_results(args, planned):
     return results, completed
 
 
+def _results_signature(results):
+    """Return a stable digest of the agent result payloads a run loaded.
+
+    Re-running synthesize on the same cached payloads is the same review, so
+    the digest decides whether the re-review counter advances.
+    """
+    payload = json.dumps(results, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _emit_synthesis_output(model, args):
     """Write the report model to stdout or files; return the exit code."""
     if not args.out:
@@ -429,6 +440,7 @@ def cmd_synthesize(args):
     except (OSError, ValueError) as exc:
         print("[ERROR] " + str(exc))
         return 2
+    signature = _results_signature(results)
     gate_error = _check_completion_gate(
         data, effort, planned, completed, gate_known, args
     )
@@ -458,8 +470,11 @@ def cmd_synthesize(args):
         print("[ERROR] could not write report: " + str(exc))
         return 2
     if code == 0 and counted_state is not None:
-        # Only a report that reached the user completes the re-review.
-        counted_state.data["re_review_count"] = re_review_count + 1
+        # Only a report that reached the user completes the re-review, and a
+        # rerun on unchanged results is the same review, not a new one.
+        if counted_state.data.get("last_synth_signature") != signature:
+            counted_state.data["re_review_count"] = re_review_count + 1
+        counted_state.data["last_synth_signature"] = signature
         try:
             counted_state.save()
         except OSError as exc:
