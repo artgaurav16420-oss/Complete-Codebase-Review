@@ -737,6 +737,68 @@ class TestCliReReviewBaseline(unittest.TestCase):
         self.assertFalse(state_path.exists())
 
 
+class TestPersistReviewCounter(unittest.TestCase):
+    """A report may only be credited to the state it was synthesized for."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.state_path = self.dir / "ccr-state.json"
+        self.cached = self._write_state(str(TARGET), count=2)
+
+    def _write_state(self, target_dir, count=0):
+        data = {
+            "target_dir": target_dir,
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": ["security"],
+            "re_review_count": count,
+        }
+        self.state_path.write_text(json.dumps(data), encoding="utf-8")
+        return cli.state.State.load(self.state_path)
+
+    def _count(self):
+        data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        return data["re_review_count"]
+
+    def test_matching_target_increments_and_returns_true(self):
+        saved = cli._persist_review_counter(self.cached, "sig-a", str(TARGET))
+        self.assertTrue(saved)
+        self.assertEqual(self._count(), 3)
+
+    def test_same_signature_twice_increments_only_once(self):
+        cli._persist_review_counter(self.cached, "sig-a", str(TARGET))
+        cli._persist_review_counter(self.cached, "sig-a", str(TARGET))
+        self.assertEqual(self._count(), 3)
+
+    def test_mismatched_target_leaves_the_counter_unchanged(self):
+        # A concurrent `record` for another directory swapped the state; this
+        # report's count and signature must not be credited to the new target.
+        other = self.dir / "other-target"
+        other.mkdir()
+        err = io.StringIO()
+        with redirect_stderr(err):
+            saved = cli._persist_review_counter(
+                self.cached, "sig-a", str(other))
+        self.assertFalse(saved)
+        self.assertIn("state now belongs to " + str(TARGET), err.getvalue())
+        self.assertEqual(self._count(), 2)
+        data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        self.assertNotIn("last_synth_signature", data)
+
+    def test_missing_state_file_warns_and_returns_false(self):
+        self.state_path.unlink()
+        err = io.StringIO()
+        with redirect_stderr(err):
+            saved = cli._persist_review_counter(
+                self.cached, "sig-a", str(TARGET))
+        self.assertFalse(saved)
+        self.assertIn("[WARN] could not update re-review counter",
+                      err.getvalue())
+        self.assertFalse(self.state_path.exists())
+
+
 class TestCliVersionGuard(unittest.TestCase):
     """A broken manifest must not raise JSONDecodeError at import."""
 

@@ -6,7 +6,6 @@ regressing while the total stays green.
 """
 
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -40,16 +39,14 @@ def check(report, floor=DEFAULT_FLOOR):
         # `coverage json` writes a JSON number here. `float()` would also
         # accept the string "100" or the boolean true, so a malformed report
         # could pass the gate; only int/float count (bool is an int subclass).
-        # json.load accepts NaN, Infinity and huge integers; NaN < floor is
-        # always False and math.isfinite(10**400) raises OverflowError, so the
-        # finiteness check still runs inside a try.
-        valid = isinstance(percent, (int, float)) and not isinstance(
-            percent, bool)
-        if valid:
-            try:
-                valid = math.isfinite(percent)
-            except OverflowError:
-                valid = False
+        # The range check keeps 150 and -1 out, and it also rejects NaN (every
+        # comparison is False) and the infinities (both exceed 100), so no
+        # separate finiteness test is needed.
+        valid = (
+            isinstance(percent, (int, float))
+            and not isinstance(percent, bool)
+            and 0 <= percent <= 100
+        )
         if not valid:
             failures.append((path, 0.0))
         elif percent < floor:
@@ -86,7 +83,9 @@ def _parse_floor(value):
         floor = float(value)
     except (TypeError, ValueError):
         return None
-    if not math.isfinite(floor) or not 0.0 <= floor <= 100.0:
+    # `float` only yields a finite value or an infinity here, and the range
+    # check rejects both infinities and NaN, so no separate finiteness test.
+    if not 0.0 <= floor <= 100.0:
         return None
     return floor
 

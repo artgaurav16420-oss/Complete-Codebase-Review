@@ -378,6 +378,65 @@ def _load_baseline(path):
     return data
 
 
+def _persist_review_counter(cached, signature, target):
+    """Credit a completed re-review to the state file; return True on success.
+
+    Re-reads the file instead of saving the snapshot loaded before synthesis:
+    a concurrent `record` may have rewritten the state, and saving the stale
+    object would drop its planned agents and facts. That record may also have
+    pointed the file at another target, in which case this report's count and
+    signature belong to the old target and must not be credited here.
+
+    Only a report that reached the user completes the re-review, and a rerun
+    on unchanged results is the same review, not a new one. The base is the
+    freshly loaded count, not the snapshot taken before synthesis: a
+    concurrent run may have advanced it, and `snapshot + 1` would overwrite
+    that review.
+    """
+    try:
+        fresh = state.State.load(cached.path)
+        if fresh is None:
+            raise ValueError("state file disappeared")
+    except (OSError, ValueError) as exc:
+        print(
+            "[WARN] could not update re-review counter: {}".format(exc),
+            file=sys.stderr,
+        )
+        return False
+    stored = fresh.data.get("target_dir") or ""
+    try:
+        same_target = (
+            not stored or Path(target).resolve() == Path(stored).resolve()
+        )
+    except (OSError, RuntimeError):
+        # resolve() raises on a symlink loop; a target we cannot resolve is
+        # not the cached one.
+        same_target = False
+    if not same_target:
+        print(
+            "[WARN] state now belongs to " + stored
+            + "; re-review counter unchanged",
+            file=sys.stderr,
+        )
+        return False
+    if fresh.data.get("last_synth_signature") != signature:
+        fresh.data["re_review_count"] = (
+            fresh.data.get("re_review_count", 0) + 1
+        )
+    fresh.data["last_synth_signature"] = signature
+    try:
+        fresh.save()
+    except OSError as exc:
+        # The report is already out; a read-only cache must not turn a
+        # successful run into a traceback.
+        print(
+            "[WARN] could not update re-review counter: {}".format(exc),
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
@@ -470,38 +529,7 @@ def cmd_synthesize(args):
         print("[ERROR] could not write report: " + str(exc))
         return 2
     if code == 0 and counted_state is not None:
-        # Re-read the file instead of saving the snapshot loaded before
-        # synthesis: a concurrent `record` may have rewritten the state, and
-        # saving the stale object would drop its planned agents and facts.
-        try:
-            fresh = state.State.load(counted_state.path)
-            if fresh is None:
-                raise ValueError("state file disappeared")
-        except (OSError, ValueError) as exc:
-            print(
-                "[WARN] could not update re-review counter: {}".format(exc),
-                file=sys.stderr,
-            )
-        else:
-            # Only a report that reached the user completes the re-review, and
-            # a rerun on unchanged results is the same review, not a new one.
-            # The base is the freshly loaded count, not the snapshot taken
-            # before synthesis: a concurrent run may have advanced it, and
-            # `snapshot + 1` would overwrite that review.
-            if fresh.data.get("last_synth_signature") != signature:
-                fresh.data["re_review_count"] = (
-                    fresh.data.get("re_review_count", 0) + 1
-                )
-            fresh.data["last_synth_signature"] = signature
-            try:
-                fresh.save()
-            except OSError as exc:
-                # The report is already out; a read-only cache must not turn a
-                # successful run into a traceback.
-                print(
-                    "[WARN] could not update re-review counter: {}".format(exc),
-                    file=sys.stderr,
-                )
+        _persist_review_counter(counted_state, signature, target)
     return code
 
 

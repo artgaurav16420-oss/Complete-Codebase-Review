@@ -64,6 +64,20 @@ class TestCoverageFloor(unittest.TestCase):
         report = {"files": {"src/a.py": {"summary": {"percent_covered": True}}}}
         self.assertEqual(check(report), [("src/a.py", 0.0)])
 
+    def test_percent_above_one_hundred_is_rejected(self):
+        # 150 is a valid number but not a percentage; unvalidated it clears
+        # every floor.
+        report = {"files": {"src/a.py": entry(150)}}
+        self.assertEqual(check(report), [("src/a.py", 0.0)])
+
+    def test_negative_percent_is_rejected(self):
+        report = {"files": {"src/a.py": entry(-1)}}
+        self.assertEqual(check(report), [("src/a.py", 0.0)])
+
+    def test_percent_of_one_hundred_passes(self):
+        report = {"files": {"src/a.py": entry(100)}}
+        self.assertEqual(check(report), [])
+
 
 class TestCoverageFloorMain(unittest.TestCase):
     """main() is the CI gate: its return value is the step's exit code."""
