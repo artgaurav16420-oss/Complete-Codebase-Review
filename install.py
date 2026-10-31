@@ -557,6 +557,13 @@ def remove_skill(dest_dir, dry_run):
         print_info("[DRY-RUN] Would remove " + str(skill_dest))
         return True
     root = _containment_root(dest_dir)
+    # Re-assert as late as possible. The caller validated dest_dir before this
+    # call, and a swap in between would move the containment root with it, so
+    # the check is repeated immediately before anything is resolved or removed.
+    if _is_link_like(Path(dest_dir)):
+        raise ValueError(
+            "Refusing to remove from a link-like target: " + str(dest_dir)
+        )
     if _is_link_like(skill_dest):
         _remove_link_like(skill_dest)
     else:
@@ -565,6 +572,12 @@ def remove_skill(dest_dir, dry_run):
             raise ValueError("Refusing to remove target root: " + str(resolved))
         if not resolved.is_relative_to(root):
             raise ValueError("Refusing to remove path outside target: " + str(resolved))
+        # Last gate before the recursive delete: rmtree refuses a symlink root
+        # but follows a Windows junction, so check the reparse point here.
+        if _is_link_like(resolved):
+            raise ValueError(
+                "Refusing to remove a link-like target: " + str(resolved)
+            )
         if resolved.is_dir():
             if sys.version_info >= (3, 12):
                 shutil.rmtree(str(resolved), onexc=_onerror)
