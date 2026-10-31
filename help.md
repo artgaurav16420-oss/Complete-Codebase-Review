@@ -82,7 +82,12 @@ that need no model:
 | `python -m ccr validate-results --in .code-review-cache` | Malformed-result check over cached agent results |
 | `python -m ccr eval` | Scores recorded fixtures against `tests/expected_issues.json` |
 
-Flags: `--effort max|min`, `--agents a,b`, `--max-files N`, `--format markdown|json|both`.
+Flags are scoped per command, not global. `plan` and `record` accept
+`--effort max|min`, `--agents a,b`, and `--max-files N`; `plan` also accepts
+`--json`. `synthesize` accepts `--agents` and `--format markdown|json|both`
+(default `markdown`) but not `--max-files`; its `--effort` defaults to the value
+recorded in `ccr-state.json`. `validate-results` accepts `--agents` and
+`--json`, and `eval` accepts `--json`.
 `synthesize` refuses to emit a report when too few planned agents returned; pass
 `--allow-partial` only when you accept the missing domains.
 

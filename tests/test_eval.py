@@ -123,8 +123,9 @@ class TestOrganizerBenchmark(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = ROOT / "tests" / "fixtures" / "organizer"
+        cls.spec_path = root / "expected.json"
         cls.model, cls.score = pipeline.run_eval(
-            manifest_mod.load(), root / "agents", root / "expected.json"
+            manifest_mod.load(), root / "agents", cls.spec_path
         )
 
     def test_full_coverage(self):
@@ -142,19 +143,24 @@ class TestOrganizerBenchmark(unittest.TestCase):
 
     def test_precision_encodes_false_positive(self):
         self.assertGreaterEqual(self.score["precision"], 0.94)
-
-    def test_known_false_positive_detected(self):
-        self.assertEqual(len(self.score["known_false_positives"]), 1)
         self.assertGreaterEqual(self.score["verified_precision"], 0.94)
 
+    def test_known_false_positive_detected(self):
+        # Hard pin: the spec records exactly one false positive and the
+        # fixtures still report it. Losing the detection fails here instead of
+        # skipping; precision floors live in the sibling test.
+        self.assertEqual(len(self.score["known_false_positives"]), 1)
+
     def test_false_positive_is_the_dry_run_finding(self):
-        needle = self.score["known_false_positives"][0]
-        matches = [
-            item for item in self.model["findings"]
-            if needle in item["finding"]
-        ]
-        self.assertEqual(len(matches), 1)
-        self.assertIn("fsops.py:534", matches[0]["finding"])
+        detected = self.score["known_false_positives"]
+        self.assertEqual(len(detected), 1)
+        for needle in detected:
+            matches = [
+                item for item in self.model["findings"]
+                if needle in item["finding"]
+            ]
+            self.assertEqual(len(matches), 1, needle)
+            self.assertIn("fsops.py:534", matches[0]["finding"])
 
     def test_markdown_contract(self):
         from ccr import report

@@ -9,9 +9,33 @@ from unittest import mock
 
 from ccr import discovery
 from ccr import manifest as manifest_mod
+from tests import create_directory_link
 
 ROOT = Path(__file__).resolve().parent.parent
 DUMMY = ROOT / "tests" / "dummy_repo"
+
+
+class _MarkerLastScan:
+    """Yield every non-marker entry before any marker-named entry."""
+
+    def __init__(self, handle, marker):
+        self._handle = handle
+        self._marker = marker
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._handle.close()
+
+    def __iter__(self):
+        entries = list(self._handle)
+        for entry in entries:
+            if entry.name != self._marker:
+                yield entry
+        for entry in entries:
+            if entry.name == self._marker:
+                yield entry
 
 
 class TestDiscover(unittest.TestCase):
@@ -49,6 +73,138 @@ class TestDiscover(unittest.TestCase):
             (workflows / "archive.yml").mkdir()
             facts = discovery.discover(str(root))
             self.assertEqual(facts["ci"], [".github/workflows/ci.yml"])
+
+    def test_db_markers_in_service_subdirectory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "server" / "prisma").mkdir(parents=True)
+            (root / "server" / "prisma" / "schema.prisma").write_text(
+                "datasource db {}\n", encoding="utf-8"
+            )
+            (root / "server" / "migrations").mkdir()
+            (root / "server" / "migrations" / "001_init.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
+            facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], ["migrations", "prisma"])
+
+    def test_db_scan_stops_at_the_depth_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps" / "api" / "prisma").mkdir(parents=True)
+            (root / "a" / "b" / "c" / "migrations").mkdir(parents=True)
+            facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], ["prisma"])
+
+    def test_marker_in_the_tail_of_a_wide_directory_is_found(self):
+        # Entries are streamed in order until the visit budget runs out, so a
+        # marker at the tail of a directory the budget covers is still seen.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for index in range(20):
+                (root / ("aaa_dir_{:02d}".format(index))).mkdir()
+            (root / "schema.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
+            real_scandir = os.scandir
+
+            def tailed_scandir(path):
+                return _MarkerLastScan(real_scandir(path), "schema.sql")
+
+            visited = []
+            real_find = discovery._find_db_markers
+
+            def counting_find(directory, depth, found, budget=None):
+                visited.append(directory)
+                return real_find(directory, depth, found, budget)
+
+            with mock.patch.object(discovery, "DB_SCAN_MAX_ENTRIES", 50):
+                with mock.patch.object(
+                        discovery, "_find_db_markers", counting_find):
+                    with mock.patch.object(
+                            discovery.os, "scandir", tailed_scandir):
+                        found = []
+                        discovery._find_db_markers(root, 1, found)
+        self.assertIn("schema.sql", found)
+        # The root plus at most the entry budget of recursed subdirectories,
+        # and the scan did recurse rather than give up at the root.
+        self.assertGreater(len(visited), 1)
+        self.assertLessEqual(len(visited), 21)
+
+    def test_root_marker_is_seen_before_a_wide_subtree_spends_the_budget(self):
+        # A wide directory sorts before schema.sql; its subtree must not use
+        # the shared budget up before the marker beside it is checked.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wide = root / "aaa_dir"
+            wide.mkdir()
+            for index in range(20):
+                (wide / ("f{:02d}.txt".format(index))).write_text(
+                    "x", encoding="utf-8"
+                )
+            (root / "schema.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
+            with mock.patch.object(discovery, "DB_SCAN_MAX_ENTRIES", 10):
+                facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], ["schema.sql"])
+
+    def test_entry_budget_stops_a_wide_directory(self):
+        # A wide directory must not be streamed in full when the visit budget
+        # is small; the scan stops once the budget is spent.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wide = root / "wide"
+            wide.mkdir()
+            for index in range(40):
+                (wide / ("f{:02d}.txt".format(index))).write_text(
+                    "x", encoding="utf-8"
+                )
+            counted = []
+            real_scandir = os.scandir
+
+            class _CountingScan:
+                def __init__(self, handle):
+                    self._handle = handle
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc_info):
+                    self._handle.close()
+
+                def __iter__(self):
+                    for entry in self._handle:
+                        counted.append(entry.name)
+                        yield entry
+
+            def counting_scandir(path):
+                if Path(path) in (root, wide):
+                    return _CountingScan(real_scandir(path))
+                return real_scandir(path)
+
+            with mock.patch.object(discovery.os, "scandir", counting_scandir):
+                found = []
+                discovery._find_db_markers(root, 1, found, [10, 10])
+        self.assertEqual(found, [])
+        # One root entry plus nine of the wide directory's forty.
+        self.assertEqual(len(counted), 10)
+
+    def test_linked_migrations_directory_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            outside = Path(tmp) / "outside"
+            (outside / "migrations").mkdir(parents=True)
+            (outside / "migrations" / "001_init.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
+            try:
+                create_directory_link(root / "migrations", outside / "migrations")
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], [])
 
     def test_target_is_resolved(self):
         self.assertTrue(self.facts["target"].endswith("dummy_repo"))
@@ -299,6 +455,22 @@ class TestPlan(unittest.TestCase):
     def test_top_dirs_excludes_synthetic_root(self):
         plan = discovery.plan(self.manifest, DUMMY)
         self.assertNotIn(".", plan["facts"]["top_dirs"])
+
+    def test_max_files_caps_the_db_scan_budget(self):
+        # A capped plan carries its cap into the marker scan so discovery
+        # stays bounded on a very wide tree.
+        seen = []
+        real_find = discovery._find_db_markers
+
+        def recording_find(directory, depth, found, budget=None):
+            seen.append(list(budget) if budget is not None else None)
+            return real_find(directory, depth, found, budget)
+
+        with mock.patch.object(discovery, "_find_db_markers",
+                               recording_find):
+            plan = discovery.plan(self.manifest, DUMMY, max_files=3)
+        self.assertTrue(plan["facts"]["truncated"])
+        self.assertEqual(seen[0][0], 3)
 
 
 class TestProcessFile(unittest.TestCase):

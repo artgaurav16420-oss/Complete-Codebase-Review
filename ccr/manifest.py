@@ -7,6 +7,9 @@ env vars, enums, thresholds, and tech-debt floors.
 import json
 from pathlib import Path
 
+from . import findings as findings_mod
+from . import report as report_mod
+
 MANIFEST_PATH = Path(__file__).resolve().parent / "pipeline.json"
 
 REQUIRED_KEYS = [
@@ -94,15 +97,42 @@ def _validate_thresholds(data, agent_ids):
             raise ValueError("quick agent not in manifest: " + agent_id)
 
 
-def _validate_enums(data):
-    """Check the severity and DA-verdict enums carry required members."""
-    severities = data["severities"]
-    if "CRITICAL" not in severities or "HIGH" not in severities:
-        raise ValueError("severities must include CRITICAL and HIGH")
+def _enum_mismatch(declared, enforced):
+    """Return the first declared/enforced enum disagreement, or None."""
+    for value in declared:
+        if value not in enforced:
+            return "unexpected value: " + str(value)
+    for value in enforced:
+        if value not in declared:
+            return "missing value: " + value
+    return None
 
-    verdicts = data["da_verdicts"]
-    if "REJECTED" not in verdicts:
-        raise ValueError("da_verdicts must include REJECTED")
+
+# Enums the code enforces, keyed by manifest field. Adding a value here means
+# changing the constant the loader compares against, not just pipeline.json.
+ENUM_SOURCES = (
+    ("severities", findings_mod.SEVERITIES, "ccr.findings.SEVERITIES"),
+    ("da_verdicts", findings_mod.VERDICTS, "ccr.findings.VERDICTS"),
+    ("health", report_mod.HEALTH_VALUES, "ccr.report.HEALTH_VALUES"),
+)
+
+
+def _validate_enums(data):
+    """Check manifest enum lists match the constants the code enforces.
+
+    A manifest value outside the enforced set would only be coerced later
+    (LOW / QUESTIONABLE), silently down-ranking findings and zeroing tech
+    debt, so drift is rejected at load instead.
+    """
+    for key, enforced, source in ENUM_SOURCES:
+        declared = data[key]
+        if not isinstance(declared, list):
+            raise ValueError("manifest " + key + " must be a list")
+        mismatch = _enum_mismatch(declared, enforced)
+        if mismatch:
+            raise ValueError(
+                "manifest " + key + " must match " + source + ": " + mismatch
+            )
 
 
 def validate(data):

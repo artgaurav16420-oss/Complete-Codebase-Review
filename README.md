@@ -416,7 +416,8 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 | Python compliance | `python tests/compliance_test.py` | SKILL.md contract checks |
 | Review skill compliance | `python tests/review_compliance_test.py` | `skills/review/SKILL.md` contract checks |
 | Python unit suite | `python -m unittest discover -s tests -p "test_*.py"` | Runs in under a second |
-| Install tests | `python tests/test_install.py` | Installer and uninstaller |
+| Install tests | `python tests/test_install.py` | Installer: target paths, copy, checksums |
+| Uninstall tests | `python tests/test_uninstall.py` | `--uninstall` removal, dry-run, Windows junctions |
 | Pipeline core | `python tests/test_pipeline_core.py` | Gates, synthesis, rendering |
 | Eval harness | `python -m ccr eval` | Fixture coverage against expected issues (source checkout only) |
 | Organizer benchmark | `python -m ccr eval --fixtures tests/fixtures/organizer/agents --expected tests/fixtures/organizer/expected.json` | Real recorded run, 94% verified precision |
@@ -425,8 +426,10 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 | Windows test | `powershell tests/Test-Windows.ps1` | End-to-end (Windows) |
 
 `./test.sh` is the aggregate gate on Unix: skill contract checks, generated-doc
-drift, `ccr eval`, both compliance suites, and the unit suite (under coverage
-when the `coverage` package is installed).
+drift, `ccr eval`, both compliance suites, and the unit suite under coverage.
+The coverage gate is mandatory: when the `coverage` package is missing,
+`./test.sh` fails and prints the install line
+`python -m pip install 'coverage>=7.0,<8'`.
 
 ---
 

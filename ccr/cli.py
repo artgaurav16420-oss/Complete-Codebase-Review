@@ -1,9 +1,12 @@
 """Command-line interface for the review pipeline."""
 
 import argparse
+import hashlib
 import json
 import math
+import os
 import shutil
+import stat
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +15,7 @@ from . import __version__, manifest as manifest_mod
 from . import discovery, findings as findings_mod, pipeline, providers, state
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+ARCHIVE_MAX_ATTEMPTS = 100
 
 
 def _manifest():
@@ -78,6 +82,28 @@ def cmd_plan(args):
     return 0
 
 
+def _is_link_like(path):
+    """Return True for symlinks and, on Windows, junction/reparse points."""
+    try:
+        if Path(path).is_symlink():
+            return True
+    except OSError:
+        pass
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is not None:
+        try:
+            if isjunction(str(path)):
+                return True
+        except OSError:
+            pass
+    try:
+        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
+    except OSError:
+        return False
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(flag and attrs & flag)
+
+
 def _archive_results(cache, agent_ids=()):
     """Move previous agent results aside so they cannot be counted again.
 
@@ -93,18 +119,43 @@ def _archive_results(cache, agent_ids=()):
     if not stale:
         return 0
     base = root / "previous-results"
-    if base.is_symlink():
+    if _is_link_like(base):
         raise OSError("refusing to archive through symlink: " + str(base))
+    if base.exists() and not base.is_dir():
+        raise OSError("archive parent is not a directory: " + str(base))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     dest = base / stamp
     suffix = 1
+    attempts = 1
     while True:
         try:
             dest.mkdir(parents=True)
             break
-        except FileExistsError:
+        except FileExistsError as exc:
+            if not base.is_dir():
+                raise OSError(
+                    "archive parent is not a directory: " + str(base)
+                ) from exc
+            if attempts >= ARCHIVE_MAX_ATTEMPTS:
+                raise OSError(
+                    "no free archive name under " + str(base)
+                    + " after " + str(attempts) + " attempts"
+                ) from exc
             dest = base / f"{stamp}-{suffix}"
             suffix += 1
+            attempts += 1
+    # The pre-check above and the mkdir are racy: previous-results can be
+    # swapped for a link between them and the moves, which would send stale
+    # results outside the cache. Re-assert the parent and the created
+    # directory right before the moves. A window remains between this check
+    # and each shutil.move, and is accepted: an attacker able to rewrite the
+    # cache while record runs already controls the archived results.
+    if _is_link_like(base):
+        raise OSError("refusing to archive through symlink: " + str(base))
+    if _is_link_like(dest) or not dest.is_dir():
+        raise OSError(
+            "archive directory is not a real directory: " + str(dest)
+        )
     moved = []
     try:
         for path in stale:
@@ -176,9 +227,11 @@ def cmd_record(args):
         state_path, plan["target"], args.skill_dir, args.effort
     )
     if previous is not None:
+        # A re-review counts only once synthesize emits its report; an
+        # abandoned run must not advance the every-3rd full-rescan rule.
         current.data["re_review_count"] = int(
             previous.get("re_review_count") or 0
-        ) + 1
+        )
     current.data["effort"] = args.effort
     current.data["skill_dir"] = args.skill_dir
     current.data["facts"] = plan["facts"]
@@ -266,6 +319,16 @@ def _load_synthesis_results(args, planned):
     return results, completed
 
 
+def _results_signature(results):
+    """Return a stable digest of the agent result payloads a run loaded.
+
+    Re-running synthesize on the same cached payloads is the same review, so
+    the digest decides whether the re-review counter advances.
+    """
+    payload = json.dumps(results, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _emit_synthesis_output(model, args):
     """Write the report model to stdout or files; return the exit code."""
     if not args.out:
@@ -315,6 +378,65 @@ def _load_baseline(path):
     return data
 
 
+def _persist_review_counter(cached, signature, target):
+    """Credit a completed re-review to the state file; return True on success.
+
+    Re-reads the file instead of saving the snapshot loaded before synthesis:
+    a concurrent `record` may have rewritten the state, and saving the stale
+    object would drop its planned agents and facts. That record may also have
+    pointed the file at another target, in which case this report's count and
+    signature belong to the old target and must not be credited here.
+
+    Only a report that reached the user completes the re-review, and a rerun
+    on unchanged results is the same review, not a new one. The base is the
+    freshly loaded count, not the snapshot taken before synthesis: a
+    concurrent run may have advanced it, and `snapshot + 1` would overwrite
+    that review.
+    """
+    try:
+        fresh = state.State.load(cached.path)
+        if fresh is None:
+            raise ValueError("state file disappeared")
+    except (OSError, ValueError) as exc:
+        print(
+            "[WARN] could not update re-review counter: {}".format(exc),
+            file=sys.stderr,
+        )
+        return False
+    stored = fresh.data.get("target_dir") or ""
+    try:
+        same_target = (
+            not stored or Path(target).resolve() == Path(stored).resolve()
+        )
+    except (OSError, RuntimeError):
+        # resolve() raises on a symlink loop; a target we cannot resolve is
+        # not the cached one.
+        same_target = False
+    if not same_target:
+        print(
+            "[WARN] state now belongs to " + stored
+            + "; re-review counter unchanged",
+            file=sys.stderr,
+        )
+        return False
+    if fresh.data.get("last_synth_signature") != signature:
+        fresh.data["re_review_count"] = (
+            fresh.data.get("re_review_count", 0) + 1
+        )
+    fresh.data["last_synth_signature"] = signature
+    try:
+        fresh.save()
+    except OSError as exc:
+        # The report is already out; a read-only cache must not turn a
+        # successful run into a traceback.
+        print(
+            "[WARN] could not update re-review counter: {}".format(exc),
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
@@ -340,10 +462,22 @@ def cmd_synthesize(args):
         effort = cached.data.get("effort", "max") if cached is not None else "max"
     target = args.target or (cached.data["target_dir"] if cached else args.cache)
     facts = None
+    re_review_count = 0
+    counted_state = None
     if cached is not None:
-        stored = cached.data.get("target_dir", "")
-        if not stored or Path(target).resolve() == Path(stored).resolve():
+        stored = cached.data.get("target_dir") or ""
+        try:
+            same_target = (
+                not stored or Path(target).resolve() == Path(stored).resolve()
+            )
+        except (OSError, RuntimeError):
+            # resolve() raises on a symlink loop; a target we cannot resolve
+            # is not the cached one.
+            same_target = False
+        if same_target:
             facts = cached.data.get("facts")
+            re_review_count = cached.data.get("re_review_count", 0)
+            counted_state = cached
         else:
             print(
                 "[WARN] cached facts belong to " + stored
@@ -365,6 +499,7 @@ def cmd_synthesize(args):
     except (OSError, ValueError) as exc:
         print("[ERROR] " + str(exc))
         return 2
+    signature = _results_signature(results)
     gate_error = _check_completion_gate(
         data, effort, planned, completed, gate_known, args
     )
@@ -383,15 +518,19 @@ def cmd_synthesize(args):
         model = pipeline.synthesize(
             data, results, planned, completed=completed, target=target,
             facts=facts, baseline=baseline,
+            re_review_count=re_review_count,
         )
     except ValueError as exc:
         print("[ERROR] " + str(exc))
         return 2
     try:
-        return _emit_synthesis_output(model, args)
+        code = _emit_synthesis_output(model, args)
     except (OSError, UnicodeError, ValueError) as exc:
         print("[ERROR] could not write report: " + str(exc))
         return 2
+    if code == 0 and counted_state is not None:
+        _persist_review_counter(counted_state, signature, target)
+    return code
 
 
 def cmd_validate_results(args):

@@ -59,6 +59,20 @@ def _remove_link_like(path):
         path.unlink()
 
 
+def _containment_root(path):
+    """Anchor a containment check without following a link at ``path``.
+
+    Resolving ``path`` itself would move the anchor onto a link's target, so
+    only the ancestors are resolved and the last component is kept as named.
+    A directory swapped for a link therefore stays outside its own anchor and
+    the child comparison fails instead of redirecting the delete.
+    """
+    path = Path(path)
+    if path.parent == path:
+        return path
+    return path.parent.resolve(strict=False) / path.name
+
+
 def _compute_sha256(file_path):
     """Compute SHA-256 hash of a file.
     
@@ -155,9 +169,12 @@ def _onerror(func, path, exc_info):
     func(path)
 
 
-_CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+_CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore", ".jks")
 _CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
-_CREDENTIAL_NAMES = {"credentials", "credentials.json", ".netrc"}
+_CREDENTIAL_NAMES = {
+    "credentials", "credentials.json", ".netrc",
+    ".git-credentials", ".npmrc", ".pypirc", ".htpasswd",
+}
 
 
 def _is_credential_name(name):
@@ -174,18 +191,6 @@ def _is_credential_name(name):
         or lowered.startswith(_CREDENTIAL_PREFIXES)
         or lowered.endswith(_CREDENTIAL_SUFFIXES)
     )
-
-
-def _is_link_like(path):
-    """True for a symlink, a Windows junction, or any reparse point."""
-    try:
-        if os.path.islink(str(path)):
-            return True
-        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
-    except OSError:
-        return False
-    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    return bool(flag and attrs & flag)
 
 
 def _ignore_skill_files(path, names):
@@ -321,6 +326,13 @@ def copy_skill(src_dir, dest_dir):
         OSError: If the copy operation fails.
     """
     try:
+        if _is_link_like(dest_dir):
+            # Installing through a link would copy into, and delete an old
+            # install from, the link's target rather than the named directory.
+            raise ValueError(
+                "Refusing to install through a link-like target: "
+                + str(dest_dir)
+            )
         if not dest_dir.exists():
             dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -332,7 +344,7 @@ def copy_skill(src_dir, dest_dir):
                 _remove_link_like(skill_dest)
             else:
                 resolved = skill_dest.resolve(strict=False)
-                root = dest_dir.resolve(strict=False)
+                root = _containment_root(dest_dir)
                 if resolved == root:
                     raise ValueError(
                         f"Refusing to replace target root {root}"
@@ -349,6 +361,14 @@ def copy_skill(src_dir, dest_dir):
                 else:
                     resolved.unlink()
 
+        # Re-assert at the last moment: these guards run before the previous
+        # install is removed, and a swap in between would send copytree into
+        # the link's target instead of the named directory.
+        if _is_link_like(dest_dir):
+            raise ValueError(
+                "Refusing to install through a link-like target: "
+                + str(dest_dir)
+            )
         shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
         _validate_no_escaped_symlinks(skill_dest)
 
@@ -434,6 +454,37 @@ def _validate_target_path(path):
     return resolved
 
 
+def _resolve_local_skills():
+    """Resolve .skills/ in the working directory, refusing links.
+
+    A link-like .skills is never a legitimate local install. One pointing at
+    the working directory (or an ancestor) resolves to the repo root, so
+    installing would copy the skill into the checkout and uninstall would
+    delete it from there; one pointing at a child of the checkout would copy
+    or delete the source tree inside itself.
+
+    Returns:
+        Path: The resolved local .skills directory.
+
+    Raises:
+        ValueError: If the path is a link, or resolves to the working
+            directory or one of its parents.
+    """
+    local = Path.cwd() / ".skills"
+    if _is_link_like(local):
+        raise ValueError(
+            "Refusing to use a link-like .skills directory: " + str(local)
+        )
+    resolved = _validate_target_path(local)
+    cwd = Path.cwd().resolve()
+    if resolved == cwd or cwd.is_relative_to(resolved):
+        raise ValueError(
+            "Refusing to use a .skills directory that resolves to the "
+            "working directory or a parent: {} -> {}".format(local, resolved)
+        )
+    return resolved
+
+
 def _print_ccr_hint():
     """Explain how to run the bundled ccr module after installation."""
     print_info(
@@ -498,6 +549,14 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
 
 def remove_skill(dest_dir, dry_run):
     """Remove an installed skill directory. Returns True if something was removed."""
+    if _is_link_like(Path(dest_dir)):
+        # Refuse before anything under dest_dir is resolved. A directory
+        # swapped for a link after the caller validated it would otherwise
+        # move the containment root onto the link target and let the
+        # recursive delete run outside the intended tree.
+        raise ValueError(
+            "Refusing to remove from a link-like target: " + str(dest_dir)
+        )
     skill_dest = Path(dest_dir) / "complete-codebase-review"
     if not os.path.lexists(str(skill_dest)):
         print_info("Not installed: " + str(skill_dest))
@@ -505,7 +564,14 @@ def remove_skill(dest_dir, dry_run):
     if dry_run:
         print_info("[DRY-RUN] Would remove " + str(skill_dest))
         return True
-    root = Path(dest_dir).resolve(strict=False)
+    root = _containment_root(dest_dir)
+    # Re-assert as late as possible. The caller validated dest_dir before this
+    # call, and a swap in between would move the containment root with it, so
+    # the check is repeated immediately before anything is resolved or removed.
+    if _is_link_like(Path(dest_dir)):
+        raise ValueError(
+            "Refusing to remove from a link-like target: " + str(dest_dir)
+        )
     if _is_link_like(skill_dest):
         _remove_link_like(skill_dest)
     else:
@@ -514,6 +580,12 @@ def remove_skill(dest_dir, dry_run):
             raise ValueError("Refusing to remove target root: " + str(resolved))
         if not resolved.is_relative_to(root):
             raise ValueError("Refusing to remove path outside target: " + str(resolved))
+        # Last gate before the recursive delete: rmtree refuses a symlink root
+        # but follows a Windows junction, so check the reparse point here.
+        if _is_link_like(resolved):
+            raise ValueError(
+                "Refusing to remove a link-like target: " + str(resolved)
+            )
         if resolved.is_dir():
             if sys.version_info >= (3, 12):
                 shutil.rmtree(str(resolved), onexc=_onerror)
@@ -554,6 +626,7 @@ def _run_uninstall(target, dry_run):
         local = Path.cwd() / ".skills"
         if local.exists():
             try:
+                local = _resolve_local_skills()
                 if remove_skill(local, dry_run):
                     removed += 1
                     print_info("Removed local .skills install")
@@ -575,6 +648,11 @@ def _run_uninstall(target, dry_run):
 def _run_local_fallback(src_dir, dry_run):
     """Install to .skills/ under the current working directory, exiting on error."""
     local_target = Path.cwd() / ".skills"
+    try:
+        local_target = _resolve_local_skills()
+    except ValueError as e:
+        print_error(f"Local installation failed: {e}")
+        sys.exit(1)
     gitignore = Path.cwd() / ".gitignore"
     if gitignore.exists() and any(
         line.strip() in [".skills", ".skills/"]

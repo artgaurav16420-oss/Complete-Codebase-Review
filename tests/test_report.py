@@ -54,6 +54,27 @@ def result(agent, findings):
     return {"agent": agent, "findings": findings}
 
 
+def _active_brackets(text):
+    """Return the brackets Markdown would read as unescaped.
+
+    A bracket is escaped when an odd number of backslashes precedes it;
+    an even count means the first pair is a literal backslash and the
+    bracket stays active.
+    """
+    active = []
+    for index, char in enumerate(text):
+        if char not in "[]":
+            continue
+        slashes = 0
+        cursor = index - 1
+        while cursor >= 0 and text[cursor] == "\\":
+            slashes += 1
+            cursor -= 1
+        if slashes % 2 == 0:
+            active.append(char)
+    return active
+
+
 class TestMarkdown(unittest.TestCase):
     """Rendered Markdown passes the schema contract."""
 
@@ -140,6 +161,20 @@ class TestMarkdown(unittest.TestCase):
         self.assertNotIn("![x](", md.splitlines()[0])
         self.assertIn("\\[x\\]", md.splitlines()[0])
 
+    def test_target_backslash_does_not_cancel_a_bracket_escape(self):
+        for target in (
+            "C:\\a\\[click](https://example.com)\\b",
+            "C:\\a\\[click\\](https://example.com)\\b",
+        ):
+            with self.subTest(target=target):
+                model = dict(self.model)
+                model["target"] = target
+                heading = report_mod.render_markdown(model).splitlines()[0]
+                # A live "[" ... "](url)" pair would become a clickable link.
+                self.assertEqual(_active_brackets(heading), [])
+                self.assertIn("click", heading)
+                self.assertIn("example.com", heading)
+
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")
         self.assertTrue(report_mod.validate_markdown(broken))
@@ -160,6 +195,27 @@ class TestMarkdown(unittest.TestCase):
         )
         md = report_mod.render_markdown(model)
         self.assertEqual(report_mod.validate_markdown(md), [])
+
+    def test_missing_total_is_rejected_when_by_domain_present(self):
+        broken = "\n".join(
+            line for line in self.md.splitlines()
+            if not line.startswith("**Total estimated**")
+        )
+        self.assertIn(
+            "tech-debt total missing",
+            report_mod.validate_markdown(broken),
+        )
+
+    def test_missing_total_is_rejected_without_by_domain(self):
+        broken = "\n".join(
+            line for line in self.md.splitlines()
+            if not line.startswith("**Total estimated**")
+            and not line.startswith("**By domain**")
+        )
+        self.assertIn(
+            "tech-debt total missing",
+            report_mod.validate_markdown(broken),
+        )
 
     def test_half_hour_mismatch_is_rejected(self):
         import re
@@ -359,6 +415,29 @@ class TestFormatting(unittest.TestCase):
     def test_long_format(self):
         self.assertEqual(report_mod.fmt_hours_long(2), "2 hours")
         self.assertEqual(report_mod.fmt_hours_long(2.5), "2.5 hours")
+
+    def test_non_finite_hours_do_not_raise(self):
+        self.assertEqual(report_mod.fmt_hours(float("inf")), "infh")
+        self.assertEqual(report_mod.fmt_hours_long(float("-inf")), "-inf hours")
+        # Finite estimates can sum past the float range.
+        self.assertEqual(report_mod.fmt_hours(1e308 + 1e308), "infh")
+        huge = 10 ** 400
+        self.assertEqual(report_mod.fmt_hours(huge), str(huge) + "h")
+
+    def test_markdown_renders_a_non_finite_debt_total(self):
+        model = pipeline.synthesize(
+            _manifest(),
+            {"security": result("security", [
+                {"finding": GOOD, "severity": "LOW", "est_hours": 1,
+                 "da_verdict": "CONFIRMED"},
+            ])},
+            ["security"],
+        )
+        model["tech_debt"]["total_hours"] = float("inf")
+        model["tech_debt"]["by_domain"] = {"security": float("inf")}
+        md = report_mod.render_markdown(model)
+        self.assertIn("**Total estimated**: inf hours", md)
+        self.assertIn("security: infh", md)
 
     def test_pipe_escaped(self):
         model = pipeline.synthesize(

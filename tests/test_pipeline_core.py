@@ -118,6 +118,16 @@ class TestSynthesize(unittest.TestCase):
         self.assertEqual(model["findings"], [])
         self.assertEqual(len(model["rejected"]), 1)
 
+    def test_baseline_re_review_count_defaults_to_zero(self):
+        model = pipeline.synthesize(_manifest(), _results(), ["security"])
+        self.assertEqual(model["baseline"]["re_review_count"], 0)
+
+    def test_baseline_carries_re_review_count(self):
+        model = pipeline.synthesize(
+            _manifest(), _results(), ["security"], re_review_count=2
+        )
+        self.assertEqual(model["baseline"]["re_review_count"], 2)
+
 
 class TestRenderAndWrite(unittest.TestCase):
     """Output rendering and file writing."""
@@ -223,6 +233,39 @@ class TestBaselineDomainIds(unittest.TestCase):
         self.assertIn("security", keys)
         self.assertIn("code_quality", keys)
         self.assertNotIn("Security", keys)
+
+    def test_id_colliding_with_another_report_name_stays_distinct(self):
+        # The architecture agent's label is also the security agent's id. The
+        # baseline is keyed by id, so "security" must not be remapped onto
+        # "architecture" and lose one score.
+        manifest = _manifest()
+        for agent in manifest["agents"]:
+            if agent["id"] == "architecture":
+                agent["report"] = "security"
+        results = {
+            "security": {"findings": [
+                {"finding": GOOD, "severity": "CRITICAL", "est_hours": 2,
+                 "da_verdict": "CONFIRMED"},
+            ]},
+            "architecture": {"findings": [
+                {"finding": "[c.py:3] \u2014 circular import between modules "
+                            "\u2192 startup deadlock",
+                 "severity": "LOW", "est_hours": 8,
+                 "da_verdict": "CONFIRMED"},
+            ]},
+        }
+        model = pipeline.synthesize(
+            manifest, results, ["security", "architecture"],
+        )
+        scores = model["baseline"]["per_domain_scores"]
+        open_findings = model["baseline"]["per_domain_open_findings"]
+        self.assertEqual(set(scores), {"security", "architecture"})
+        self.assertEqual(set(open_findings), {"security", "architecture"})
+        self.assertEqual(open_findings["security"], {"critical": 1, "high": 0})
+        self.assertEqual(
+            open_findings["architecture"], {"critical": 0, "high": 0},
+        )
+        self.assertEqual(scores["security"], 8.0)
 
 
 if __name__ == "__main__":

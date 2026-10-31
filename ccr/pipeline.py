@@ -75,8 +75,20 @@ def _codebase_size(facts):
 
 
 def _canonicalize_baseline(model, manifest):
-    """Remap baseline domain keys from report names to agent ids."""
-    display_to_id = {a["report"]: a["id"] for a in manifest["agents"]}
+    """Remap baseline domain keys from report names to agent ids.
+
+    ``aggregate`` already keys the baseline by agent id; the remap only exists
+    for a baseline read from an older report. A key that is itself a known
+    agent id is an id, not a label, so it passes through unchanged even when
+    some other agent's report name happens to match it. Without that, one
+    agent's score would be redirected onto another's and overwritten.
+    """
+    agent_ids = {a["id"] for a in manifest["agents"]}
+    display_to_id = {
+        a["report"]: a["id"]
+        for a in manifest["agents"]
+        if a["report"] not in agent_ids
+    }
     baseline = model["baseline"]
     baseline["per_domain_scores"] = {
         display_to_id.get(name, name): value
@@ -105,7 +117,7 @@ def malformed_exceeded(raw_count, malformed_count):
 
 
 def synthesize(manifest, results, planned, completed=None, target="",
-               facts=None, baseline=None, timestamp=None):
+               facts=None, baseline=None, timestamp=None, re_review_count=0):
     """Merge agent results into a report model.
 
     Applies mechanical DA checks, deduplicates, assigns ids, and aggregates.
@@ -119,6 +131,8 @@ def synthesize(manifest, results, planned, completed=None, target="",
         facts: Discovery facts, used for codebase size.
         baseline: Previous baseline for trend text.
         timestamp: ISO timestamp for the baseline snapshot.
+        re_review_count: Re-reviews performed so far, carried into the
+            baseline snapshot so the periodic full rescan can fire.
 
     Returns:
         dict: Report model.
@@ -142,6 +156,7 @@ def synthesize(manifest, results, planned, completed=None, target="",
     model = findings_mod.aggregate(
         kept, rejected, planned, completed,
         target=target, baseline=baseline,
+        re_review_count=re_review_count,
     )
     model["codebase_size"] = _codebase_size(facts)
     _canonicalize_baseline(model, manifest)

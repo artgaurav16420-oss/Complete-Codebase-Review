@@ -32,6 +32,13 @@ class TestPrompt(unittest.TestCase):
         self.assertIn("Focus ONLY on", prompt)
         self.assertIn("Do NOT flag adjacent domains", prompt)
 
+    def test_prompt_domain_is_the_agent_display_name(self):
+        prompt = providers.build_prompt(self.agent, "/tmp/repo", "/skills/ccr")
+        first_line = prompt.splitlines()[0]
+        self.assertIn(self.agent["name"], first_line)
+        self.assertNotIn(self.agent["coverage"], first_line)
+        self.assertIn(self.agent["coverage"], prompt)
+
     def test_newline_in_target_cannot_inject_prompt_lines(self):
         prompt = providers.build_prompt(
             self.agent,
