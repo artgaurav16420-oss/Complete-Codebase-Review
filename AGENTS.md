@@ -7,23 +7,30 @@ Karpathy Guidelines v3.7 MANDATORY: For all AI operations in this project, you M
 report rendering, eval. `install.py` installs the skill; `tools/generate.py`
 keeps generated docs in sync. Zero runtime deps, stdlib only, Python >= 3.9.
 
+Nothing needs installing to work here: `python -m ccr ...` and the whole test
+suite run from the repo root. `pip install .` only adds the `ccr` console
+script. `ccr` exits 2 on usage/manifest errors, 1 on gate or eval failures.
+
 ## Commands (verified)
 
 | Command | Purpose |
 |---------|---------|
 | `python -m unittest discover -s tests -p "test_*.py"` | Full suite (prints its own count, <2s). Run after **any** change. |
-| `python tests/compliance_test.py` | SKILL.md compliance only |
-| `python tests/review_compliance_test.py` | `skills/review/SKILL.md` compliance only |
+| `python tests/compliance_test.py` | SKILL.md contract only |
+| `python tests/review_compliance_test.py` | `skills/review/SKILL.md` contract only |
 | `python -m ccr eval` | Score fixtures; defaults to the synthetic dummy_repo set. Organizer benchmark: `--fixtures tests/fixtures/organizer/agents --expected tests/fixtures/organizer/expected.json` |
 | `python -m ccr plan .` | Discovery facts + selected agents (`--json`, `--effort min`) |
 | `python tools/generate.py` / `--check` | Rewrite / verify generated docs and checksum |
-| `make test` / `make test-py` / `make test-bash` | Unix wrappers |
-| `make test-windows` | Windows: `tests/Test-Windows.ps1` |
+| `make test` | `./test.sh`: eval + both compliance suites + unittest under coverage. Unix only |
+| `make test-py` | unittest + both compliance suites, no eval |
+| `make test-windows` | `tests/Test-Windows.ps1` (Windows) |
 | `make lint` | **Only** `py_compile` syntax check — there is no linter/formatter |
-| `python -m coverage run --source=. -m unittest discover -s tests -p "test_*.py" && python -m coverage report` | From **repo root**; threshold 85% |
+| `coverage run -m unittest discover -s tests -p "test_*.py"` then `coverage report`, `coverage json -o coverage.json`, `python tools/coverage_floor.py coverage.json` | Coverage gate: 85% total **and** 80% per module |
+| `python tools/metrics.py ccr` | Per-function cyclomatic complexity / LOC, ad hoc |
 | `python install.py --dry-run` / `--self-verify` / `--uninstall` | Preview / verify / remove |
 
-Never run a subset to "save time": the whole suite is seconds.
+Never run a subset to "save time": the whole suite is seconds. `make test-bash`
+is the same full run as `make test`, not a bash-only check.
 
 ## Architecture
 
@@ -40,27 +47,33 @@ ccr/              executable core
   cli.py          plan | record | synthesize | validate-results | eval
   manifest.py     manifest load + schema validation
   fileio.py       UTF-8 write helper used by pipeline and providers
-tools/generate.py regenerates doc tables + install.py.sha256 from pipeline.json
-install.py        installer (the only legacy standalone script)
+tools/generate.py  regenerates doc tables + install.py.sha256 from pipeline.json
+tools/coverage_floor.py  per-file coverage gate (CI only)
+tools/metrics.py         ad hoc complexity/LOC report
+install.py        installer (standalone; not a ccr subcommand)
 ```
 
 `record` writes one prompt per agent; the host executes them; `synthesize`
 ingests the JSON. `ccr` never calls a model — that is why it is testable.
+Cache dir defaults to `.code-review-cache/`; `ccr-state.json` and
+`previous-results/` live inside it.
 
 ## Editing rules
 
 - **Never hand-edit generated blocks** in `SKILL.md`, `README.md`, `help.md`,
   `orchestrator-rules.md`, `pyproject.toml`'s version, or `install.py.sha256`.
   Edit `ccr/pipeline.json`, run `python tools/generate.py`, commit all files.
-  CI runs `--check` and fails on drift.
-- **Version** is generated into `SKILL.md` and `pyproject.toml` from the
-  manifest; `CHANGELOG.md`'s top `## vX.Y.Z` is manual and enforced by
-  `test_version_sources_stay_in_sync`. `skills/review/SKILL.md` has its own
-  independent version — do not sync it.
-- **Tests assert exact substrings** in SKILL.md: emoji section headers
-  (`## 🔧 Environment Variables`, `## 💾 Checkpointing`, `## ⚡ Quick Mode`),
-  `effort: ${CODE_REVIEW_EFFORT:-max}`, table headers, phase names, enums.
-  Renaming or rewording these breaks the suite.
+  CI runs `--check` and fails on drift. The `<!-- BEGIN/END GENERATED: key -->`
+  markers themselves must survive — `generate.py` raises on a missing marker.
+- **Version** is generated into `SKILL.md`, `pyproject.toml`, and `help.md` from
+  the manifest; `CHANGELOG.md`'s top `## vX.Y.Z` is manual and enforced by
+  `tests/compliance_test.py:test_version_sources_stay_in_sync`.
+  `skills/review/SKILL.md` has its own independent version — do not sync it.
+- **Tests assert exact substrings in SKILL.md.** `tests/compliance_test.py`
+  pins phrases such as `effort: ${CODE_REVIEW_EFFORT:-max}`,
+  `NEVER modify the codebase during Phases 1-3`, `python -m ccr synthesize`,
+  `EST-CONFLICT`, `## Phase 4` / `## Phase 5`, and all 14 specialist agent
+  names. Rewording a pinned phrase fails the suite even when it reads better.
 - Never add `^model: ` to the frontmatter — `test.sh` and `Test-Windows.ps1`
   both fail on it.
 - Env-var set is locked by `tests/test_env_config.py:TABLE_VARS` (12 vars);
@@ -68,6 +81,10 @@ ingests the JSON. `ccr` never calls a model — that is why it is testable.
   scanned for unknown `CODE_REVIEW_*` names.
 - Severity / DA verdict / health values are closed enums validated by
   `tests/test_pipeline.py`.
+- **3.9 syntax floor.** CI covers 3.9-3.15 on Linux, Windows, macOS. No
+  `match`, no `X | Y` unions, no `dict | dict` — newer local Pythons accept
+  them, then CI fails.
+- **LF only.** `.gitattributes` is `* text=auto eol=lf`; write new files LF.
 
 ## Gotchas
 
@@ -80,34 +97,41 @@ ingests the JSON. `ccr` never calls a model — that is why it is testable.
   human-verified precision; its `expected.json` excludes the known false
   positive's tag and pins it as text. Never edit the agent JSON to make the
   numbers pass.
+- **Golden snapshots.** `tests/fixtures/golden/{agents,organizer}.json` are
+  byte-exact `synthesize` output (`sort_keys=True, indent=2`, timestamp
+  `2026-01-01T00:00:00`). Changing report or model shape breaks
+  `tests/test_characterization.py`; regenerate the golden deliberately with the
+  call in that file — never hand-edit it to fit.
+- **Per-file coverage floor.** `tools/coverage_floor.py` fails CI when any
+  single module is below 80%, even if the 85% total is green. It skips `tests/`
+  and `tools/`, so `ccr/` and `install.py` are the files that must be tested.
 - **`synthesize` enforces the completion gate.** Planned agents come from
   `--agents`, then `ccr-state.json:agents_planned`, then the cache files. A
   partial run exits 1 unless `--allow-partial`. Do not bypass it in code.
 - **`record` archives previous results** to `previous-results/<timestamp>/` and
   refreshes effort/facts in state. `synthesize` carries those facts into the
   report; without state or `--agents` it warns and skips the gate.
-- **`help.md`'s version line is generated** from the manifest. Do not hand-edit
-  it; `generate.py --check` covers it.
 - **`expected_issues.json` is scored, not self-compared.** `test.sh` and
-  `Test-Windows.ps1` no longer hardcode copies of the list — they call
-  `python -m ccr eval`. Do not reintroduce a duplicated list.
+  `Test-Windows.ps1` call `python -m ccr eval`. Do not reintroduce a duplicated
+  issue list.
 - **`install.py.sha256` is generated.** After editing `install.py`, run
   `python tools/generate.py`; `--self-verify` must pass.
 - **`install.py:_SKILL_EXCLUDED`** decides what ships. `tools/`, `tests/`,
   `AGENTS.md`, `orchestrator-rules.md`, `Makefile`, `help.md`, `pyproject.toml`
   are deliberately excluded. Runtime needs (`SKILL.md`, `ccr/`,
   `karpathy-guidelines.md`, `helpers/`, `skills/`) must never be added.
-- **Coverage spans `install.py`, `ccr/`, and `tools/`.** Doc-only changes cannot
-  lower it; new Python without tests will.
 - **`test.sh` is Unix-only** (bash + `grep`), **`Test-Windows.ps1` is
   Windows-only**; CI gates them with `if: runner.os != 'Windows'` / `== 'Windows'`.
   `make` may not exist on Windows — run `python -m unittest ...` directly.
 - **SKILL_DIR injection**: the orchestrator passes the absolute installed skill
   dir into every sub-agent prompt. Never resolve `karpathy-guidelines.md` via
   `realpath` from the target CWD.
-- **Phase 5a/5c review is done by the orchestrator itself** — load
-  `skills/review/SKILL.md` and execute its phases; there is no review bot.
-  `--json` is a behavioral instruction, not a script argument.
+- **`skills/review/SKILL.md` is a separate product**, not part of Phase 5:
+  Phase 5a spawns a fresh reviewer Task agent with inline instructions, and the
+  orchestrator applies 5b corrections itself. The review skill has its own
+  contract (`tests/review_compliance_test.py`, 75 assertions) and its own
+  argument grammar (`--json`, `--base`, `-t`); editing it does not touch
+  `SKILL.md`, and nothing in `SKILL.md` loads it.
 - **`gh pr review --approve` fails on your own PR** — use `gh pr comment
   --body-file` or `gh api repos/:owner/:repo/issues/:number/comments`.
 - **Phase 5d-5g need `gh`** authenticated with push access; without it, PR
@@ -130,7 +154,8 @@ ingests the JSON. `ccr` never calls a model — that is why it is testable.
 - New tests use `unittest.TestCase`; `Test<Module><Scenario>` classes;
   filesystem tests use `tempfile.TemporaryDirectory()`, never the repo root.
 - Add an ADR in `ADRs/` for significant design decisions.
-- Conventional Commits: `feat|fix|test|docs|refactor|ci|chore`.
+- Conventional Commits: `feat|fix|test|docs|refactor|ci|chore`; PRs target
+  `main`, releases are cut from `v*` tags by `.github/workflows/release.yml`.
 
 ## Key References
 
@@ -140,7 +165,7 @@ ingests the JSON. `ccr` never calls a model — that is why it is testable.
 - CLI and module reference: `docs/api/ccr.md`
 - Installer API: `docs/api/install.md`
 - Quick reference, exit codes, troubleshooting: `help.md`
-- CI (pinned actions, drift check, eval): `.github/workflows/ci.yml`
+- CI (pinned actions, drift check, eval, coverage floor): `.github/workflows/ci.yml`
 - Release (sdist/wheel, checksums, provenance): `.github/workflows/release.yml`
 - Design rationale: `ADRs/` (agent split, DA workflow, plain-Python tests,
-  5-phase pipeline)
+  5-phase pipeline, executable core, fileio containment)
