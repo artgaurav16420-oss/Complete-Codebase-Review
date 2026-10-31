@@ -44,16 +44,12 @@ WEASEL_PATTERNS = [
 _ANCHOR_PREFIX_RE = re.compile(
     r"^(\[[^\]\n]+:\d+(?:-\d+)?\])\s*(?:(?:[\u2014\u2013]{1,2}|-{1,3}|:)\s*)?"
 )
-# Preference order matters: "->" is the documented ASCII stand-in, while "=>"
-# is also a source token (a JavaScript arrow, a Ruby hash rocket) that can
-# appear inside the flaw itself. A flaw that mentions `=>` must not be split
-# there when a real arrow follows.
-_ARROW_PATTERNS = (
-    re.compile(r"\s\u2192\s"),
-    re.compile(r"\s->\s"),
-    re.compile(r"\s=>\s"),
-    re.compile(r"\s[\u2013\u2014]>\s"),
-)
+# ASCII arrows are ambiguous inside code (`->` lambdas, `=>` rockets). The
+# separator is the *last* one in the finding: incidental arrows live in the
+# flaw text, which precedes it. A canonical arrow is never ambiguous and always
+# wins, so it is not searched positionally.
+_CANONICAL_ARROW_RE = re.compile(r"\s\u2192\s")
+_ASCII_ARROW_RE = re.compile(r"\s(?:->|=>|[\u2013\u2014]>)\s")
 
 
 def normalize_anchor(finding_text):
@@ -70,11 +66,14 @@ def normalize_anchor(finding_text):
     if not match:
         return text
     rest = text[match.end():]
-    for pattern in _ARROW_PATTERNS:
-        if pattern.search(rest):
-            rest = pattern.sub(" \u2192 ", rest, count=1)
-            return match.group(1) + " \u2014 " + rest
-    return text
+    if _CANONICAL_ARROW_RE.search(rest):
+        return match.group(1) + " \u2014 " + rest
+    matches = list(_ASCII_ARROW_RE.finditer(rest))
+    if not matches:
+        return text
+    last = matches[-1]
+    rest = rest[:last.start()] + " \u2192 " + rest[last.end():]
+    return match.group(1) + " \u2014 " + rest
 
 
 MALFORMED_REASONS = ("anchor", "empty finding")

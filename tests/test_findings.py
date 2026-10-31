@@ -498,6 +498,19 @@ class TestAnchorParsing(unittest.TestCase):
             ("a.rb", 9, "opts", "nil is dereferenced"),
         )
 
+    def test_later_rocket_wins_over_an_earlier_arrow(self):
+        # A lambdas `->` sits in the flaw; the separator is the following `=>`.
+        self.assertEqual(
+            f.anchor_parts("[a.rb:3] -- lambda -> returns a proc => nil is dereferenced"),
+            ("a.rb", 3, "lambda -> returns a proc", "nil is dereferenced"),
+        )
+
+    def test_canonical_arrow_wins_over_ascii(self):
+        self.assertEqual(
+            f.anchor_parts("[a.py:1] - flaw \u2192 failure -> detail"),
+            ("a.py", 1, "flaw", "failure -> detail"),
+        )
+
     def test_normalize_anchor_is_idempotent(self):
         canon = "[a.py:42] \u2014 flaw \u2192 failure"
         self.assertEqual(f.normalize_anchor(canon), canon)

@@ -503,6 +503,7 @@ class TestTestFileDetection(unittest.TestCase):
     def test_words_containing_test_are_not_tests(self):
         self.assertFalse(discovery._is_test_file(("src",), "contest.js"))
         self.assertFalse(discovery._is_test_file(("src",), "latest.js"))
+        self.assertFalse(discovery._is_test_file(("src",), "test-utils.js"))
         self.assertFalse(discovery._is_test_file(("tools",), "smoke.js"))
 
     def test_documentation_about_a_harness_is_not_a_test(self):
