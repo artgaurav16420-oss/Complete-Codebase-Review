@@ -485,6 +485,13 @@ class TestAnchorParsing(unittest.TestCase):
                 f.anchor_parts(text), ("a.py", 42, "flaw", "failure"), text
             )
 
+    def test_bracketed_path_is_normalized(self):
+        # Next.js style routes: `app/[id]/page.tsx` contains a `]`.
+        self.assertEqual(
+            f.anchor_parts("[app/[id]/page.tsx:12] - flaw -> failure"),
+            ("app/[id]/page.tsx", 12, "flaw", "failure"),
+        )
+
     def test_arrow_inside_the_flaw_is_not_the_separator(self):
         # `=>` is a source token; the documented `->` separator comes later.
         self.assertEqual(

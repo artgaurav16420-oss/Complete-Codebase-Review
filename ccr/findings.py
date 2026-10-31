@@ -41,8 +41,12 @@ WEASEL_PATTERNS = [
 # punctuation costs a whole finding, so the separators are normalised before
 # the anchor gate looks at them. The prefix consumes a whole run of dashes so
 # `-- flaw` does not leave a stray hyphen behind.
+# The file part may contain one level of brackets (`app/[id]/page.tsx`); a
+# plain [^\]]+ stopped at the first `]`, so those findings were never
+# normalised and the gate then rejected an anchor the canonical regex accepts.
 _ANCHOR_PREFIX_RE = re.compile(
-    r"^(\[[^\]\n]+:\d+(?:-\d+)?\])\s*(?:(?:[\u2014\u2013]{1,2}|-{1,3}|:)\s*)?"
+    r"^(\[(?:[^\[\]\n]|\[[^\]\n]*\])+:\d+(?:-\d+)?\])\s*"
+    r"(?:(?:[\u2014\u2013]{1,2}|-{1,3}|:)\s*)?"
 )
 # ASCII arrows are ambiguous inside code (`->` lambdas, `=>` rockets). The
 # separator is the *last* one in the finding: incidental arrows live in the

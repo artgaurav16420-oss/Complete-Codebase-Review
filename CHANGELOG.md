@@ -15,11 +15,12 @@
   zero tests and silently lose the `test_health` agent.
 - **Tests**: normalization, rejection wiring, env fallback, and harness detection cases.
 - **Review follow-ups**: the anchor prefix consumes the whole dash run (`[a.py:1] -- flaw` no
-  longer leaves a stray hyphen); the separator is the last ASCII arrow when no canonical `→`
-  exists, so an arrow inside the flaw (`lambda -> proc => nil`) does not split it; an explicit
-  `--agents ""` no longer falls back to `CODE_REVIEW_AGENTS`; and the harness-token rule applies
-  only to source extensions and ignores `test` (`docs/load-harness.md` and `src/test-utils.js`
-  are not test files).
+  longer leaves a stray hyphen) and accepts one level of nested brackets (`app/[id]/page.tsx`);
+  the separator is the last ASCII arrow when no canonical `→` exists, so an arrow inside the
+  flaw (`lambda -> proc => nil`) does not split it; an explicit `--agents ""` no longer falls
+  back to `CODE_REVIEW_AGENTS`; and the token rule applies only to source extensions and only to
+  a trailing marker token (`test.js` and `module-test.js` count, `src/test-utils.js` and
+  `docs/load-harness.md` do not).
 
 ## v2.4.0 (2026-10-20)
 

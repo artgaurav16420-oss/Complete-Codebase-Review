@@ -499,6 +499,10 @@ class TestTestFileDetection(unittest.TestCase):
         self.assertTrue(discovery._is_test_file(("tools",), "main-harness.js"))
         self.assertTrue(discovery._is_test_file(("tools",), "game_harness.js"))
         self.assertTrue(discovery._is_test_file(("lib",), "parser_spec.rb"))
+        # A trailing marker token names a suite with no test directory.
+        self.assertTrue(discovery._is_test_file(("src",), "test.js"))
+        self.assertTrue(discovery._is_test_file(("src",), "module-test.js"))
+        self.assertTrue(discovery._is_test_file(("src",), "module.test.ts"))
 
     def test_words_containing_test_are_not_tests(self):
         self.assertFalse(discovery._is_test_file(("src",), "contest.js"))

@@ -76,11 +76,10 @@ CI_PATHS = [
 TEST_DIR_NAMES = frozenset({"test", "tests", "spec", "specs", "__tests__"})
 TEST_FILE_PREFIXES = ("test_", "spec_")
 TEST_FILE_SUFFIXES = ("_test.py", "_test.go", ".test.js", ".test.ts", ".spec.js")
-# Token match so `tools/main-harness.js` and `parser_spec.rb` count, while
-# `contest.js` and `latest.js` do not. `test` is deliberately absent: it is a
-# delimited token in production helpers too (`src/test-utils.js`), and the
-# conventional test naming is already covered by the prefix and suffix rules.
-TEST_NAME_TOKENS = frozenset({"spec", "specs", "harness"})
+# A trailing marker token counts: `test.js` and `module-test.js` are suites,
+# while `src/test-utils.js` is a production helper. Only the last token is
+# considered for that reason.
+TEST_NAME_TOKENS = frozenset({"test", "tests", "spec", "specs", "harness"})
 # The token rule only applies to source files: `docs/load-harness.md` is
 # documentation about a harness, not a test.
 TEST_FILE_EXTENSIONS = frozenset(LANGUAGE_BY_EXT)
@@ -127,7 +126,8 @@ def _is_test_file(rel_parts, name):
     stem = Path(name).stem.lower()
     for separator in ("-", "_", "."):
         stem = stem.replace(separator, " ")
-    return any(token in TEST_NAME_TOKENS for token in stem.split())
+    tokens = stem.split()
+    return bool(tokens) and tokens[-1] in TEST_NAME_TOKENS
 
 
 def _process_file(full, rel_root, name, size, state):
