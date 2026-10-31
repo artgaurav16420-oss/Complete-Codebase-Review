@@ -36,6 +36,35 @@ WEASEL_PATTERNS = [
     re.compile(r"\bin\s+most\s+cases\b", re.IGNORECASE),
 ]
 
+# The prompts show the canonical em dash + arrow pair, but providers (and
+# humans writing fixtures) reliably emit ASCII. Rejecting a sound finding for
+# punctuation costs a whole finding, so the separators are normalised before
+# the anchor gate looks at them.
+_ANCHOR_PREFIX_RE = re.compile(
+    r"^(\[[^\]\n]+:\d+(?:-\d+)?\])\s*(?:[\u2014\u2013:-]\s*)?"
+)
+_ANCHOR_ARROW_RE = re.compile(r"\s(?:->|=>|\u2192|\u2014>|\u2013>)\s")
+
+
+def normalize_anchor(finding_text):
+    """Rewrite ASCII separators into the canonical em dash and arrow.
+
+    ``[a.py:1] - flaw -> failure``, ``[a.py:1] -- flaw => failure`` and
+    ``[a.py:1] flaw -> failure`` all become
+    ``[a.py:1] \u2014 flaw \u2192 failure``. Text without a ``[file:line]``
+    anchor or without an arrow is returned unchanged, so the gate still
+    rejects findings that carry no failure mode. Idempotent on canonical text.
+    """
+    text = finding_text or ""
+    match = _ANCHOR_PREFIX_RE.match(text)
+    if not match:
+        return text
+    rest = text[match.end():]
+    if not _ANCHOR_ARROW_RE.search(rest):
+        return text
+    rest = _ANCHOR_ARROW_RE.sub(" \u2192 ", rest, count=1)
+    return match.group(1) + " \u2014 " + rest
+
 
 MALFORMED_REASONS = ("anchor", "empty finding")
 
@@ -86,7 +115,7 @@ def weasel_hits(text):
 
 def anchor_parts(finding_text):
     """Return (file, line, flaw, failure_mode) or None."""
-    match = ANCHOR_PARTS_RE.match(finding_text or "")
+    match = ANCHOR_PARTS_RE.match(normalize_anchor(finding_text))
     if not match:
         return None
     return match.group(1), int(match.group(2)), match.group(3), match.group(4)
@@ -137,7 +166,7 @@ def review_findings(raw_findings, floors=None):
             else:
                 item["est_hours"] = max(item["est_hours"], floor * 0.5)
 
-        text = str(item.get("finding", "")).strip()
+        text = normalize_anchor(str(item.get("finding", "")).strip())
         item["finding"] = text
         reason = None
         if not text:

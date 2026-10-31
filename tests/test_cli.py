@@ -3,9 +3,11 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ccr import cli
 
@@ -601,6 +603,33 @@ class TestEvalExit(unittest.TestCase):
             ])
             self.assertEqual(code, 1)
             self.assertIn("missing: no-such-issue-xyz", output)
+
+
+class TestAgentsOverride(unittest.TestCase):
+    """--agents wins, CODE_REVIEW_AGENTS is the documented fallback."""
+
+    def test_flag_wins_over_env(self):
+        env = {"CODE_REVIEW_AGENTS": "security"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            self.assertEqual(cli._agents_override("architecture"), "architecture")
+
+    def test_env_used_when_flag_is_absent(self):
+        with mock.patch.dict(
+            os.environ, {"CODE_REVIEW_AGENTS": " architecture , test_health "},
+            clear=False,
+        ):
+            self.assertEqual(
+                cli._agents_override(None), "architecture , test_health"
+            )
+
+    def test_none_when_neither_is_set(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CODE_REVIEW_AGENTS", None)
+            self.assertIsNone(cli._agents_override(None))
+
+    def test_blank_env_is_none(self):
+        with mock.patch.dict(os.environ, {"CODE_REVIEW_AGENTS": "   "}, clear=False):
+            self.assertIsNone(cli._agents_override(None))
 
 
 class TestModuleEntrypoint(unittest.TestCase):

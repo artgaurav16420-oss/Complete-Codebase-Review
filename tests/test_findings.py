@@ -472,6 +472,39 @@ class TestAnchorParsing(unittest.TestCase):
     def test_relative_path(self):
         self.assertTrue(f.ANCHOR_RE.match("[src/a.py:1] \u2014 flaw \u2192 failure"))
 
+    def test_ascii_separators_are_normalized(self):
+        for text in (
+            "[a.py:42] - flaw -> failure",
+            "[a.py:42] -- flaw => failure",
+            "[a.py:42] flaw -> failure",
+            "[a.py:42] \u2013 flaw \u2192 failure",
+        ):
+            parts = f.anchor_parts(text)
+            self.assertIsNotNone(parts, text)
+            self.assertEqual(parts[0], "a.py", text)
+            self.assertEqual(parts[1], 42, text)
+
+    def test_normalize_anchor_is_idempotent(self):
+        canon = "[a.py:42] \u2014 flaw \u2192 failure"
+        self.assertEqual(f.normalize_anchor(canon), canon)
+
+    def test_ascii_anchor_survives_the_gate(self):
+        kept, rejected = f.review_findings([
+            {"finding": "[a.py:1] - flaw -> failure mode", "severity": "LOW"},
+        ])
+        self.assertEqual(rejected, [])
+        self.assertEqual(
+            kept[0]["finding"],
+            "[a.py:1] \u2014 flaw \u2192 failure mode",
+        )
+
+    def test_anchor_without_arrow_is_still_rejected(self):
+        kept, rejected = f.review_findings([
+            {"finding": "[a.py:1] - no failure mode here", "severity": "LOW"},
+        ])
+        self.assertEqual(kept, [])
+        self.assertIn("anchor", rejected[0]["reject_reason"])
+
 
 class TestDedupSeparators(unittest.TestCase):
     def test_backslash_and_slash_collapse(self):

@@ -76,6 +76,9 @@ CI_PATHS = [
 TEST_DIR_NAMES = frozenset({"test", "tests", "spec", "specs", "__tests__"})
 TEST_FILE_PREFIXES = ("test_", "spec_")
 TEST_FILE_SUFFIXES = ("_test.py", "_test.go", ".test.js", ".test.ts", ".spec.js")
+# Token match so `tools/main-harness.js` and `parser_spec.rb` count, while
+# `contest.js` and `latest.js` do not.
+TEST_NAME_TOKENS = frozenset({"test", "tests", "spec", "specs", "harness"})
 
 ENTRY_POINT_NAMES = frozenset({
     "__main__.py", "main.py", "cli.py", "app.py", "manage.py", "server.py",
@@ -112,7 +115,12 @@ def _is_test_file(rel_parts, name):
         return True
     if name.startswith(TEST_FILE_PREFIXES):
         return True
-    return name.endswith(TEST_FILE_SUFFIXES)
+    if name.endswith(TEST_FILE_SUFFIXES):
+        return True
+    stem = Path(name).stem.lower()
+    for separator in ("-", "_", "."):
+        stem = stem.replace(separator, " ")
+    return any(token in TEST_NAME_TOKENS for token in stem.split())
 
 
 def _process_file(full, rel_root, name, size, state):
