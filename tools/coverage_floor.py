@@ -6,6 +6,7 @@ regressing while the total stays green.
 """
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -36,7 +37,9 @@ def check(report, floor=DEFAULT_FLOOR):
             failures.append((path, 0.0))
             continue
         percent = summary.get("percent_covered")
-        if percent is None:
+        # json.load accepts NaN and Infinity; NaN < floor is always False, so
+        # a malformed report would otherwise pass the gate.
+        if percent is None or not math.isfinite(percent):
             failures.append((path, 0.0))
         elif percent < floor:
             failures.append((path, percent))

@@ -9,6 +9,7 @@ from unittest import mock
 
 from ccr import discovery
 from ccr import manifest as manifest_mod
+from tests import create_directory_link
 
 ROOT = Path(__file__).resolve().parent.parent
 DUMMY = ROOT / "tests" / "dummy_repo"
@@ -71,6 +72,22 @@ class TestDiscover(unittest.TestCase):
             (root / "a" / "b" / "c" / "migrations").mkdir(parents=True)
             facts = discovery.discover(str(root))
         self.assertEqual(facts["database"], ["prisma"])
+
+    def test_linked_migrations_directory_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            outside = Path(tmp) / "outside"
+            (outside / "migrations").mkdir(parents=True)
+            (outside / "migrations" / "001_init.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
+            try:
+                create_directory_link(root / "migrations", outside / "migrations")
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], [])
 
     def test_target_is_resolved(self):
         self.assertTrue(self.facts["target"].endswith("dummy_repo"))

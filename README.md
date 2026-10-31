@@ -426,8 +426,10 @@ This project follows the [Contributor Covenant](https://www.contributor-covenant
 | Windows test | `powershell tests/Test-Windows.ps1` | End-to-end (Windows) |
 
 `./test.sh` is the aggregate gate on Unix: skill contract checks, generated-doc
-drift, `ccr eval`, both compliance suites, and the unit suite (under coverage
-when the `coverage` package is installed).
+drift, `ccr eval`, both compliance suites, and the unit suite under coverage.
+The coverage gate is mandatory: when the `coverage` package is missing,
+`./test.sh` fails and prints the install line
+`python -m pip install 'coverage>=7.0,<8'`.
 
 ---
 

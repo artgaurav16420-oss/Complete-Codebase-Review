@@ -94,6 +94,18 @@ class TestCoverageFloorMain(unittest.TestCase):
         self.assertIn("[FAIL] ccr/b.py: 70.0% < 80.0%", output)
         self.assertIn("[FAIL] 1 module(s) below the per-file floor", output)
 
+    def test_nan_percent_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": {
+                "ccr/a.py": entry(float("nan")),
+            }})
+            with open(path, encoding="utf-8") as handle:
+                # json.dump emits the non-standard NaN token by default.
+                self.assertIn("NaN", handle.read())
+            code, output = self._run_main(["coverage_floor.py", path])
+        self.assertEqual(code, 1)
+        self.assertIn("[FAIL] ccr/a.py: 0.0% < 80.0%", output)
+
     def test_floor_argument_overrides_the_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._write_report(tmp, {"files": {"ccr/a.py": entry(75.0)}})

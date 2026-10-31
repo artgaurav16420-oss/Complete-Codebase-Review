@@ -7,7 +7,6 @@ import importlib
 import io
 import os
 import stat
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -30,28 +29,11 @@ def _import_install():
 
 _ARGV_PATCH = ("install.py",)
 
+_ROOT = str(Path(__file__).resolve().parent.parent)
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-def _create_directory_link(link, target):
-    """Link ``link`` to the ``target`` directory.
-
-    Tries ``os.symlink`` first. On Windows that needs Developer Mode or the
-    symlink privilege, so fall back to a junction (``mklink /J``), which
-    needs no elevation. Raises OSError when neither mechanism works.
-    """
-    try:
-        os.symlink(str(target), str(link), target_is_directory=True)
-        return
-    except (OSError, NotImplementedError) as exc:
-        if sys.platform != "win32":
-            raise OSError(str(exc)) from exc
-    # Literal argv with shell=False: no shell interpolation takes place.
-    result = subprocess.run(
-        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise OSError(result.stderr.strip() or result.stdout.strip())
-
+from tests import create_directory_link  # noqa: E402
 
 
 class _BaseInstallTest(unittest.TestCase):
@@ -742,7 +724,7 @@ class TestInstallEscapedSymlinkValidation(unittest.TestCase):
         (skill_dest / "skills").mkdir(parents=True)
         (skill_dest / "SKILL.md").write_text("name: test", encoding="utf-8")
         try:
-            _create_directory_link(skill_dest / "skills" / "escape", self.outside)
+            create_directory_link(skill_dest / "skills" / "escape", self.outside)
         except OSError as exc:
             self.skipTest("directory links unavailable: " + str(exc))
         return skill_dest
@@ -776,7 +758,7 @@ class TestUninstallLinkLikeSkills(_BaseInstallTest):
             cwd = root / "work"
             cwd.mkdir()
             try:
-                _create_directory_link(cwd / ".skills", outside)
+                create_directory_link(cwd / ".skills", outside)
             except OSError as exc:
                 self.skipTest("directory links unavailable: " + str(exc))
             old = os.getcwd()
@@ -809,7 +791,7 @@ class TestLocalFallbackLinkLikeSkills(_BaseInstallTest):
             work = root / "work"
             work.mkdir()
             try:
-                _create_directory_link(work / ".skills", outside)
+                create_directory_link(work / ".skills", outside)
             except OSError as exc:
                 self.skipTest("directory links unavailable: " + str(exc))
             old = os.getcwd()

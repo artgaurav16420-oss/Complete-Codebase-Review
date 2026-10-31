@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ccr import cli  # noqa: E402
+from tests import create_directory_link  # noqa: E402
 
 TARGET = ROOT / "tests" / "dummy_repo"
 FIXTURES = ROOT / "tests" / "fixtures" / "agents"
@@ -29,28 +30,6 @@ def run(argv):
     with redirect_stdout(out), redirect_stderr(err):
         code = cli.main(argv)
     return code, out.getvalue(), err.getvalue()
-
-
-def create_directory_link(link, target):
-    """Link ``link`` to ``target``, preferring a Windows junction.
-
-    ``os.symlink`` needs Developer Mode or the symlink privilege on Windows,
-    so ``mklink /J`` runs first there. Raises OSError when neither works.
-    """
-    junction_error = None
-    if sys.platform == "win32":
-        # Literal argv with shell=False: no shell interpolation takes place.
-        result = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
-            capture_output=True, text=True,
-        )
-        if result.returncode == 0:
-            return
-        junction_error = result.stderr.strip() or result.stdout.strip()
-    try:
-        os.symlink(str(target), str(link), target_is_directory=True)
-    except (OSError, NotImplementedError) as exc:
-        raise OSError(junction_error or str(exc)) from exc
 
 
 class TestCliRecordLifecycle(unittest.TestCase):
@@ -507,6 +486,23 @@ class TestCliReReviewBaseline(unittest.TestCase):
         self._write_state()
         report = self._synthesize_json()
         self.assertEqual(report["baseline"]["re_review_count"], 0)
+
+    def test_unresolvable_cached_target_warns_instead_of_crashing(self):
+        self._write_state(target_dir=str(self.dir / "loop"))
+        real_resolve = Path.resolve
+
+        def looping_resolve(path, *args, **kwargs):
+            if path.name == "loop":
+                raise OSError(40, "Too many levels of symbolic links")
+            return real_resolve(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "resolve", looping_resolve):
+            code, _, err = run([
+                "synthesize", "--in", str(self.cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0)
+        self.assertIn("cached facts belong to", err)
 
     def test_mismatched_target_drops_cached_re_review_count(self):
         # A foreign baseline must not inherit the count of a different target.

@@ -381,9 +381,14 @@ def cmd_synthesize(args):
     re_review_count = 0
     if cached is not None:
         stored = cached.data.get("target_dir", "")
-        same_target = (
-            not stored or Path(target).resolve() == Path(stored).resolve()
-        )
+        try:
+            same_target = (
+                not stored or Path(target).resolve() == Path(stored).resolve()
+            )
+        except (OSError, RuntimeError):
+            # resolve() raises on a symlink loop; a target we cannot resolve
+            # is not the cached one.
+            same_target = False
         if same_target:
             facts = cached.data.get("facts")
             re_review_count = cached.data.get("re_review_count", 0)

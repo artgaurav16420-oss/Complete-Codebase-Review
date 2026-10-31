@@ -196,13 +196,17 @@ def _find_db_markers(directory, depth, found):
         entries = sorted(directory.iterdir(), key=lambda p: p.name)
     except OSError as exc:
         raise ValueError(
-            "cannot list target directory: {} ({})".format(directory, exc)
+            "cannot list directory: {} ({})".format(directory, exc)
         )
     for entry in entries:
+        # Check for links before recording: a junction named "migrations" or
+        # "prisma" must not activate the database agent from outside the tree.
+        if _is_reparse_dir(entry):
+            continue
         if entry.name in DB_MARKERS:
             found.append(entry.name)
         if depth < DB_SCAN_DEPTH and entry.is_dir():
-            if entry.name in IGNORED_DIRS or _is_reparse_dir(entry):
+            if entry.name in IGNORED_DIRS:
                 continue
             _find_db_markers(entry, depth + 1, found)
 
@@ -221,6 +225,7 @@ def _build_facts(target, state, truncated):
 
     database = []
     if target.exists():
+        # Depth 1 is the target root; DB_SCAN_DEPTH counts levels from it.
         _find_db_markers(target, 1, database)
 
     ci = []

@@ -341,10 +341,10 @@ def validate_markdown(md):
                 else:
                     domain_sum += value
                     found_domain = True
-    if found_domain and total is None:
-        errors.append(
-            "tech-debt total missing while by-domain hours are present"
-        )
+    if total is None:
+        # Require a total: even a zero-finding report renders
+        # "**Total estimated**: 0 hours", so there is no legitimate gap.
+        errors.append("tech-debt total missing")
     elif total is not None and found_domain and abs(domain_sum - total) >= 0.5:
         errors.append(
             "tech-debt mismatch: by-domain {:.2f}h != total {:.2f}h".format(

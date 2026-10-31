@@ -167,7 +167,18 @@ class TestMarkdown(unittest.TestCase):
             if not line.startswith("**Total estimated**")
         )
         self.assertIn(
-            "tech-debt total missing while by-domain hours are present",
+            "tech-debt total missing",
+            report_mod.validate_markdown(broken),
+        )
+
+    def test_missing_total_is_rejected_without_by_domain(self):
+        broken = "\n".join(
+            line for line in self.md.splitlines()
+            if not line.startswith("**Total estimated**")
+            and not line.startswith("**By domain**")
+        )
+        self.assertIn(
+            "tech-debt total missing",
             report_mod.validate_markdown(broken),
         )
 
