@@ -161,6 +161,16 @@ class TestMarkdown(unittest.TestCase):
         md = report_mod.render_markdown(model)
         self.assertEqual(report_mod.validate_markdown(md), [])
 
+    def test_missing_total_is_rejected_when_by_domain_present(self):
+        broken = "\n".join(
+            line for line in self.md.splitlines()
+            if not line.startswith("**Total estimated**")
+        )
+        self.assertIn(
+            "tech-debt total missing while by-domain hours are present",
+            report_mod.validate_markdown(broken),
+        )
+
     def test_half_hour_mismatch_is_rejected(self):
         import re
         broken = re.sub(

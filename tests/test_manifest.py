@@ -120,6 +120,19 @@ class TestManifestValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             manifest_mod.validate(data)
 
+    def test_manifest_severity_drift_is_rejected(self):
+        """A severity the code does not enforce fails at load, not silently later."""
+        data = self._broken()
+        data["severities"] = [
+            "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO", "BLOCKER",
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        message = str(ctx.exception)
+        self.assertIn("severities", message)
+        self.assertIn("BLOCKER", message)
+        self.assertIn("CRITICAL", manifest_mod.load()["severities"])
+
     def test_not_an_object(self):
         with self.assertRaises(ValueError):
             manifest_mod.validate([])

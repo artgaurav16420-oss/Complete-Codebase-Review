@@ -86,6 +86,12 @@ DB_MARKERS = frozenset({
     "ormconfig.json",
 })
 
+# Directory levels listed when looking for DB_MARKERS below the target root.
+# Three levels (root, its subdirs, and their subdirs) reach a service's own
+# layout such as server/prisma/ or apps/api/migrations/ without rescanning the
+# whole tree that _scan_tree already covers.
+DB_SCAN_DEPTH = 3
+
 CONTAINER_MARKERS = frozenset({
     "Dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml",
 })
@@ -184,6 +190,23 @@ def _has_symlinked_component(target, marker):
     return False
 
 
+def _find_db_markers(directory, depth, found):
+    """Collect DB marker names under directory, down to DB_SCAN_DEPTH levels."""
+    try:
+        entries = sorted(directory.iterdir(), key=lambda p: p.name)
+    except OSError as exc:
+        raise ValueError(
+            "cannot list target directory: {} ({})".format(directory, exc)
+        )
+    for entry in entries:
+        if entry.name in DB_MARKERS:
+            found.append(entry.name)
+        if depth < DB_SCAN_DEPTH and entry.is_dir():
+            if entry.name in IGNORED_DIRS or _is_reparse_dir(entry):
+                continue
+            _find_db_markers(entry, depth + 1, found)
+
+
 def _build_facts(target, state, truncated):
     """Derive the discovery facts dict from the accumulated state."""
     files = state["files"]
@@ -197,15 +220,8 @@ def _build_facts(target, state, truncated):
     test_files = state["test_files"]
 
     database = []
-    try:
-        root_entries = {p.name for p in target.iterdir()} if target.exists() else set()
-    except OSError as exc:
-        raise ValueError(
-            "cannot list target directory: {} ({})".format(target, exc)
-        )
-    for marker in DB_MARKERS:
-        if marker in root_entries:
-            database.append(marker)
+    if target.exists():
+        _find_db_markers(target, 1, database)
 
     ci = []
     try:

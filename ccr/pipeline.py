@@ -105,7 +105,7 @@ def malformed_exceeded(raw_count, malformed_count):
 
 
 def synthesize(manifest, results, planned, completed=None, target="",
-               facts=None, baseline=None, timestamp=None):
+               facts=None, baseline=None, timestamp=None, re_review_count=0):
     """Merge agent results into a report model.
 
     Applies mechanical DA checks, deduplicates, assigns ids, and aggregates.
@@ -119,6 +119,8 @@ def synthesize(manifest, results, planned, completed=None, target="",
         facts: Discovery facts, used for codebase size.
         baseline: Previous baseline for trend text.
         timestamp: ISO timestamp for the baseline snapshot.
+        re_review_count: Re-reviews performed so far, carried into the
+            baseline snapshot so the periodic full rescan can fire.
 
     Returns:
         dict: Report model.
@@ -142,6 +144,7 @@ def synthesize(manifest, results, planned, completed=None, target="",
     model = findings_mod.aggregate(
         kept, rejected, planned, completed,
         target=target, baseline=baseline,
+        re_review_count=re_review_count,
     )
     model["codebase_size"] = _codebase_size(facts)
     _canonicalize_baseline(model, manifest)

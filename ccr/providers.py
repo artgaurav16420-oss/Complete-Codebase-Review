@@ -82,7 +82,7 @@ def build_prompt(agent, target, skill_dir, manifest_version=""):
         if checks else "- none beyond the coverage above"
     )
     return PROMPT_TEMPLATE.format(
-        domain=_one_line(agent["coverage"]),
+        domain=_one_line(agent["name"]),
         target=_one_line(target),
         skill_dir=_one_line(skill_dir or "<SKILL_DIR>"),
         manifest_version=_one_line(manifest_version or "unknown"),

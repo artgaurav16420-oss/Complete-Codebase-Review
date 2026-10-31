@@ -7,6 +7,7 @@ import importlib
 import io
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -28,6 +29,29 @@ def _import_install():
 
 
 _ARGV_PATCH = ("install.py",)
+
+
+def _create_directory_link(link, target):
+    """Link ``link`` to the ``target`` directory.
+
+    Tries ``os.symlink`` first. On Windows that needs Developer Mode or the
+    symlink privilege, so fall back to a junction (``mklink /J``), which
+    needs no elevation. Raises OSError when neither mechanism works.
+    """
+    try:
+        os.symlink(str(target), str(link), target_is_directory=True)
+        return
+    except (OSError, NotImplementedError) as exc:
+        if sys.platform != "win32":
+            raise OSError(str(exc)) from exc
+    # Literal argv with shell=False: no shell interpolation takes place.
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise OSError(result.stderr.strip() or result.stdout.strip())
+
 
 
 class _BaseInstallTest(unittest.TestCase):
@@ -693,6 +717,134 @@ class TestValidateTargetPath(_BaseInstallTest):
         self.assertEqual(ctx.exception.code, 1)
         output = mock_stdout.getvalue()
         self.assertIn("Path traversal", output)
+
+class TestInstallEscapedSymlinkValidation(unittest.TestCase):
+    """A link resolving outside the skill dir aborts the install and cleanup.
+
+    ``_ignore_skill_files`` keeps links out of the copy, but the validator is
+    the last line of defence: a tree that already holds an escaping link must
+    be refused, and the partial install must not survive the refusal.
+    """
+
+    def setUp(self):
+        self.install = _import_install()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.outside = self.root / "outside"
+        self.outside.mkdir()
+        (self.outside / "secret.txt").write_text(
+            "must not ship", encoding="utf-8"
+        )
+
+    def _tree_with_escaping_link(self):
+        skill_dest = self.root / "complete-codebase-review"
+        (skill_dest / "skills").mkdir(parents=True)
+        (skill_dest / "SKILL.md").write_text("name: test", encoding="utf-8")
+        try:
+            _create_directory_link(skill_dest / "skills" / "escape", self.outside)
+        except OSError as exc:
+            self.skipTest("directory links unavailable: " + str(exc))
+        return skill_dest
+
+    def test_link_pointing_outside_is_refused(self):
+        skill_dest = self._tree_with_escaping_link()
+        with self.assertRaises(ValueError) as ctx:
+            self.install._validate_no_escaped_symlinks(skill_dest)
+        message = str(ctx.exception)
+        self.assertIn("points outside skill dir", message)
+        self.assertIn("escape", message)
+
+    def test_refused_tree_is_removed_but_link_target_survives(self):
+        skill_dest = self._tree_with_escaping_link()
+        with self.assertRaises(ValueError):
+            self.install._validate_no_escaped_symlinks(skill_dest)
+        self.assertFalse(skill_dest.exists())
+        self.assertTrue((self.outside / "secret.txt").exists())
+
+
+class TestUninstallLinkLikeSkills(_BaseInstallTest):
+    """--uninstall must not follow a junctioned or symlinked .skills."""
+
+    def test_link_like_skills_is_refused_and_target_survives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            outside = root / "outside"
+            installed = outside / "complete-codebase-review"
+            installed.mkdir(parents=True)
+            (installed / "SKILL.md").write_text("keep me", encoding="utf-8")
+            cwd = root / "work"
+            cwd.mkdir()
+            try:
+                _create_directory_link(cwd / ".skills", outside)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            old = os.getcwd()
+            try:
+                os.chdir(str(cwd))
+                with patch.object(self.install, "get_target_dirs",
+                                  return_value={}), \
+                     patch("sys.argv", ["install.py", "--uninstall"]), \
+                     patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    code = self.install.main()
+            finally:
+                os.chdir(old)
+            self.assertEqual(code, 1)
+            self.assertIn("Uninstall incomplete", out.getvalue())
+            self.assertTrue((installed / "SKILL.md").exists())
+
+
+class TestLocalFallbackLinkLikeSkills(_BaseInstallTest):
+    """_run_local_fallback must refuse a junctioned or symlinked .skills."""
+
+    def test_link_like_skills_refused_before_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            outside = root / "outside"
+            outside.mkdir()
+            src = root / "src"
+            src.mkdir()
+            (src / "SKILL.md").write_text("body", encoding="utf-8")
+            work = root / "work"
+            work.mkdir()
+            try:
+                _create_directory_link(work / ".skills", outside)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    with self.assertRaises(SystemExit) as ctx:
+                        self.install._run_local_fallback(src, False)
+            finally:
+                os.chdir(old)
+            self.assertEqual(ctx.exception.code, 1)
+            self.assertIn("Local installation failed", out.getvalue())
+            self.assertEqual(list(outside.iterdir()), [])
+
+
+class TestCredentialName(_BaseInstallTest):
+    """Credential stores must never be copied into a skill directory."""
+
+    MATCHES = (
+        ".git-credentials", ".npmrc", ".pypirc", ".htpasswd",
+        "foo.keystore", "bar.jks", "id_rsa", ".env.local", "server.pem",
+    )
+    NON_MATCHES = (".gitignore", "notes.txt", "README.md")
+
+    def test_credential_names_match(self):
+        for name in self.MATCHES:
+            with self.subTest(name=name):
+                self.assertTrue(self.install._is_credential_name(name))
+
+    def test_ordinary_names_do_not_match(self):
+        for name in self.NON_MATCHES:
+            with self.subTest(name=name):
+                self.assertFalse(self.install._is_credential_name(name))
+
 
 class TestMainEdgeCases(_BaseInstallTestWithArgv):
     """Edge-case tests for main()."""

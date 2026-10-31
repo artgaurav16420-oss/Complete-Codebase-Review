@@ -48,8 +48,16 @@ def check(report, floor=DEFAULT_FLOOR):
 def main(argv):
     path = argv[1] if len(argv) > 1 else "coverage.json"
     floor = float(argv[2]) if len(argv) > 2 else DEFAULT_FLOOR
-    with open(path, encoding="utf-8") as handle:
-        report = json.load(handle)
+    try:
+        with open(path, encoding="utf-8") as handle:
+            report = json.load(handle)
+    except (OSError, ValueError) as exc:
+        print("[ERROR] cannot read coverage report {}: {}".format(path, exc))
+        return 1
+    if not isinstance(report, dict):
+        print("[ERROR] cannot read coverage report {}: expected a JSON object, "
+              "got {}".format(path, type(report).__name__))
+        return 1
     failures = check(report, floor)
     for path, percent in failures:
         print("[FAIL] {}: {:.1f}% < {:.1f}%".format(path, percent, floor))

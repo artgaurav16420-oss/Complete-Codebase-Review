@@ -155,9 +155,12 @@ def _onerror(func, path, exc_info):
     func(path)
 
 
-_CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+_CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore", ".jks")
 _CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
-_CREDENTIAL_NAMES = {"credentials", "credentials.json", ".netrc"}
+_CREDENTIAL_NAMES = {
+    "credentials", "credentials.json", ".netrc",
+    ".git-credentials", ".npmrc", ".pypirc", ".htpasswd",
+}
 
 
 def _is_credential_name(name):
@@ -174,18 +177,6 @@ def _is_credential_name(name):
         or lowered.startswith(_CREDENTIAL_PREFIXES)
         or lowered.endswith(_CREDENTIAL_SUFFIXES)
     )
-
-
-def _is_link_like(path):
-    """True for a symlink, a Windows junction, or any reparse point."""
-    try:
-        if os.path.islink(str(path)):
-            return True
-        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
-    except OSError:
-        return False
-    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    return bool(flag and attrs & flag)
 
 
 def _ignore_skill_files(path, names):
@@ -554,6 +545,7 @@ def _run_uninstall(target, dry_run):
         local = Path.cwd() / ".skills"
         if local.exists():
             try:
+                local = _validate_target_path(local)
                 if remove_skill(local, dry_run):
                     removed += 1
                     print_info("Removed local .skills install")
@@ -575,6 +567,11 @@ def _run_uninstall(target, dry_run):
 def _run_local_fallback(src_dir, dry_run):
     """Install to .skills/ under the current working directory, exiting on error."""
     local_target = Path.cwd() / ".skills"
+    try:
+        local_target = _validate_target_path(local_target)
+    except ValueError as e:
+        print_error(f"Local installation failed: {e}")
+        sys.exit(1)
     gitignore = Path.cwd() / ".gitignore"
     if gitignore.exists() and any(
         line.strip() in [".skills", ".skills/"]

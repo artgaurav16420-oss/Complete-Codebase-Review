@@ -118,6 +118,16 @@ class TestSynthesize(unittest.TestCase):
         self.assertEqual(model["findings"], [])
         self.assertEqual(len(model["rejected"]), 1)
 
+    def test_baseline_re_review_count_defaults_to_zero(self):
+        model = pipeline.synthesize(_manifest(), _results(), ["security"])
+        self.assertEqual(model["baseline"]["re_review_count"], 0)
+
+    def test_baseline_carries_re_review_count(self):
+        model = pipeline.synthesize(
+            _manifest(), _results(), ["security"], re_review_count=2
+        )
+        self.assertEqual(model["baseline"]["re_review_count"], 2)
+
 
 class TestRenderAndWrite(unittest.TestCase):
     """Output rendering and file writing."""

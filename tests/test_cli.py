@@ -298,6 +298,79 @@ class TestEvalCommand(unittest.TestCase):
         self.assertEqual(code, 2)
 
 
+class TestCliErrorExitCodes(unittest.TestCase):
+    """Error paths honour the documented contract: 2 for bad input, 1 for a
+    blocked report, and always an [ERROR] line on stdout."""
+
+    def test_record_conflicting_targets_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, output = run_cli([
+                "record", "ccr", "--target", "tests",
+                "--out", str(Path(tmp) / "cache"),
+            ])
+        self.assertEqual(code, 2)
+        self.assertTrue(output.startswith("[ERROR] "))
+
+    def test_synthesize_unknown_agent_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, output = run_cli([
+                "synthesize", "--in", tmp, "--agents", "ghost",
+            ])
+        self.assertEqual(code, 2)
+        self.assertTrue(output.startswith("[ERROR] "))
+        self.assertIn("unknown agent", output)
+
+    def test_synthesize_malformed_result_file_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "phase_security.json").write_text(
+                "[]", encoding="utf-8"
+            )
+            code, output = run_cli([
+                "synthesize", "--in", tmp, "--agents", "security",
+            ])
+        self.assertEqual(code, 2)
+        self.assertTrue(output.startswith("[ERROR] "))
+        self.assertIn("must be an object", output)
+
+    def test_synthesize_malformed_findings_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "phase_security.json").write_text(json.dumps({
+                "findings": [
+                    {"finding": "no anchor here", "severity": "LOW",
+                     "est_hours": 1}
+                    for _ in range(5)
+                ]
+            }), encoding="utf-8")
+            code, output = run_cli([
+                "synthesize", "--in", tmp, "--agents", "security",
+            ])
+        self.assertEqual(code, 2)
+        self.assertTrue(output.startswith("[ERROR] "))
+        self.assertIn("malformed", output)
+
+    def test_eval_bad_fixture_exits_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "security.json").write_text("[]", encoding="utf-8")
+            code, output = run_cli(["eval", "--fixtures", tmp])
+        self.assertEqual(code, 2)
+        self.assertTrue(output.startswith("[ERROR] "))
+        self.assertIn("must be an object", output)
+
+    def test_completion_gate_exits_one_with_error_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security,architecture,test_health",
+            ])
+            (Path(tmp) / "phase_security.json").write_text(
+                '{"findings": []}', encoding="utf-8"
+            )
+            code, output = run_cli(["synthesize", "--in", tmp])
+        self.assertEqual(code, 1)
+        self.assertIn("[ERROR] insufficient agent coverage", output)
+        self.assertIn("[ERROR] report blocked", output)
+
+
 class TestParser(unittest.TestCase):
     """Global parser behaviour."""
 

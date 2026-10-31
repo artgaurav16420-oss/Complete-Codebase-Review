@@ -50,6 +50,28 @@ class TestDiscover(unittest.TestCase):
             facts = discovery.discover(str(root))
             self.assertEqual(facts["ci"], [".github/workflows/ci.yml"])
 
+    def test_db_markers_in_service_subdirectory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "server" / "prisma").mkdir(parents=True)
+            (root / "server" / "prisma" / "schema.prisma").write_text(
+                "datasource db {}\n", encoding="utf-8"
+            )
+            (root / "server" / "migrations").mkdir()
+            (root / "server" / "migrations" / "001_init.sql").write_text(
+                "create table t (id int);\n", encoding="utf-8"
+            )
+            facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], ["migrations", "prisma"])
+
+    def test_db_scan_stops_at_the_depth_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps" / "api" / "prisma").mkdir(parents=True)
+            (root / "a" / "b" / "c" / "migrations").mkdir(parents=True)
+            facts = discovery.discover(str(root))
+        self.assertEqual(facts["database"], ["prisma"])
+
     def test_target_is_resolved(self):
         self.assertTrue(self.facts["target"].endswith("dummy_repo"))
 

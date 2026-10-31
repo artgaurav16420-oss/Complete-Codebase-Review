@@ -86,13 +86,16 @@ echo "[INFO] Running docs and compliance suite..."
 "$PYTHON" tests/compliance_test.py || FAIL=1
 "$PYTHON" tests/review_compliance_test.py || FAIL=1
 
-echo "[INFO] Running all unit tests..."
-if "$PYTHON" -c "import coverage" >/dev/null 2>&1; then
+echo "[INFO] Running all unit tests under coverage..."
+if ! "$PYTHON" -c "import coverage" >/dev/null 2>&1; then
+    echo "[ERROR] coverage is not installed: the 85% total and 80% per-file gates cannot run."
+    echo "[ERROR] Install it with: $PYTHON -m pip install 'coverage>=7.0,<8'"
+    FAIL=1
+else
     "$PYTHON" -m coverage run -m unittest discover -s tests -p "test_*.py" || FAIL=1
     "$PYTHON" -m coverage report || FAIL=1
-else
-    echo "[INFO] coverage not available — running without coverage"
-    "$PYTHON" -m unittest discover -s tests -p "test_*.py" || FAIL=1
+    "$PYTHON" -m coverage json -o coverage.json || FAIL=1
+    "$PYTHON" tools/coverage_floor.py coverage.json || FAIL=1
 fi
 
 if [ "$FAIL" -eq 1 ]; then

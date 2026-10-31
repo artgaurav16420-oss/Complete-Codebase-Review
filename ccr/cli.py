@@ -3,7 +3,9 @@
 import argparse
 import json
 import math
+import os
 import shutil
+import stat
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +14,7 @@ from . import __version__, manifest as manifest_mod
 from . import discovery, findings as findings_mod, pipeline, providers, state
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+ARCHIVE_MAX_ATTEMPTS = 100
 
 
 def _manifest():
@@ -78,6 +81,28 @@ def cmd_plan(args):
     return 0
 
 
+def _is_link_like(path):
+    """Return True for symlinks and, on Windows, junction/reparse points."""
+    try:
+        if Path(path).is_symlink():
+            return True
+    except OSError:
+        pass
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is not None:
+        try:
+            if isjunction(str(path)):
+                return True
+        except OSError:
+            pass
+    try:
+        attrs = getattr(os.lstat(str(path)), "st_file_attributes", 0)
+    except OSError:
+        return False
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(flag and attrs & flag)
+
+
 def _archive_results(cache, agent_ids=()):
     """Move previous agent results aside so they cannot be counted again.
 
@@ -93,18 +118,31 @@ def _archive_results(cache, agent_ids=()):
     if not stale:
         return 0
     base = root / "previous-results"
-    if base.is_symlink():
+    if _is_link_like(base):
         raise OSError("refusing to archive through symlink: " + str(base))
+    if base.exists() and not base.is_dir():
+        raise OSError("archive parent is not a directory: " + str(base))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     dest = base / stamp
     suffix = 1
+    attempts = 1
     while True:
         try:
             dest.mkdir(parents=True)
             break
-        except FileExistsError:
+        except FileExistsError as exc:
+            if not base.is_dir():
+                raise OSError(
+                    "archive parent is not a directory: " + str(base)
+                ) from exc
+            if attempts >= ARCHIVE_MAX_ATTEMPTS:
+                raise OSError(
+                    "no free archive name under " + str(base)
+                    + " after " + str(attempts) + " attempts"
+                ) from exc
             dest = base / f"{stamp}-{suffix}"
             suffix += 1
+            attempts += 1
     moved = []
     try:
         for path in stale:
@@ -340,10 +378,15 @@ def cmd_synthesize(args):
         effort = cached.data.get("effort", "max") if cached is not None else "max"
     target = args.target or (cached.data["target_dir"] if cached else args.cache)
     facts = None
+    re_review_count = 0
     if cached is not None:
         stored = cached.data.get("target_dir", "")
-        if not stored or Path(target).resolve() == Path(stored).resolve():
+        same_target = (
+            not stored or Path(target).resolve() == Path(stored).resolve()
+        )
+        if same_target:
             facts = cached.data.get("facts")
+            re_review_count = cached.data.get("re_review_count", 0)
         else:
             print(
                 "[WARN] cached facts belong to " + stored
@@ -383,6 +426,7 @@ def cmd_synthesize(args):
         model = pipeline.synthesize(
             data, results, planned, completed=completed, target=target,
             facts=facts, baseline=baseline,
+            re_review_count=re_review_count,
         )
     except ValueError as exc:
         print("[ERROR] " + str(exc))

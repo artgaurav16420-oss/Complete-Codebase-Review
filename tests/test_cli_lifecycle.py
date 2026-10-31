@@ -31,6 +31,28 @@ def run(argv):
     return code, out.getvalue(), err.getvalue()
 
 
+def create_directory_link(link, target):
+    """Link ``link`` to ``target``, preferring a Windows junction.
+
+    ``os.symlink`` needs Developer Mode or the symlink privilege on Windows,
+    so ``mklink /J`` runs first there. Raises OSError when neither works.
+    """
+    junction_error = None
+    if sys.platform == "win32":
+        # Literal argv with shell=False: no shell interpolation takes place.
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            return
+        junction_error = result.stderr.strip() or result.stdout.strip()
+    try:
+        os.symlink(str(target), str(link), target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        raise OSError(junction_error or str(exc)) from exc
+
+
 class TestCliRecordLifecycle(unittest.TestCase):
     """record must start a clean run and archive every result layout."""
 
@@ -114,6 +136,36 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("could not archive stale results", out)
 
+    def test_archive_refuses_file_blocking_previous_results(self):
+        (self.cache / "phase_security.json").write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        base = self.cache / "previous-results"
+        base.write_text("blocking file", encoding="utf-8")
+        code, out, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 2)
+        self.assertIn("[ERROR] could not archive stale results", out)
+        self.assertIn(str(base), out)
+        self.assertTrue(base.is_file())
+        self.assertTrue((self.cache / "phase_security.json").exists())
+
+    def test_archive_name_retries_are_bounded(self):
+        (self.cache / "previous-results").mkdir()
+        (self.cache / "phase_security.json").write_text(
+            "{}", encoding="utf-8"
+        )
+
+        def taken_mkdir(path, *args, **kwargs):
+            raise FileExistsError("simulated permanent collision")
+
+        with mock.patch.object(Path, "mkdir", taken_mkdir):
+            with self.assertRaises(OSError) as ctx:
+                cli._archive_results(self.cache)
+        self.assertIn("no free archive name", str(ctx.exception))
+
     def test_archive_directory_creation_is_atomic(self):
         (self.cache / "phase_security.json").write_text(
             '{"agent": "security", "findings": []}', encoding="utf-8"
@@ -170,6 +222,25 @@ class TestCliRecordLifecycle(unittest.TestCase):
         )
         with self.assertRaises(OSError):
             cli._archive_results(self.cache)
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_record_refuses_junctioned_previous_results(self):
+        target = Path(self.tmp.name) / "elsewhere"
+        target.mkdir()
+        base = self.cache / "previous-results"
+        try:
+            create_directory_link(base, target)
+        except OSError as exc:
+            self.skipTest("directory links unavailable: " + str(exc))
+        (self.cache / "phase_security.json").write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        code, out, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 2)
+        self.assertIn("[ERROR] could not archive stale results", out)
         self.assertEqual(list(target.iterdir()), [])
 
     def test_bare_agent_result_is_archived(self):
@@ -390,6 +461,67 @@ class TestCliSynthesizeOptions(unittest.TestCase):
         data = json.loads(out)
         self.assertEqual(data["valid"], 1)
         self.assertEqual(data["malformed"], 0)
+
+
+class TestCliReReviewBaseline(unittest.TestCase):
+    """State's re_review_count must reach the report baseline snapshot."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.cache = self.dir / "cache"
+        self.cache.mkdir()
+        shutil.copyfile(
+            FIXTURES / "security.json", self.cache / "phase_security.json"
+        )
+
+    def _write_state(self, **extra):
+        data = {
+            "target_dir": str(TARGET.resolve()),
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": ["security"],
+        }
+        data.update(extra)
+        (self.cache / "ccr-state.json").write_text(
+            json.dumps(data), encoding="utf-8"
+        )
+
+    def _synthesize_json(self):
+        out = self.dir / "report"
+        code, _, err = run([
+            "synthesize", "--in", str(self.cache),
+            "--format", "json", "--out", str(out),
+        ])
+        self.assertEqual(code, 0, err)
+        return json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+
+    def test_state_re_review_count_reaches_baseline(self):
+        self._write_state(re_review_count=2)
+        report = self._synthesize_json()
+        self.assertEqual(report["baseline"]["re_review_count"], 2)
+
+    def test_absent_re_review_count_defaults_to_zero(self):
+        self._write_state()
+        report = self._synthesize_json()
+        self.assertEqual(report["baseline"]["re_review_count"], 0)
+
+    def test_mismatched_target_drops_cached_re_review_count(self):
+        # A foreign baseline must not inherit the count of a different target.
+        self._write_state(
+            target_dir=str(self.dir / "other-target"), re_review_count=2
+        )
+        out = self.dir / "report"
+        code, _, err = run([
+            "synthesize", "--in", str(self.cache), "--target", str(TARGET),
+            "--format", "json", "--out", str(out),
+        ])
+        self.assertEqual(code, 0, err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(report["baseline"]["re_review_count"], 0)
 
 
 class TestCliVersionGuard(unittest.TestCase):

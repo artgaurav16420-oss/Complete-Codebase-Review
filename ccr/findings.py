@@ -96,7 +96,7 @@ def _as_hours(value):
     """Coerce an estimate to a non-negative float."""
     try:
         hours = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0.0
     if not math.isfinite(hours):
         return 0.0
@@ -126,7 +126,10 @@ def review_findings(raw_findings, floors=None):
         item["severity"] = normalize_severity(item.get("severity"))
         item["da_verdict"] = normalize_verdict(item.get("da_verdict"))
         item["est_hours"] = _as_hours(item.get("est_hours"))
-        floor = (floors or {}).get(item.get("finding_type", ""))
+        finding_type = item.get("finding_type")
+        if not isinstance(finding_type, str):
+            finding_type = ""
+        floor = (floors or {}).get(finding_type)
         if floor:
             floor = float(floor)
             if item["est_hours"] <= 0:
@@ -324,25 +327,59 @@ def find_large_file_clusters(findings, min_hours=LARGE_FIX_HOURS):
 QUICK_WIN_CAP_HOURS = 40.0
 
 
-def _is_security(item):
+SECURITY_AGENT_ID = "security"
+
+
+def _domain_agent_ids(findings):
+    """Map report names to the agent ids that produced them."""
+    mapping = {}
+    for item in findings:
+        display = item.get("domain")
+        agent_id = item.get("agent")
+        if not isinstance(display, str) or not display:
+            continue
+        if not isinstance(agent_id, str) or not agent_id:
+            continue
+        mapping.setdefault(display, agent_id)
+    return mapping
+
+
+def _is_security(item, security_domains=frozenset()):
     """True when a finding came from the security agent.
 
     Keys on the stable agent id first: the display label is editable in the
-    manifest, and matching it silently demotes HIGH findings when it changes.
+    manifest. Findings without an id fall back to the labels this run attached
+    to that id, so a rename cannot silently demote a HIGH finding.
     """
     if item.get("agent"):
-        return item.get("agent") == "security"
-    return item.get("domain") == "Security"
+        return item.get("agent") == SECURITY_AGENT_ID
+    return item.get("domain") in security_domains
 
 
-def place_roadmap(findings):
+def place_roadmap(findings, security_domains=None):
     """Split eligible findings into three phases.
 
     Phase 1: CRITICAL plus MEDIUM/LOW quick wins (<= 2h), capped at
     QUICK_WIN_CAP_HOURS so the phase stays discriminating.
     Phase 2: HIGH, MEDIUM at <= 8h, and quick wins beyond the cap.
     Phase 3: everything else eligible. INFO is never eligible.
+
+    Args:
+        findings: Eligible findings.
+        security_domains: Report names the manifest assigned to the security
+            agent. Defaults to the names the findings carry, plus the literal
+            "Security".
     """
+    findings = list(findings)
+    if security_domains is None:
+        roster = _domain_agent_ids(findings)
+        security_domains = {
+            display for display, agent_id in roster.items()
+            if agent_id == SECURITY_AGENT_ID
+        }
+    # Always keep the manifest default: a renamed label must not drop findings
+    # that carry only the literal "Security" domain and no agent key.
+    security_domains = set(security_domains or ()) | {"Security"}
     phases = {1: [], 2: [], 3: []}
     quick_wins = []
     for item in findings:
@@ -352,7 +389,7 @@ def place_roadmap(findings):
         hours = _as_hours(item.get("est_hours"))
         if severity == "CRITICAL":
             phases[1].append(item)
-        elif severity == "HIGH" and _is_security(item):
+        elif severity == "HIGH" and _is_security(item, security_domains):
             phases[1].append(item)
         elif severity in ("MEDIUM", "LOW") and hours <= 2:
             quick_wins.append(item)
@@ -499,8 +536,10 @@ def _trend(baseline, total_hours):
 def _assemble_model(findings, rejected, agents_planned, agents_completed, *,
                     target, health, total_counts, total_hours, scores,
                     priority_areas, overall_score, roadmap_hours, by_domain,
-                    phases, verdict_summary, trend, overlap_candidates=None):
+                    phases, verdict_summary, trend, overlap_candidates=None,
+                    domain_agents=None, re_review_count=0):
     """Build the report model dict consumed by the renderers."""
+    domain_agents = domain_agents or {}
     return {
         "target": target,
         "overall_health": health,
@@ -532,22 +571,23 @@ def _assemble_model(findings, rejected, agents_planned, agents_completed, *,
             "tech_debt_hours": total_hours,
             "critical_count": total_counts["CRITICAL"],
             "per_domain_scores": {
-                row["domain"]: row["score"] for row in scores
+                domain_agents.get(row["domain"], row["domain"]): row["score"]
+                for row in scores
             },
             "per_domain_open_findings": {
-                row["domain"]: {
+                domain_agents.get(row["domain"], row["domain"]): {
                     "critical": row["critical"], "high": row["high"],
                 }
                 for row in scores
             },
             "task_count": sum(len(items) for items in phases.values()),
-            "re_review_count": 0,
+            "re_review_count": re_review_count,
         },
     }
 
 
 def aggregate(findings, rejected, agents_planned, agents_completed,
-              target="", baseline=None):
+              target="", baseline=None, re_review_count=0):
     """Build the report model consumed by the renderers.
 
     Args:
@@ -557,6 +597,8 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
         agents_completed: Agent ids that reported.
         target: Target directory string.
         baseline: Optional previous baseline dict for trend text.
+        re_review_count: Completed re-reviews, carried into the baseline so
+            Phase 4f can force a full rescan every third re-review.
 
     Returns:
         dict: Report model.
@@ -568,6 +610,7 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
     """
     all_findings = list(findings) + list(rejected)
     open_findings = [f for f in findings if f.get("da_verdict") != "REJECTED"]
+    domain_agents = _domain_agent_ids(all_findings)
 
     scores, total_counts = _score_domains(open_findings)
 
@@ -602,7 +645,13 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
         })
     roadmap_source = [f for f in findings if id(f) not in merged_ids]
 
-    phases = place_roadmap(roadmap_source)
+    phases = place_roadmap(
+        roadmap_source,
+        security_domains={
+            display for display, agent_id in domain_agents.items()
+            if agent_id == SECURITY_AGENT_ID
+        },
+    )
     roadmap_hours, total_hours, by_domain = _roadmap_summary(phases)
 
     verdict_summary = _verdict_summary(all_findings)
@@ -618,5 +667,6 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
         priority_areas=priority_areas, overall_score=overall_score,
         roadmap_hours=roadmap_hours, by_domain=by_domain,
         phases=phases, verdict_summary=verdict_summary, trend=trend,
-        overlap_candidates=overlap_candidates,
+        overlap_candidates=overlap_candidates, domain_agents=domain_agents,
+        re_review_count=re_review_count,
     )

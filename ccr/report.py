@@ -42,6 +42,7 @@ def _executive_summary(model):
     priority = ", ".join(_cell(name) for name in model["priority_areas"])
     if not priority:
         priority = "none"
+    debt_hours = fmt_hours(model["tech_debt_hours"])
     lines = [
         "## Executive Summary",
         "",
@@ -58,7 +59,7 @@ def _executive_summary(model):
         )
     lines.extend([
         f"| **Critical Issues** | {model['critical_issues']} |",
-        f"| **Tech Debt** | {fmt_hours(model['tech_debt_hours'])} |",
+        f"| **Tech Debt** | {debt_hours} |",
         f"| **Priority Areas** | {priority} |",
         "",
     ])
@@ -74,8 +75,9 @@ def _per_domain(model):
         "|--------|-------------|----------|------|--------|-----|",
     ]
     for row in model["per_domain_scores"]:
+        domain = _cell(row["domain"])
         lines.append(
-            f"| {_cell(row['domain'])} | {row['score']} | {row['critical']} | "
+            f"| {domain} | {row['score']} | {row['critical']} | "
             f"{row['high']} | {row['medium']} | {row['low']} |"
         )
     if not model["per_domain_scores"]:
@@ -98,10 +100,13 @@ def _findings(model):
         "|---------|----------|--------|------------|------------|",
     ]
     for item in model["findings"]:
+        finding = _cell(item["finding"])
+        domain = _cell(item.get("domain", ""))
+        hours = fmt_hours(item.get("est_hours", 0))
         lines.append(
-            f"| {_cell(item['finding'])} | {item['severity']} | "
-            f"{_cell(item.get('domain', ''))} | "
-            f"{fmt_hours(item.get('est_hours', 0))} | "
+            f"| {finding} | {item['severity']} | "
+            f"{domain} | "
+            f"{hours} | "
             f"{item['da_verdict']} |"
         )
     if not model["findings"]:
@@ -139,14 +144,16 @@ def _roadmap(model):
 def _tech_debt(model):
     """Render the Tech Debt Summary section."""
     debt = model["tech_debt"]
-    parts = [
-        f"{_cell(domain)}: {fmt_hours(hours)}"
-        for domain, hours in debt["by_domain"].items()
-    ]
+    total_hours = fmt_hours_long(debt["total_hours"])
+    parts = []
+    for domain, hours in debt["by_domain"].items():
+        label = _cell(domain)
+        amount = fmt_hours(hours)
+        parts.append(f"{label}: {amount}")
     lines = [
         "## Tech Debt Summary",
         "",
-        f"**Total estimated**: {fmt_hours_long(debt['total_hours'])}",
+        f"**Total estimated**: {total_hours}",
         "",
         f"**Trend**: {debt['trend']}",
         "",
@@ -180,8 +187,9 @@ def _rejected(model):
     if not model["rejected"]:
         lines.append("None.")
     for item in model["rejected"]:
+        finding = _cell(item.get("finding", ""))
         lines.append(
-            f"- {_cell(item.get('finding', ''))} "
+            f"- {finding} "
             f"(reason: {item.get('reject_reason', '')})"
         )
     lines.append("")
@@ -198,16 +206,17 @@ def _overlap_candidates(model):
         return "\n".join(lines)
     for candidate in candidates:
         merged = ", ".join(candidate.get("merged", []))
+        filename = _cell(candidate.get("file", ""))
         if candidate.get("advisory"):
             lines.append(
-                f"- [advisory] {_cell(candidate.get('file', ''))}: "
+                f"- [advisory] {filename}: "
                 f"{candidate.get('hours', 0)}h across "
                 f"{candidate.get('kept', '')} + {merged} \u2014 adjudicate "
                 "whether this is one root cause"
             )
         else:
             lines.append(
-                f"- {_cell(candidate.get('file', ''))}: kept "
+                f"- {filename}: kept "
                 f"{candidate.get('kept', '')} (merged: {merged})"
             )
     lines.append("")
@@ -228,8 +237,9 @@ def _title(text):
 
 def render_markdown(model):
     """Render the full health report as Markdown."""
+    title = _title(model.get("target") or ".")
     sections = [
-        f"# Codebase Health Report - {_title(model.get('target') or '.')}",
+        f"# Codebase Health Report - {title}",
         "",
         _executive_summary(model),
         _per_domain(model),
@@ -331,7 +341,11 @@ def validate_markdown(md):
                 else:
                     domain_sum += value
                     found_domain = True
-    if total is not None and found_domain and abs(domain_sum - total) >= 0.5:
+    if found_domain and total is None:
+        errors.append(
+            "tech-debt total missing while by-domain hours are present"
+        )
+    elif total is not None and found_domain and abs(domain_sum - total) >= 0.5:
         errors.append(
             "tech-debt mismatch: by-domain {:.2f}h != total {:.2f}h".format(
                 domain_sum, total

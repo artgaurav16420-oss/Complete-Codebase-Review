@@ -19,6 +19,8 @@ python tools/generate.py --check   # CI mode
 
 | Module | Responsibility |
 |--------|----------------|
+| `ccr` (`__init__.py`) | Package version from `pipeline.json`; `load_pipeline()` returns the manifest or `{}` |
+| `ccr.__main__` | `python -m ccr` entry point into `ccr.cli.main` |
 | `ccr.manifest` | Load and validate `pipeline.json` |
 | `ccr.discovery` | Deterministic file/tooling scan; agent selection (override > Quick Mode > dimensions) |
 | `ccr.state` | Atomic `ccr-state.json`; phase gates, agent accounting, resume drift detection |
@@ -69,9 +71,10 @@ takes the floor, and an explicit estimate is raised to at least half the floor
 | `python -m ccr eval` | Fixture coverage and precision (list or benchmark spec) |
 
 `synthesize` flags: `--baseline <file>` for the tech-debt trend line,
-`--effort max|min` (defaults to the state file), and `--allow-partial` to emit
-a report below the gate. Exit codes: `0` success, `1` completion gate or eval
-miss, `2` usage, manifest, or baseline error.
+`--format markdown|json|both` (default `markdown`), `--effort max|min` (defaults
+to the state file), and `--allow-partial` to emit a report below the gate.
+Exit codes: `0` success, `1` completion gate or eval miss, `2` usage, manifest,
+or baseline error.
 
 ## Benchmarks
 
@@ -92,6 +95,12 @@ with human-verified precision; see its README.
 
 Signatures below are the public (non-underscore) functions of each module.
 All return values are plain dicts/lists unless stated otherwise.
+
+### `ccr` package
+
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `load_pipeline` | `load_pipeline()` | Packaged manifest dict; `{}` when the manifest is missing or invalid |
 
 ### `ccr.manifest`
 
@@ -148,10 +157,10 @@ All return values are plain dicts/lists unless stated otherwise.
 | `dedup` | `dedup(findings)` | Deduplicated list |
 | `assign_ids` | `assign_ids(findings)` | Same list with `F-001` style ids |
 | `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED`, `QUESTIONABLE` and `INFO` are never eligible |
-| `place_roadmap` | `place_roadmap(findings)` | `{1, 2, 3}` phases; quick wins capped at 40h, HIGH never quick-win |
+| `place_roadmap` | `place_roadmap(findings, security_domains=None)` | `{1, 2, 3}` phases; quick wins capped at 40h, HIGH never quick-win |
 | `find_overlaps` | `find_overlaps(findings)` | Near-identical same-file clusters (auto-merged once) |
 | `find_large_file_clusters` | `find_large_file_clusters(findings, min_hours=8.0)` | Advisory same-file clusters of expensive findings |
-| `aggregate` | `aggregate(findings, rejected, agents_planned, agents_completed, target='', baseline=None)` | Report model consumed by the renderers |
+| `aggregate` | `aggregate(findings, rejected, agents_planned, agents_completed, target='', baseline=None, re_review_count=0)` | Report model consumed by the renderers |
 
 ### `ccr.report`
 
@@ -174,13 +183,14 @@ All return values are plain dicts/lists unless stated otherwise.
 | `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |
 | `load_results` | `load_results(out_dir, agent_ids, required=True)` | `{agent_id: result}`; `phase_<id>.json` wins over `<id>.json` |
 | `RecordedProvider` | `RecordedProvider(fixtures_dir)` | Class holding the fixture dir; `agent_ids()` lists ids for `ccr eval` |
+| `RecordedProvider.get` | `provider.get(agent_id)` | Validated result dict; `phase_<id>.json` wins over `<id>.json`, raises `ValueError` when malformed |
 
 ### `ccr.pipeline`
 
 | Function | Signature | Returns |
 |----------|-----------|---------|
 | `check_completion` | `check_completion(manifest, effort, planned, completed)` | Float completion ratio; raises `RuntimeError` below the gate |
-| `synthesize` | `synthesize(manifest, results, planned, completed=None, target='', facts=None, baseline=None, timestamp=None)` | Report model |
+| `synthesize` | `synthesize(manifest, results, planned, completed=None, target='', facts=None, baseline=None, timestamp=None, re_review_count=0)` | Report model |
 | `malformed_exceeded` | `malformed_exceeded(raw_count, malformed_count)` | `bool`; the single malformed-results rule shared by `synthesize` and `validate-results` |
 | `render` | `render(model, fmt='markdown')` | `{"markdown": ...}`, `{"json": ...}`, or both |
 | `write_outputs` | `write_outputs(model, out_path, fmt='markdown')` | Written paths |
@@ -203,11 +213,11 @@ All return values are plain dicts/lists unless stated otherwise.
 
 ## Tests
 
-`tests/test_characterization.py`, `test_cli.py`, `test_compat.py`,
-`test_core_guard.py`, `test_coverage_floor.py`, `test_discovery.py`,
-`test_env_config.py`, `test_eval.py`, `test_findings.py`,
-`test_generated.py`, `test_install.py`, `test_uninstall.py`,
-`test_manifest.py`, `test_metrics.py`, `test_pipeline.py`,
-`test_pipeline_core.py`, `test_pipeline_integration.py`,
-`test_providers.py`, `test_report.py`, `test_smoke.py`, and `test_state.py`
-cover this package.
+`tests/test_characterization.py`, `test_cli.py`, `test_cli_lifecycle.py`,
+`test_compat.py`, `test_core_guard.py`, `test_coverage_floor.py`,
+`test_discovery.py`, `test_env_config.py`, `test_eval.py`, `test_fileio.py`,
+`test_findings.py`, `test_generated.py`, `test_install.py`,
+`test_uninstall.py`, `test_manifest.py`, `test_metrics.py`,
+`test_pipeline.py`, `test_pipeline_core.py`, `test_pipeline_integration.py`,
+`test_providers.py`, `test_report.py`, `test_report_json.py`, `test_smoke.py`,
+and `test_state.py` cover this package.

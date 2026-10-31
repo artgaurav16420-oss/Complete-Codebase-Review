@@ -106,6 +106,18 @@ class TestReviewFindings(unittest.TestCase):
         )
         self.assertEqual(kept[0]["est_hours"], 4.0)
 
+    def test_floor_ignores_non_string_finding_type(self):
+        for bad in (["hardcoded_secret"], {"name": "hardcoded_secret"}):
+            kept, _ = f.review_findings(
+                [make(GOOD, hours=1, finding_type=bad)],
+                floors={"hardcoded_secret": 2},
+            )
+            self.assertEqual(kept[0]["est_hours"], 1.0)
+
+    def test_overflowing_estimate_becomes_zero(self):
+        kept, _ = f.review_findings([make(GOOD, hours=10 ** 400)])
+        self.assertEqual(kept[0]["est_hours"], 0.0)
+
 
 class TestDedup(unittest.TestCase):
     """Findings on the same domain and line collapse."""
@@ -191,6 +203,32 @@ class TestRoadmap(unittest.TestCase):
         ])
         self.assertEqual(len(phases[1]), 1)
         self.assertEqual(len(phases[2]), 0)
+
+    def test_renamed_security_label_comes_from_the_roster(self):
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", hours=5,
+                 domain="AppSec", agent="security"),
+            make("[b.py:2] \u2014 flaw \u2192 failure", severity="HIGH",
+                 hours=5, domain="AppSec"),
+        ])
+        self.assertEqual(len(phases[1]), 2)
+
+    def test_renamed_roster_keeps_literal_security_fallback(self):
+        # The roster contributes "AppSec"; the union must still keep the
+        # manifest default so an id-less finding labelled "Security" stays in
+        # phase 1 after a rename.
+        phases = f.place_roadmap([
+            make(GOOD, severity="HIGH", hours=5,
+                 domain="AppSec", agent="security"),
+            make("[b.py:2] \u2014 flaw \u2192 failure", severity="HIGH",
+                 hours=5, domain="Security"),
+        ])
+        self.assertEqual(len(phases[1]), 2)
+        self.assertEqual(len(phases[2]), 0)
+        self.assertIn(
+            "[b.py:2] \u2014 flaw \u2192 failure",
+            [item["finding"] for item in phases[1]],
+        )
 
     def test_non_security_high_stays_phase_2(self):
         phases = f.place_roadmap([
@@ -297,6 +335,22 @@ class TestAggregate(unittest.TestCase):
                     "critical_count", "per_domain_scores",
                     "per_domain_open_findings", "task_count", "re_review_count"):
             self.assertIn(key, baseline)
+
+    def test_baseline_domain_keys_use_agent_ids(self):
+        model = self._model([
+            make(GOOD, domain="AppSec", agent="security"),
+        ])
+        baseline = model["baseline"]
+        self.assertEqual(set(baseline["per_domain_scores"]), {"security"})
+        self.assertEqual(set(baseline["per_domain_open_findings"]),
+                         {"security"})
+
+    def test_re_review_count_reaches_the_baseline(self):
+        kept = f.assign_ids([make(GOOD)])
+        model = f.aggregate(
+            kept, [], ["security"], ["security"], re_review_count=4,
+        )
+        self.assertEqual(model["baseline"]["re_review_count"], 4)
 
     def test_trend_with_baseline(self):
         kept = f.assign_ids([make(GOOD, hours=5)])

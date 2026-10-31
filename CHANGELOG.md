@@ -6,12 +6,18 @@
   version strings, and installer checksum via `tools/generate.py --check` in CI.
 - **Executable core** (`ccr/`): discovery, agent planning, state gates, finding normalization,
   DA filtering, tech-debt aggregation, roadmap, and Markdown/JSON report rendering.
-- **CLI**: `python -m ccr plan|record|synthesize|eval`.
+- **CLI**: `python -m ccr plan|record|synthesize|validate-results|eval`.
 - **Eval harness**: recorded agent fixtures replayed through synthesis and scored against
   `tests/expected_issues.json`; `missing-test-assertions` replaced by `missing-test-coverage`
   to match the fixture repo.
 - **Completion gate**: `synthesize` uses `ccr-state.json:agents_planned` and refuses to emit a
   report below 75% (full) / 66% (Quick Mode); `--allow-partial` overrides explicitly.
+- **Severity caps and prompt checks**: documentation-only findings capped at MEDIUM, test-only
+  reliability at MEDIUM unless it disables a release gate, HIGH Security findings routed to
+  Phase 1, and every agent prompt carries its own domain `checks` block.
+- **Write containment**: `ccr.fileio.write_text` keeps prompt and report writes beneath a root
+  directory, refusing symlinked roots and paths that resolve outside it; on Windows the opened
+  handle's final path is checked too, and the helper stays Python 3.9-compatible.
 - **Review follow-ups**: state gates per phase, deduplicated agent accounting, discovery facts
   carried into reports, stale-result archiving on re-record, manifest tech-debt floors applied,
   roadmap phase objects in JSON, uninstall failure exit code, and generated `help.md` version.
