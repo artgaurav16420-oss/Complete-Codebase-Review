@@ -492,6 +492,38 @@ class TestProcessFile(unittest.TestCase):
             self.assertNotIn(".", state["top_dirs"])
 
 
+class TestTestFileDetection(unittest.TestCase):
+    """Harness-style suites are tests even without a test_ prefix."""
+
+    def test_harness_named_files_are_tests(self):
+        self.assertTrue(discovery._is_test_file(("tools",), "main-harness.js"))
+        self.assertTrue(discovery._is_test_file(("tools",), "game_harness.js"))
+        self.assertTrue(discovery._is_test_file(("lib",), "parser_spec.rb"))
+        # A trailing marker token names a suite with no test directory.
+        self.assertTrue(discovery._is_test_file(("src",), "test.js"))
+        self.assertTrue(discovery._is_test_file(("src",), "module-test.js"))
+        self.assertTrue(discovery._is_test_file(("src",), "module.test.ts"))
+
+    def test_words_containing_test_are_not_tests(self):
+        self.assertFalse(discovery._is_test_file(("src",), "contest.js"))
+        self.assertFalse(discovery._is_test_file(("src",), "latest.js"))
+        self.assertFalse(discovery._is_test_file(("src",), "test-utils.js"))
+        self.assertFalse(discovery._is_test_file(("tools",), "smoke.js"))
+
+    def test_documentation_about_a_harness_is_not_a_test(self):
+        self.assertFalse(discovery._is_test_file(("docs",), "load-harness.md"))
+        self.assertFalse(discovery._is_test_file(("docs",), "harness.txt"))
+
+    def test_discover_counts_a_harness_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tools").mkdir()
+            (root / "tools" / "main-harness.js").write_text("//", encoding="utf-8")
+            (root / "app.js").write_text("//", encoding="utf-8")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["test_files"], 1)
+
+
 class TestUiFileClassification(unittest.TestCase):
     def _state(self):
         return {

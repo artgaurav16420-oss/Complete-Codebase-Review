@@ -36,6 +36,49 @@ WEASEL_PATTERNS = [
     re.compile(r"\bin\s+most\s+cases\b", re.IGNORECASE),
 ]
 
+# The prompts show the canonical em dash + arrow pair, but providers (and
+# humans writing fixtures) reliably emit ASCII. Rejecting a sound finding for
+# punctuation costs a whole finding, so the separators are normalised before
+# the anchor gate looks at them. The prefix consumes a whole run of dashes so
+# `-- flaw` does not leave a stray hyphen behind.
+# The file part may contain one level of brackets (`app/[id]/page.tsx`); a
+# plain [^\]]+ stopped at the first `]`, so those findings were never
+# normalised and the gate then rejected an anchor the canonical regex accepts.
+_ANCHOR_PREFIX_RE = re.compile(
+    r"^(\[(?:[^\[\]\n]|\[[^\]\n]*\])+:\d+(?:-\d+)?\])\s*"
+    r"(?:(?:[\u2014\u2013]{1,2}|-{1,3}|:)\s*)?"
+)
+# ASCII arrows are ambiguous inside code (`->` lambdas, `=>` rockets). The
+# separator is the *last* one in the finding: incidental arrows live in the
+# flaw text, which precedes it. A canonical arrow is never ambiguous and always
+# wins, so it is not searched positionally.
+_CANONICAL_ARROW_RE = re.compile(r"\s\u2192\s")
+_ASCII_ARROW_RE = re.compile(r"\s(?:->|=>|[\u2013\u2014]>)\s")
+
+
+def normalize_anchor(finding_text):
+    """Rewrite ASCII separators into the canonical em dash and arrow.
+
+    ``[a.py:1] - flaw -> failure``, ``[a.py:1] -- flaw => failure`` and
+    ``[a.py:1] flaw -> failure`` all become
+    ``[a.py:1] \u2014 flaw \u2192 failure``. Text without a ``[file:line]``
+    anchor or without an arrow is returned unchanged, so the gate still
+    rejects findings that carry no failure mode. Idempotent on canonical text.
+    """
+    text = finding_text or ""
+    match = _ANCHOR_PREFIX_RE.match(text)
+    if not match:
+        return text
+    rest = text[match.end():]
+    if _CANONICAL_ARROW_RE.search(rest):
+        return match.group(1) + " \u2014 " + rest
+    matches = list(_ASCII_ARROW_RE.finditer(rest))
+    if not matches:
+        return text
+    last = matches[-1]
+    rest = rest[:last.start()] + " \u2192 " + rest[last.end():]
+    return match.group(1) + " \u2014 " + rest
+
 
 MALFORMED_REASONS = ("anchor", "empty finding")
 
@@ -86,7 +129,7 @@ def weasel_hits(text):
 
 def anchor_parts(finding_text):
     """Return (file, line, flaw, failure_mode) or None."""
-    match = ANCHOR_PARTS_RE.match(finding_text or "")
+    match = ANCHOR_PARTS_RE.match(normalize_anchor(finding_text))
     if not match:
         return None
     return match.group(1), int(match.group(2)), match.group(3), match.group(4)
@@ -137,7 +180,7 @@ def review_findings(raw_findings, floors=None):
             else:
                 item["est_hours"] = max(item["est_hours"], floor * 0.5)
 
-        text = str(item.get("finding", "")).strip()
+        text = normalize_anchor(str(item.get("finding", "")).strip())
         item["finding"] = text
         reason = None
         if not text:

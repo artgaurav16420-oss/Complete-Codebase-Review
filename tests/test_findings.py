@@ -472,6 +472,73 @@ class TestAnchorParsing(unittest.TestCase):
     def test_relative_path(self):
         self.assertTrue(f.ANCHOR_RE.match("[src/a.py:1] \u2014 flaw \u2192 failure"))
 
+    def test_ascii_separators_are_normalized(self):
+        expected = "[a.py:42] \u2014 flaw \u2192 failure"
+        for text in (
+            "[a.py:42] - flaw -> failure",
+            "[a.py:42] -- flaw => failure",
+            "[a.py:42] flaw -> failure",
+            "[a.py:42] \u2013 flaw \u2192 failure",
+        ):
+            self.assertEqual(f.normalize_anchor(text), expected, text)
+            self.assertEqual(
+                f.anchor_parts(text), ("a.py", 42, "flaw", "failure"), text
+            )
+
+    def test_bracketed_path_is_normalized(self):
+        # Next.js style routes: `app/[id]/page.tsx` contains a `]`.
+        self.assertEqual(
+            f.anchor_parts("[app/[id]/page.tsx:12] - flaw -> failure"),
+            ("app/[id]/page.tsx", 12, "flaw", "failure"),
+        )
+
+    def test_arrow_inside_the_flaw_is_not_the_separator(self):
+        # `=>` is a source token; the documented `->` separator comes later.
+        self.assertEqual(
+            f.anchor_parts("[js/a.js:5] - handler => promise is dropped -> crash"),
+            ("js/a.js", 5, "handler => promise is dropped", "crash"),
+        )
+
+    def test_rocket_is_used_when_no_other_arrow_exists(self):
+        self.assertEqual(
+            f.anchor_parts("[a.rb:9] -- opts => nil is dereferenced"),
+            ("a.rb", 9, "opts", "nil is dereferenced"),
+        )
+
+    def test_later_rocket_wins_over_an_earlier_arrow(self):
+        # A lambdas `->` sits in the flaw; the separator is the following `=>`.
+        self.assertEqual(
+            f.anchor_parts("[a.rb:3] -- lambda -> returns a proc => nil is dereferenced"),
+            ("a.rb", 3, "lambda -> returns a proc", "nil is dereferenced"),
+        )
+
+    def test_canonical_arrow_wins_over_ascii(self):
+        self.assertEqual(
+            f.anchor_parts("[a.py:1] - flaw \u2192 failure -> detail"),
+            ("a.py", 1, "flaw", "failure -> detail"),
+        )
+
+    def test_normalize_anchor_is_idempotent(self):
+        canon = "[a.py:42] \u2014 flaw \u2192 failure"
+        self.assertEqual(f.normalize_anchor(canon), canon)
+
+    def test_ascii_anchor_survives_the_gate(self):
+        kept, rejected = f.review_findings([
+            {"finding": "[a.py:1] - flaw -> failure mode", "severity": "LOW"},
+        ])
+        self.assertEqual(rejected, [])
+        self.assertEqual(
+            kept[0]["finding"],
+            "[a.py:1] \u2014 flaw \u2192 failure mode",
+        )
+
+    def test_anchor_without_arrow_is_still_rejected(self):
+        kept, rejected = f.review_findings([
+            {"finding": "[a.py:1] - no failure mode here", "severity": "LOW"},
+        ])
+        self.assertEqual(kept, [])
+        self.assertIn("anchor", rejected[0]["reject_reason"])
+
 
 class TestDedupSeparators(unittest.TestCase):
     def test_backslash_and_slash_collapse(self):

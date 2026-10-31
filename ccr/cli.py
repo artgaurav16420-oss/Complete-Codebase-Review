@@ -27,6 +27,18 @@ def _manifest():
         sys.exit(2)
 
 
+def _agents_override(flag_value):
+    """Return the explicit --agents value, else CODE_REVIEW_AGENTS.
+
+    An explicit empty flag means "no override": it must not fall through to the
+    environment, which would select a different agent set than the one the
+    caller asked for.
+    """
+    if flag_value is not None:
+        return flag_value.strip() or None
+    return os.environ.get("CODE_REVIEW_AGENTS", "").strip() or None
+
+
 def _resolve_target(args):
     """Resolve the target path from the positional or --target.
 
@@ -55,7 +67,7 @@ def cmd_plan(args):
         target = _resolve_target(args)
         plan = discovery.plan(
             data, target, effort=args.effort,
-            override=args.agents, max_files=args.max_files,
+            override=_agents_override(args.agents), max_files=args.max_files,
         )
     except ValueError as exc:
         print("[ERROR] " + str(exc))
@@ -193,7 +205,7 @@ def cmd_record(args):
         target = _resolve_target(args)
         plan = discovery.plan(
             data, target, effort=args.effort,
-            override=args.agents, max_files=args.max_files,
+            override=_agents_override(args.agents), max_files=args.max_files,
         )
     except ValueError as exc:
         print("[ERROR] " + str(exc))
@@ -523,6 +535,14 @@ def cmd_synthesize(args):
     except ValueError as exc:
         print("[ERROR] " + str(exc))
         return 2
+    rejected = model.get("rejected") or []
+    if rejected:
+        print(
+            "[WARN] " + str(len(rejected)) + " finding(s) rejected by the DA "
+            "gate; they are listed under 'Rejected Findings' in the report. "
+            "If a whole domain is missing, check its anchor format.",
+            file=sys.stderr,
+        )
     try:
         code = _emit_synthesis_output(model, args)
     except (OSError, UnicodeError, ValueError) as exc:
