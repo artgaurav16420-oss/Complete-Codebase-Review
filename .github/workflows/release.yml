@@ -112,6 +112,11 @@ jobs:
       - name: Coverage report
         run: python -m coverage report
 
+      - name: Per-file coverage floor
+        run: |
+          python -m coverage json -o coverage.json
+          python tools/coverage_floor.py coverage.json
+
       - name: Eval harness
         run: python -m ccr eval
 

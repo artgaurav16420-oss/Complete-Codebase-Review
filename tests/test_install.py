@@ -317,6 +317,27 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue((result / "skills" / "review" / "SKILL.md").exists())
             self.assertTrue((result / "helpers" / "note.md").exists())
 
+    def test_link_like_dest_dir_is_refused(self):
+        # A link at the destination would move the containment root onto its
+        # target, so the old install would be deleted from there.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            root = Path(tmpdir)
+            external = root / "external"
+            (external / "complete-codebase-review").mkdir(parents=True)
+            sentinel = external / "complete-codebase-review" / "SKILL.md"
+            sentinel.write_text("external sentinel", encoding="utf-8")
+            try:
+                create_directory_link(root / "dest", external)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            with patch.object(self.install.sys, "stdout", new_callable=io.StringIO):
+                with self.assertRaises(ValueError) as ctx:
+                    self.install.copy_skill(src, root / "dest")
+            self.assertIn("link-like target", str(ctx.exception))
+            self.assertEqual(
+                sentinel.read_text(encoding="utf-8"), "external sentinel")
+
     def test_permission_error_is_raised(self):
         with patch.object(self.install.shutil, "copytree",
                           side_effect=PermissionError("denied")), \
@@ -775,6 +796,57 @@ class TestUninstallLinkLikeSkills(_BaseInstallTest):
             self.assertEqual(code, 1)
             self.assertIn("Uninstall incomplete", out.getvalue())
             self.assertTrue((installed / "SKILL.md").exists())
+
+
+class TestUninstallSwappedTargetDirectory(_BaseInstallTest):
+    """A target swapped for a link after validation must not be followed.
+
+    ``_run_uninstall`` validates ``.skills`` and then ``remove_skill`` looks
+    at it again; between the two the directory can be replaced by a link to
+    an external tree. The containment root must not follow that link, and the
+    recursive delete must be refused.
+    """
+
+    def test_swapped_skills_is_refused_and_external_tree_survives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            work = root / "work"
+            skills = work / ".skills"
+            local = skills / "complete-codebase-review"
+            local.mkdir(parents=True)
+            (local / "SKILL.md").write_text("local", encoding="utf-8")
+            external = root / "external"
+            (external / "complete-codebase-review").mkdir(parents=True)
+            sentinel = external / "complete-codebase-review" / "SKILL.md"
+            sentinel.write_text("external sentinel", encoding="utf-8")
+            install = self.install
+            resolve = install._resolve_local_skills
+
+            def resolve_then_swap():
+                resolved = resolve()
+                skills.rename(work / ".skills-moved")
+                try:
+                    create_directory_link(skills, external)
+                except OSError as exc:
+                    self.skipTest("directory links unavailable: " + str(exc))
+                return resolved
+
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(install, "_resolve_local_skills",
+                                  resolve_then_swap), \
+                     patch.object(install, "get_target_dirs",
+                                  return_value={}), \
+                     patch.object(install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    code = install._run_uninstall(None, False)
+            finally:
+                os.chdir(old)
+            self.assertEqual(
+                sentinel.read_text(encoding="utf-8"), "external sentinel")
+            self.assertEqual(code, 1)
+            self.assertIn("Uninstall incomplete", out.getvalue())
 
 
 class TestLocalFallbackLinkLikeSkills(_BaseInstallTest):

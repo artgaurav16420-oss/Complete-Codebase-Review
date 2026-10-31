@@ -59,6 +59,20 @@ def _remove_link_like(path):
         path.unlink()
 
 
+def _containment_root(path):
+    """Anchor a containment check without following a link at ``path``.
+
+    Resolving ``path`` itself would move the anchor onto a link's target, so
+    only the ancestors are resolved and the last component is kept as named.
+    A directory swapped for a link therefore stays outside its own anchor and
+    the child comparison fails instead of redirecting the delete.
+    """
+    path = Path(path)
+    if path.parent == path:
+        return path
+    return path.parent.resolve(strict=False) / path.name
+
+
 def _compute_sha256(file_path):
     """Compute SHA-256 hash of a file.
     
@@ -312,6 +326,13 @@ def copy_skill(src_dir, dest_dir):
         OSError: If the copy operation fails.
     """
     try:
+        if _is_link_like(dest_dir):
+            # Installing through a link would copy into, and delete an old
+            # install from, the link's target rather than the named directory.
+            raise ValueError(
+                "Refusing to install through a link-like target: "
+                + str(dest_dir)
+            )
         if not dest_dir.exists():
             dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -323,7 +344,7 @@ def copy_skill(src_dir, dest_dir):
                 _remove_link_like(skill_dest)
             else:
                 resolved = skill_dest.resolve(strict=False)
-                root = dest_dir.resolve(strict=False)
+                root = _containment_root(dest_dir)
                 if resolved == root:
                     raise ValueError(
                         f"Refusing to replace target root {root}"
@@ -520,6 +541,14 @@ def _run_auto_install(src_dir, target_dirs, dry_run):
 
 def remove_skill(dest_dir, dry_run):
     """Remove an installed skill directory. Returns True if something was removed."""
+    if _is_link_like(Path(dest_dir)):
+        # Refuse before anything under dest_dir is resolved. A directory
+        # swapped for a link after the caller validated it would otherwise
+        # move the containment root onto the link target and let the
+        # recursive delete run outside the intended tree.
+        raise ValueError(
+            "Refusing to remove from a link-like target: " + str(dest_dir)
+        )
     skill_dest = Path(dest_dir) / "complete-codebase-review"
     if not os.path.lexists(str(skill_dest)):
         print_info("Not installed: " + str(skill_dest))
@@ -527,7 +556,7 @@ def remove_skill(dest_dir, dry_run):
     if dry_run:
         print_info("[DRY-RUN] Would remove " + str(skill_dest))
         return True
-    root = Path(dest_dir).resolve(strict=False)
+    root = _containment_root(dest_dir)
     if _is_link_like(skill_dest):
         _remove_link_like(skill_dest)
     else:

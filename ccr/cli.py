@@ -485,8 +485,13 @@ def cmd_synthesize(args):
         else:
             # Only a report that reached the user completes the re-review, and
             # a rerun on unchanged results is the same review, not a new one.
+            # The base is the freshly loaded count, not the snapshot taken
+            # before synthesis: a concurrent run may have advanced it, and
+            # `snapshot + 1` would overwrite that review.
             if fresh.data.get("last_synth_signature") != signature:
-                fresh.data["re_review_count"] = re_review_count + 1
+                fresh.data["re_review_count"] = (
+                    fresh.data.get("re_review_count", 0) + 1
+                )
             fresh.data["last_synth_signature"] = signature
             try:
                 fresh.save()

@@ -6,6 +6,7 @@ needs and the agent selection that Phase 2 consumes.
 
 import os
 import stat
+from itertools import islice
 from pathlib import Path
 
 IGNORED_DIRS = frozenset({
@@ -92,11 +93,12 @@ DB_MARKERS = frozenset({
 # whole tree that _scan_tree already covers.
 DB_SCAN_DEPTH = 3
 
-# Upper bound on subdirectories the DB scan recurses into. Every directory
-# that is entered is streamed in full, so a marker in the tail of a wide
-# directory is still seen; this bound stops a pathological tree that
-# max_files does not bound. 5000 still covers a root plus the first levels of
-# a monorepo, where markers live (prisma/, migrations/ at depth <= 3).
+# Upper bound on directory entries the DB scan visits and on subdirectories
+# it recurses into, when the caller sets no file cap. Both bounds apply to the
+# whole scan, so a pathological tree cannot stream an unbounded directory
+# while max_files only bounds the main walk. 5000 still covers a root plus the
+# first levels of a monorepo, where markers live (prisma/, migrations/ at
+# depth <= 3).
 DB_SCAN_MAX_ENTRIES = 5000
 
 CONTAINER_MARKERS = frozenset({
@@ -200,20 +202,28 @@ def _has_symlinked_component(target, marker):
 def _find_db_markers(directory, depth, found, budget=None):
     """Collect DB marker names under directory, down to DB_SCAN_DEPTH levels.
 
-    ``budget`` is a one-element list shared by the recursion; it bounds how
-    many subdirectories the whole scan recurses into, independent of the
-    ``max_files`` cap applied to the main walk. Each directory is streamed in
-    full, so a marker in the tail of a wide directory is still seen, while
-    only marker names and at most the remaining budget of subdirectory names
-    are held in memory. Collected subdirectories are sorted so the walk stays
-    deterministic.
+    ``budget`` is a two-element list shared by the recursion: slot 0 is how
+    many directory entries the whole scan may still visit, slot 1 how many
+    subdirectories it may still descend into. The entry budget bounds a very
+    wide directory even when the caller capped file discovery; the descent
+    budget bounds the number of open directories. Markers found before the
+    budget runs out stay in ``found``, and the scan stops when it is spent.
+    Each directory is streamed in order, so a marker in the tail is reached
+    while the budget lasts; only marker names and at most the remaining
+    descent budget of subdirectory names are held in memory. Collected
+    subdirectories are sorted so the walk stays deterministic.
     """
     if budget is None:
-        budget = [DB_SCAN_MAX_ENTRIES]
+        budget = [DB_SCAN_MAX_ENTRIES, DB_SCAN_MAX_ENTRIES]
+    if budget[0] <= 0:
+        return
     subdirs = []
     try:
         with os.scandir(str(directory)) as iterator:
-            for entry in iterator:
+            # islice takes the budget once, so the loop pulls at most that
+            # many entries and never looks one past the cap.
+            for entry in islice(iterator, budget[0]):
+                budget[0] -= 1
                 # Check for links before recording: a junction named
                 # "migrations" or "prisma" must not activate the database
                 # agent from outside the tree.
@@ -223,7 +233,7 @@ def _find_db_markers(directory, depth, found, budget=None):
                     found.append(entry.name)
                 if depth >= DB_SCAN_DEPTH or entry.name in IGNORED_DIRS:
                     continue
-                if len(subdirs) >= budget[0]:
+                if len(subdirs) >= budget[1]:
                     continue
                 try:
                     is_dir = entry.is_dir()
@@ -238,12 +248,12 @@ def _find_db_markers(directory, depth, found, budget=None):
         )
     subdirs.sort()
     # Pay for every descent up front so the whole scan stays inside budget.
-    budget[0] -= len(subdirs)
+    budget[1] -= len(subdirs)
     for name in subdirs:
         _find_db_markers(Path(directory) / name, depth + 1, found, budget)
 
 
-def _build_facts(target, state, truncated):
+def _build_facts(target, state, truncated, max_files=None):
     """Derive the discovery facts dict from the accumulated state."""
     files = state["files"]
     total_bytes = state["total_bytes"]
@@ -258,7 +268,12 @@ def _build_facts(target, state, truncated):
     database = []
     if target.exists():
         # Depth 1 is the target root; DB_SCAN_DEPTH counts levels from it.
-        _find_db_markers(target, 1, database)
+        # A capped run carries its cap into the marker scan so discovery
+        # stays bounded on a very wide tree; an uncapped run keeps the
+        # documented default budget.
+        entries = max_files if max_files else DB_SCAN_MAX_ENTRIES
+        budget = [entries, DB_SCAN_MAX_ENTRIES]
+        _find_db_markers(target, 1, database, budget)
 
     ci = []
     try:
@@ -338,7 +353,7 @@ def discover(target_dir, max_files=None):
     }
     truncated = _scan_tree(target, limit, state)
 
-    return _build_facts(target, state, truncated)
+    return _build_facts(target, state, truncated, limit)
 
 
 def active_agents(manifest, facts):

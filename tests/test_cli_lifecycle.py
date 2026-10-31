@@ -695,6 +695,28 @@ class TestCliReReviewBaseline(unittest.TestCase):
         self.assertEqual(data["current_step"], "phase2:awaiting_agent_results")
         self.assertEqual(data["re_review_count"], 3)
 
+    def test_concurrent_counter_change_builds_on_the_fresh_value(self):
+        # Another run may bump the counter between this run's load and save;
+        # `snapshot + 1` would overwrite that review. The saved value must be
+        # the freshly loaded count plus one.
+        self._write_state(re_review_count=2)
+        state_path = self.cache / "ccr-state.json"
+        emit = cli._emit_synthesis_output
+
+        def bump_then_emit(*args, **kwargs):
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            data["re_review_count"] = 5
+            state_path.write_text(json.dumps(data), encoding="utf-8")
+            return emit(*args, **kwargs)
+
+        with mock.patch.object(cli, "_emit_synthesis_output", bump_then_emit):
+            code, _, err = run([
+                "synthesize", "--in", str(self.cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self._state_count(), 6)
+
     def test_vanished_state_file_warns_without_failing_the_run(self):
         self._write_state(re_review_count=2)
         state_path = self.cache / "ccr-state.json"

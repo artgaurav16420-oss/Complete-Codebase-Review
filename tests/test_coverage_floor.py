@@ -54,6 +54,16 @@ class TestCoverageFloor(unittest.TestCase):
         report = {"files": {"src/a.py": entry(90.0), "src/b.py": entry(70.0)}}
         self.assertEqual(check(report), [("src/b.py", 70.0)])
 
+    def test_string_percent_is_rejected(self):
+        # float("100") is a valid percentage, so a string must not pass.
+        report = {"files": {"src/a.py": {"summary": {"percent_covered": "100"}}}}
+        self.assertEqual(check(report), [("src/a.py", 0.0)])
+
+    def test_boolean_percent_is_rejected(self):
+        # bool is an int subclass; true must not read as one percent.
+        report = {"files": {"src/a.py": {"summary": {"percent_covered": True}}}}
+        self.assertEqual(check(report), [("src/a.py", 0.0)])
+
 
 class TestCoverageFloorMain(unittest.TestCase):
     """main() is the CI gate: its return value is the step's exit code."""
@@ -115,6 +125,24 @@ class TestCoverageFloorMain(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("[FAIL] ccr/a.py: 0.0% < 80.0%", result.stdout)
         self.assertNotIn("Traceback", result.stderr)
+
+    def test_string_percent_exits_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": {
+                "ccr/a.py": entry("100"),
+            }})
+            code, output = self._run_main(["coverage_floor.py", path])
+        self.assertEqual(code, 1)
+        self.assertIn("[FAIL] ccr/a.py: 0.0% < 80.0%", output)
+
+    def test_boolean_percent_exits_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_report(tmp, {"files": {
+                "ccr/a.py": entry(True),
+            }})
+            code, output = self._run_main(["coverage_floor.py", path])
+        self.assertEqual(code, 1)
+        self.assertIn("[FAIL] ccr/a.py: 0.0% < 80.0%", output)
 
     def test_floor_argument_overrides_the_default(self):
         with tempfile.TemporaryDirectory() as tmp:

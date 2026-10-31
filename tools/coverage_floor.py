@@ -37,18 +37,23 @@ def check(report, floor=DEFAULT_FLOOR):
             failures.append((path, 0.0))
             continue
         percent = summary.get("percent_covered")
+        # `coverage json` writes a JSON number here. `float()` would also
+        # accept the string "100" or the boolean true, so a malformed report
+        # could pass the gate; only int/float count (bool is an int subclass).
         # json.load accepts NaN, Infinity and huge integers; NaN < floor is
-        # always False and math.isfinite(10**400) raises OverflowError, so
-        # coerce first and fail anything that cannot be a finite float.
-        try:
-            percent = float(percent)
-            valid = math.isfinite(percent)
-        except (OverflowError, TypeError, ValueError):
-            valid = False
+        # always False and math.isfinite(10**400) raises OverflowError, so the
+        # finiteness check still runs inside a try.
+        valid = isinstance(percent, (int, float)) and not isinstance(
+            percent, bool)
+        if valid:
+            try:
+                valid = math.isfinite(percent)
+            except OverflowError:
+                valid = False
         if not valid:
             failures.append((path, 0.0))
         elif percent < floor:
-            failures.append((path, percent))
+            failures.append((path, float(percent)))
     if checked == 0:
         return [("<no files checked>", 0.0)]
     return failures
