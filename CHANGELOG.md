@@ -25,6 +25,28 @@
   Seven queued macOS jobs overflowed the concurrent macOS runner cap, and GitHub cancelled
   the overflow before it started, failing otherwise-green runs on `main` and on PRs. Linux
   and Windows still cover every interpreter.
+- **Review fixes (2026-11-06)**:
+  - Agent identity and calibration come from `ccr/pipeline.json` (`security_agent_id`,
+    `calibration`, `tech_debt_labels`); `ccr.manifest.load()` pushes them into the engine,
+    and ADR-007 records the calibration policy.
+  - One result-file convention in `ccr.providers` (`discover_results`, `find_result`):
+    `eval --fixtures` no longer aborts on a directory holding a `ccr-baseline.json`, and
+    state resume and synthesize agree on what counts as an agent result. A canonical
+    `phase_<id>.json` that will not parse is reported as malformed with its path, not
+    mistaken for a missing result.
+  - Completion ratio divides by the planned roster, so a stale `total_agents` cannot
+    report 0% for a finished run.
+  - Report cells neutralise HTML and Markdown links from agent text; sanitization drops
+    Unicode `Cf` characters (bidi overrides, isolates, zero-width space).
+  - The installer stages the copy, moves the previous tree aside instead of deleting it
+    and puts it back when the swap fails; leftovers from a crashed run are swept by age,
+    so a concurrent run's staging tree is left alone. The credential filter covers
+    `.envrc` and `.direnv`.
+  - The SKILL.md tech-debt table is generated from `pipeline.json` instead of duplicated,
+    and the report validators are split into section checks.
+  - CI: workflow-level permissions reduced to `contents: read` with per-job escalation,
+    exact pins for `coverage` and `build`, a wheel smoke test before publishing, and a
+    pull-request check that rejects empty commits.
 
 ## v2.4.0 (2026-10-20)
 

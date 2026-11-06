@@ -116,33 +116,31 @@ def _is_link_like(path):
     return bool(flag and attrs & flag)
 
 
-def _archive_results(cache, agent_ids=()):
-    """Move previous agent results aside so they cannot be counted again.
-
-    Covers both supported result layouts: ``phase_<id>.json`` and bare
-    ``<id>.json`` for ids declared by the manifest.
-    """
-    root = Path(cache)
-    stale = sorted(root.glob("phase_*.json"))
+def _stale_results(root, agent_ids):
+    """Return the result files a new record run would otherwise re-ingest."""
+    stale = sorted(root.glob(providers.RESULT_GLOB))
     for agent_id in sorted(set(agent_ids)):
         candidate = root / (agent_id + ".json")
         if candidate.is_file() and candidate not in stale:
             stale.append(candidate)
-    if not stale:
-        return 0
-    base = root / "previous-results"
-    if _is_link_like(base):
-        raise OSError("refusing to archive through symlink: " + str(base))
-    if base.exists() and not base.is_dir():
-        raise OSError("archive parent is not a directory: " + str(base))
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return stale
+
+
+def _create_archive_dir(base, stamp):
+    """Create a uniquely named archive directory under base.
+
+    The timestamp names the common case; the counter covers two runs inside
+    the same second. The loop is bounded because a permanent collision means
+    the archive parent is not what it appeared to be.
+    """
     dest = base / stamp
     suffix = 1
-    attempts = 1
+    attempts = 0
     while True:
+        attempts += 1
         try:
             dest.mkdir(parents=True)
-            break
+            return dest
         except FileExistsError as exc:
             if not base.is_dir():
                 raise OSError(
@@ -155,19 +153,10 @@ def _archive_results(cache, agent_ids=()):
                 ) from exc
             dest = base / f"{stamp}-{suffix}"
             suffix += 1
-            attempts += 1
-    # The pre-check above and the mkdir are racy: previous-results can be
-    # swapped for a link between them and the moves, which would send stale
-    # results outside the cache. Re-assert the parent and the created
-    # directory right before the moves. A window remains between this check
-    # and each shutil.move, and is accepted: an attacker able to rewrite the
-    # cache while record runs already controls the archived results.
-    if _is_link_like(base):
-        raise OSError("refusing to archive through symlink: " + str(base))
-    if _is_link_like(dest) or not dest.is_dir():
-        raise OSError(
-            "archive directory is not a real directory: " + str(dest)
-        )
+
+
+def _move_into_archive(stale, dest):
+    """Move stale results into dest, restoring them if any move fails."""
     moved = []
     try:
         for path in stale:
@@ -195,6 +184,39 @@ def _archive_results(cache, agent_ids=()):
                 file=sys.stderr,
             )
         raise
+
+
+def _archive_results(cache, agent_ids=()):
+    """Move previous agent results aside so they cannot be counted again.
+
+    Covers both supported result layouts: ``phase_<id>.json`` and bare
+    ``<id>.json`` for ids declared by the manifest.
+    """
+    root = Path(cache)
+    stale = _stale_results(root, agent_ids)
+    if not stale:
+        return 0
+    base = root / "previous-results"
+    if _is_link_like(base):
+        raise OSError("refusing to archive through symlink: " + str(base))
+    if base.exists() and not base.is_dir():
+        raise OSError("archive parent is not a directory: " + str(base))
+    dest = _create_archive_dir(
+        base, datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    )
+    # The pre-check above and the mkdir are racy: previous-results can be
+    # swapped for a link between them and the moves, which would send stale
+    # results outside the cache. Re-assert the parent and the created
+    # directory right before the moves. A window remains between this check
+    # and each shutil.move, and is accepted: an attacker able to rewrite the
+    # cache while record runs already controls the archived results.
+    if _is_link_like(base):
+        raise OSError("refusing to archive through symlink: " + str(base))
+    if _is_link_like(dest) or not dest.is_dir():
+        raise OSError(
+            "archive directory is not a real directory: " + str(dest)
+        )
+    _move_into_archive(stale, dest)
     return len(stale)
 
 
@@ -265,23 +287,11 @@ def _planned_from_cache(cache, valid_ids=None):
     manifest is available.
     """
     ids = []
-    for path in sorted(Path(cache).glob("*.json")):
-        stem = path.stem
-        if stem in ("ccr-state", "ccr-baseline"):
+    for agent_id, _path in providers.discover_results(cache):
+        if valid_ids is not None and agent_id not in valid_ids:
             continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8-sig"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(data, dict) or not isinstance(
-                data.get("findings"), list):
-            continue
-        if stem.startswith("phase_"):
-            stem = stem[len("phase_"):]
-        if valid_ids is not None and stem not in valid_ids:
-            continue
-        if stem and stem not in ids:
-            ids.append(stem)
+        if agent_id not in ids:
+            ids.append(agent_id)
     return ids
 
 
@@ -416,15 +426,7 @@ def _persist_review_counter(cached, signature, target):
         )
         return False
     stored = fresh.data.get("target_dir") or ""
-    try:
-        same_target = (
-            not stored or Path(target).resolve() == Path(stored).resolve()
-        )
-    except (OSError, RuntimeError):
-        # resolve() raises on a symlink loop; a target we cannot resolve is
-        # not the cached one.
-        same_target = False
-    if not same_target:
+    if not _same_target(target, stored):
         print(
             "[WARN] state now belongs to " + stored
             + "; re-review counter unchanged",
@@ -449,6 +451,67 @@ def _persist_review_counter(cached, signature, target):
     return True
 
 
+def _same_target(target, stored):
+    """True when two target spellings name the same directory.
+
+    An empty ``stored`` means the state predates target recording, so it is
+    accepted. resolve() raises on a symlink loop; a target we cannot resolve
+    is not the cached one.
+    """
+    if not stored:
+        return True
+    try:
+        return Path(target).resolve() == Path(stored).resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _synthesis_context(args, cached):
+    """Return (effort, target, facts, re_review_count, counted_state).
+
+    Facts only travel with the run that produced them: a cached state naming
+    a different target would report the wrong codebase size, so it is dropped
+    with a warning instead.
+    """
+    effort = args.effort
+    if effort is None:
+        effort = cached.data.get("effort", "max") if cached is not None else "max"
+    target = args.target or (cached.data["target_dir"] if cached else args.cache)
+    if cached is None:
+        return effort, target, None, 0, None
+    stored = cached.data.get("target_dir") or ""
+    if not _same_target(target, stored):
+        print(
+            "[WARN] cached facts belong to " + stored
+            + "; codebase size omitted",
+            file=sys.stderr,
+        )
+        return effort, target, None, 0, None
+    return (
+        effort, target, cached.data.get("facts"),
+        cached.data.get("re_review_count", 0), cached,
+    )
+
+
+def _gate_is_known(args, cached):
+    """True when the planned roster is known well enough to enforce the gate."""
+    return bool(args.agents) or (
+        cached is not None and bool(cached.data["agents_planned"])
+    )
+
+
+def _warn_rejected(rejected):
+    """Explain DA rejections; a whole missing domain is usually an anchor bug."""
+    if not rejected:
+        return
+    print(
+        "[WARN] " + str(len(rejected)) + " finding(s) rejected by the DA "
+        "gate; they are listed under 'Rejected Findings' in the report. "
+        "If a whole domain is missing, check its anchor format.",
+        file=sys.stderr,
+    )
+
+
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
@@ -469,36 +532,10 @@ def cmd_synthesize(args):
         print("[ERROR] no agent results found in " + args.cache)
         return 2
 
-    effort = args.effort
-    if effort is None:
-        effort = cached.data.get("effort", "max") if cached is not None else "max"
-    target = args.target or (cached.data["target_dir"] if cached else args.cache)
-    facts = None
-    re_review_count = 0
-    counted_state = None
-    if cached is not None:
-        stored = cached.data.get("target_dir") or ""
-        try:
-            same_target = (
-                not stored or Path(target).resolve() == Path(stored).resolve()
-            )
-        except (OSError, RuntimeError):
-            # resolve() raises on a symlink loop; a target we cannot resolve
-            # is not the cached one.
-            same_target = False
-        if same_target:
-            facts = cached.data.get("facts")
-            re_review_count = cached.data.get("re_review_count", 0)
-            counted_state = cached
-        else:
-            print(
-                "[WARN] cached facts belong to " + stored
-                + "; codebase size omitted",
-                file=sys.stderr,
-            )
-    gate_known = bool(args.agents) or (
-        cached is not None and bool(cached.data["agents_planned"])
+    effort, target, facts, re_review_count, counted_state = (
+        _synthesis_context(args, cached)
     )
+    gate_known = _gate_is_known(args, cached)
     if not gate_known:
         print(
             "[WARN] planned agent set unknown (no state, no --agents); "
@@ -511,7 +548,6 @@ def cmd_synthesize(args):
     except (OSError, ValueError) as exc:
         print("[ERROR] " + str(exc))
         return 2
-    signature = _results_signature(results)
     gate_error = _check_completion_gate(
         data, effort, planned, completed, gate_known, args
     )
@@ -535,21 +571,16 @@ def cmd_synthesize(args):
     except ValueError as exc:
         print("[ERROR] " + str(exc))
         return 2
-    rejected = model.get("rejected") or []
-    if rejected:
-        print(
-            "[WARN] " + str(len(rejected)) + " finding(s) rejected by the DA "
-            "gate; they are listed under 'Rejected Findings' in the report. "
-            "If a whole domain is missing, check its anchor format.",
-            file=sys.stderr,
-        )
+    _warn_rejected(model.get("rejected") or [])
     try:
         code = _emit_synthesis_output(model, args)
     except (OSError, UnicodeError, ValueError) as exc:
         print("[ERROR] could not write report: " + str(exc))
         return 2
     if code == 0 and counted_state is not None:
-        _persist_review_counter(counted_state, signature, target)
+        _persist_review_counter(
+            counted_state, _results_signature(results), target
+        )
     return code
 
 

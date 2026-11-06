@@ -943,6 +943,8 @@ Instructions:
 
 When quantifying tech debt, use the following table as a floor estimate per finding. Agents document any multipliers applied (e.g. `2×` for particularly tangled code, `0.5×` for well-structured code with simple fixes).
 
+<!-- BEGIN GENERATED: skill-tech-debt -->
+
 | Finding Type | Base Estimate |
 |-------------|---------------|
 | Missing test coverage (per module) | 4h |
@@ -956,6 +958,8 @@ When quantifying tech debt, use the following table as a floor estimate per find
 | Missing error handling (per path) | 1h |
 | N+1 query pattern (per instance) | 3h |
 | Accessibility violation WCAG A/AA (per component) | 2h |
+
+<!-- END GENERATED: skill-tech-debt -->
 
 ## Red Flags — STOP
 

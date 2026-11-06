@@ -36,11 +36,24 @@ def fmt_hours_long(value):
 def _cell(text):
     """Make text safe inside a Markdown table cell or section body.
 
+    Agent-supplied finding text reaches the report verbatim, so HTML is
+    escaped and link destinations are defused here as well: a prompt-injected
+    result could otherwise render a live ``<img>`` or a ``[click](js:...)``
+    link in a report the reviewer trusts. The ``[file:line]`` anchor keeps its
+    brackets, which are only escaped in headings (see ``_title``).
+
     Uses ``splitlines`` so every separator it honours (including ``\\x0b``,
     ``\\x0c`` and ``\\x85``) collapses, not just CR/LF.
     """
     cleaned = str(text).replace("|", "/")
-    return " ".join(cleaned.splitlines()).strip()
+    collapsed = " ".join(cleaned.splitlines()).strip()
+    return (
+        collapsed
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("](", "] (")
+    )
 
 
 def _executive_summary(model):
@@ -236,15 +249,13 @@ def _overlap_candidates(model):
 def _title(text):
     """Escape the heading text so a path cannot inject HTML or a link.
 
-    Backslashes are escaped first: a target carrying ``\\[`` would otherwise
-    turn the bracket escape into ``\\\\[`` and leave the ``[`` active.
+    HTML escaping is already done by ``_cell``; only the bracket escape is
+    added here. Backslashes are escaped first: a target carrying ``\\[`` would
+    otherwise turn the bracket escape into ``\\\\[`` and leave the ``[`` active.
     """
     return (
         _cell(text)
         .replace("\\", "\\\\")
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
         .replace("[", "\\[")
         .replace("]", "\\]")
     )
@@ -311,39 +322,36 @@ def _section_text(md, header):
 HEALTH_VALUES = ("GREEN", "YELLOW", "RED")
 
 
-def validate_markdown(md):
-    """Return a list of contract violations in a rendered report.
-
-    Enforces the section contract, numeric domain scores, the health enum, and
-    the tech-debt reconciliation the orchestrator rules require.
-    """
-    errors = []
+def _check_sections(md, errors):
+    """Record every required section the report does not contain."""
     for section in REQUIRED_SECTIONS:
         if section not in md:
             errors.append("missing section: " + section)
 
-    health = None
+
+def _overall_health(md):
+    """Return the health cell from the executive summary, or None."""
     for line in _section_text(md, "## Executive Summary").splitlines():
         cells = line.split("|")
         # A well-formed row is "| **Overall Health** | VALUE |" -> 4 parts.
         if len(cells) == 4 and cells[1].strip() == "**Overall Health**":
-            health = cells[2].strip()
-            break
-    if health is None:
-        errors.append("missing overall health")
-    elif health not in HEALTH_VALUES:
-        errors.append("invalid overall health: " + health)
+            return cells[2].strip()
+    return None
 
-    scores_text = _section_text(md, "## Per-Domain Scores")
-    for line in scores_text.splitlines():
+
+def _check_scores(md, errors):
+    """Reject non-numeric domain scores in the scores table."""
+    for line in _section_text(md, "## Per-Domain Scores").splitlines():
         if line.startswith("|") and (" N/A " in line or " n/a " in line):
             errors.append("non-numeric domain score: " + line.strip())
 
+
+def _tech_debt_totals(md, errors):
+    """Return (total, domain_sum, found_domain) from the debt summary."""
     total = None
     domain_sum = 0.0
     found_domain = False
-    debt_text = _section_text(md, "## Tech Debt Summary")
-    for line in debt_text.splitlines():
+    for line in _section_text(md, "## Tech Debt Summary").splitlines():
         if line.startswith("**Total estimated**") and ":" in line:
             total = _num(line.split(":", 1)[1].strip().split(" ")[0])
         if "**By domain**" in line and ":" in line:
@@ -356,6 +364,24 @@ def validate_markdown(md):
                 else:
                     domain_sum += value
                     found_domain = True
+    return total, domain_sum, found_domain
+
+
+def validate_markdown(md):
+    """Return a list of contract violations in a rendered report.
+
+    Enforces the section contract, numeric domain scores, the health enum, and
+    the tech-debt reconciliation the orchestrator rules require.
+    """
+    errors = []
+    _check_sections(md, errors)
+    health = _overall_health(md)
+    if health is None:
+        errors.append("missing overall health")
+    elif health not in HEALTH_VALUES:
+        errors.append("invalid overall health: " + health)
+    _check_scores(md, errors)
+    total, domain_sum, found_domain = _tech_debt_totals(md, errors)
     if total is None:
         # Require a total: even a zero-finding report renders
         # "**Total estimated**: 0 hours", so there is no legitimate gap.

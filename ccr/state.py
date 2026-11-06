@@ -9,6 +9,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from . import providers
+
 PHASES = (1, 2, 3, 4, 5)
 
 GATES = (
@@ -204,11 +206,21 @@ class State:
         self.save()
 
     def completion_ratio(self):
-        """Return completed agents divided by planned agents (0.0 if none)."""
-        total = self.data["total_agents"]
+        """Return completed agents divided by planned agents (0.0 if none).
+
+        The denominator is the planned roster, matching
+        ccr.pipeline.check_completion. total_agents is only a fallback for
+        state files written before agents_planned was populated: trusting it
+        first lets a stale count report 0% for a run that finished.
+        """
+        planned = self.data["agents_planned"] or []
+        total = len(planned) or self.data["total_agents"]
         if not total:
             return 0.0
-        return len(self.data["agents_completed"]) / total
+        completed = self.data["agents_completed"]
+        if planned:
+            completed = [agent_id for agent_id in completed if agent_id in planned]
+        return len(completed) / total
 
     def threshold_passed(self, manifest):
         """Return True when enough agents completed to continue."""
@@ -219,20 +231,32 @@ class State:
 def merge_resume(state, cache_dir):
     """Cross-check state against cached agent files; disk wins.
 
+    Only the canonical phase_<agent>.json files count, and only for agents in
+    ``agents_planned``: a result left in the cache by an earlier, differently
+    scoped run is not evidence of progress in this one, and reporting it as
+    drift would make the caller resume agents it never planned. An empty plan
+    is treated as unknown and does not filter by name.
+
     Args:
         state: Loaded State object.
         cache_dir: Directory holding phase_<agent>.json files.
 
     Returns:
-        list: Agent ids present on disk but not recorded as completed.
+        list: Planned agent ids present on disk but not recorded as completed.
     """
     cache = Path(cache_dir)
     if not cache.is_dir():
         return []
+    planned = set(state.data["agents_planned"] or [])
+    # providers owns what counts as a result file; discovery also accepts the
+    # bare fixture layout, which this cache never uses and which lets a report
+    # or a baseline with a findings list pose as an agent.
     on_disk = sorted(
-        p.stem[len("phase_"):]
-        for p in cache.glob("phase_*.json")
-        if p.stem.lower() != "phase_"
+        agent_id for agent_id, path in providers.discover_results(cache)
+        if providers.is_canonical_name(path)
     )
     completed = set(state.data["agents_completed"])
-    return [agent_id for agent_id in on_disk if agent_id not in completed]
+    return [
+        agent_id for agent_id in on_disk
+        if agent_id not in completed and (not planned or agent_id in planned)
+    ]

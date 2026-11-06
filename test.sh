@@ -49,6 +49,13 @@ if ! grep -q "effort: \${CODE_REVIEW_EFFORT:-max}" "$SKILL_FILE"; then
     FAIL=1
 fi
 
+for section in "Environment Variables" "Checkpointing" "Quick Mode"; do
+    if ! grep -qF "$section" "$SKILL_FILE"; then
+        echo "[ERROR] '$section' section missing from $SKILL_FILE"
+        FAIL=1
+    fi
+done
+
 if [ ! -f "karpathy-guidelines.md" ]; then
     echo "[ERROR] karpathy-guidelines.md missing — Process Quality agent will fail"
     FAIL=1

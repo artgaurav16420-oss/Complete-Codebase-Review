@@ -9,6 +9,7 @@ import os
 import stat
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -232,6 +233,85 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue(skill_dest.exists())
             self.assertTrue(skill_dest.is_dir())
             self.assertTrue((skill_dest / "SKILL.md").exists())
+
+    def test_sweeps_stale_staging_and_backup_trees(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            stale_staging = dest / (self.install.STAGING_PREFIX + "999")
+            stale_backup = dest / (self.install.PREVIOUS_PREFIX + "999")
+            stale_staging.mkdir()
+            stale_backup.mkdir()
+            (stale_staging / "left.txt").write_text("left")
+            # Age them past the liveness window: a young tree may belong to a
+            # run that is still working, an old one is a crash.
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(stale_staging, (old, old))
+            os.utime(stale_backup, (old, old))
+
+            self.install.copy_skill(src, dest)
+
+            self.assertFalse(stale_staging.exists())
+            self.assertFalse(stale_backup.exists())
+            self.assertTrue((dest / "complete-codebase-review" / "SKILL.md").exists())
+
+    def test_keeps_a_young_staging_tree(self):
+        # A concurrent install owns its staging tree; age is the only liveness
+        # signal available on Windows, so a fresh one must survive.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            live = dest / (self.install.STAGING_PREFIX + "999")
+            live.mkdir()
+            (live / "SKILL.md").write_text("in flight")
+
+            self.install.copy_skill(src, dest)
+
+            self.assertTrue((live / "SKILL.md").exists())
+
+    def test_update_leaves_no_previous_tree_behind(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            (src / "SKILL.md").write_text("name: updated")
+            self.install.copy_skill(src, dest)
+
+            self.assertEqual(
+                [p.name for p in dest.iterdir() if p.name.startswith(".")],
+                [],
+            )
+            self.assertEqual(
+                (dest / "complete-codebase-review" / "SKILL.md").read_text(
+                    encoding="utf-8"),
+                "name: updated",
+            )
+
+    def test_failed_swap_restores_previous_install(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            skill_dest = dest / "complete-codebase-review"
+            skill_dest.mkdir(parents=True)
+            (skill_dest / "SKILL.md").write_text("old install")
+
+            real_replace = self.install.os.replace
+
+            def swap_refused(source, target):
+                if self.install.STAGING_PREFIX in str(source):
+                    raise OSError("swap refused")
+                return real_replace(source, target)
+
+            with patch.object(self.install.os, "replace", swap_refused):
+                with self.assertRaises(OSError):
+                    self.install.copy_skill(src, dest)
+
+            self.assertEqual(
+                (skill_dest / "SKILL.md").read_text(encoding="utf-8"),
+                "old install",
+            )
 
     def test_calls_copytree_with_ignore_patterns(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -51,9 +51,18 @@ class TestStateLifecycle(unittest.TestCase):
 
     def test_corrupt_state_rejected(self):
         self.path.parent.mkdir(parents=True)
-        self.path.write_text('{"current_phase": 9}', encoding="utf-8")
-        with self.assertRaises(ValueError):
+        # Every required key present, so the only thing wrong is the phase:
+        # otherwise load() raises on the missing key and never reaches the
+        # check this test is named for.
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 9,
+            "phase_gates": {},
+            "agents_planned": [],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
             state.State.load(self.path)
+        self.assertIn("invalid phase", str(caught.exception))
 
     def test_minimal_state_gets_defaults(self):
         self.path.parent.mkdir(parents=True)
@@ -184,9 +193,32 @@ class TestAgents(unittest.TestCase):
     def test_merge_resume_finds_disk_results(self):
         cache = Path(self.tmp.name) / "cache"
         cache.mkdir()
-        (cache / "phase_security.json").write_text("{}", encoding="utf-8")
+        (cache / "phase_security.json").write_text(
+            '{"agent": "security", "score": 5, "findings": []}', encoding="utf-8"
+        )
         drift = state.merge_resume(self.state, cache)
         self.assertEqual(drift, ["security"])
+
+    def test_merge_resume_ignores_non_result_files(self):
+        cache = Path(self.tmp.name) / "cache"
+        cache.mkdir()
+        (cache / "phase_notes.json").write_text("{}", encoding="utf-8")
+        (cache / "phase_ghost.json").write_text(
+            '{"agent": "ghost", "score": 5, "findings": []}', encoding="utf-8"
+        )
+        # A bare-layout file is a fixture, not this cache's result.
+        (cache / "architecture.json").write_text(
+            '{"agent": "architecture", "findings": []}', encoding="utf-8"
+        )
+        self.assertEqual(state.merge_resume(self.state, cache), [])
+
+    def test_merge_resume_reports_unreadable_canonical_result(self):
+        # A phase_<id>.json that will not parse is a result to redo, not a
+        # missing one: the agent did run and its output is unusable.
+        cache = Path(self.tmp.name) / "cache"
+        cache.mkdir()
+        (cache / "phase_architecture.json").write_text("not json", encoding="utf-8")
+        self.assertEqual(state.merge_resume(self.state, cache), ["architecture"])
 
     def test_merge_resume_missing_dir(self):
         self.assertEqual(

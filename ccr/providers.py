@@ -92,14 +92,132 @@ def build_prompt(agent, target, skill_dir, manifest_version=""):
     )
 
 
+# The result-file convention lives here and nowhere else: record writes it,
+# synthesize reads it, and state resume and fixture replay discover it.
+PHASE_PREFIX = "phase_"
+PROMPT_SUFFIX = ".prompt.md"
+RESULT_SUFFIX = ".json"
+RESULT_GLOB = PHASE_PREFIX + "*" + RESULT_SUFFIX
+
+
+def prompt_name(agent_id):
+    """Return the canonical file name of an agent prompt."""
+    return PHASE_PREFIX + agent_id + PROMPT_SUFFIX
+
+
+def result_name(agent_id):
+    """Return the canonical file name of an agent result."""
+    return PHASE_PREFIX + agent_id + RESULT_SUFFIX
+
+
 def prompt_path(out_dir, agent_id):
     """Return the path of an agent prompt file."""
-    return Path(out_dir) / f"phase_{agent_id}.prompt.md"
+    return Path(out_dir) / prompt_name(agent_id)
 
 
 def result_path(out_dir, agent_id):
     """Return the path of an agent result file."""
-    return Path(out_dir) / f"phase_{agent_id}.json"
+    return Path(out_dir) / result_name(agent_id)
+
+
+def is_canonical_name(filename):
+    """True when filename uses the phase_<id>.json name the pipeline writes.
+
+    The prefix is matched case-insensitively because the phase_*.json globs
+    behind it match case-insensitively on Windows.
+    """
+    stem = Path(filename).stem
+    return stem[:len(PHASE_PREFIX)].lower() == PHASE_PREFIX
+
+
+def agent_id_from_name(filename):
+    """Return the agent id a result file name encodes, or None."""
+    stem = Path(filename).stem
+    if is_canonical_name(filename):
+        stem = stem[len(PHASE_PREFIX):]
+    return stem or None
+
+
+def _is_result_candidate(path):
+    """True when path holds something load_result should be asked about.
+
+    The canonical phase_<id>.json name is written by the pipeline for an agent
+    and nothing else, so anything under it is a result however broken, and
+    load_result is the right place to say what is wrong. In the bare fixture
+    layout a stray json of any kind may sit beside the fixtures, so there a
+    json object without a findings list (a baseline, a report, a state file)
+    is not a result; one that is not even an object is kept so load_result can
+    name that too.
+    """
+    if not path.is_file():
+        return False
+    if is_canonical_name(path):
+        return True
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return not (isinstance(data, dict)
+                and not isinstance(data.get("findings"), list))
+
+
+def discover_results(out_dir):
+    """Return (agent_id, path) pairs for the agent results in a directory.
+
+    This is the one definition of "a result file", shared by fixture replay,
+    synthesize's cache scan and state resume. Discovering and loading therefore
+    agree: an agent reported here always loads, and a file this skips is never
+    picked up by find_result. The canonical name wins a tie against the bare
+    fixture layout, matching find_result.
+    """
+    found = []
+    seen = set()
+    root = Path(out_dir)
+    candidates = (
+        sorted(root.glob(RESULT_GLOB))
+        + sorted(root.glob("*" + RESULT_SUFFIX))
+    )
+    for path in candidates:
+        agent_id = agent_id_from_name(path)
+        if agent_id is None or agent_id in seen:
+            continue
+        if not _is_result_candidate(path):
+            continue
+        seen.add(agent_id)
+        found.append((agent_id, path))
+    return found
+
+
+def find_result(out_dir, agent_id):
+    """Return an agent's result path, or None when it is absent.
+
+    Both layouts are accepted, but the canonical one is checked first so a
+    directory holding both reads the result the pipeline itself wrote. A file
+    that is not a result is skipped and the next layout is tried, so a stray
+    baseline named phase_<id>.json cannot shadow a real fixture. The directory
+    is compared by name rather than by a constructed path because discovery
+    matches the prefix case-insensitively, and a case-sensitive filesystem
+    would otherwise hide the very file it found.
+    """
+    root = Path(out_dir)
+    try:
+        entries = sorted(root.iterdir())
+    except OSError:
+        # Absent, unreadable or removed while we looked: no result to load.
+        return None
+    matches = []
+    for path in entries:
+        # The suffix test is case-insensitive because the globs behind
+        # discovery match that way on Windows.
+        if path.suffix.lower() != RESULT_SUFFIX or not path.is_file():
+            continue
+        if agent_id_from_name(path) == agent_id and _is_result_candidate(path):
+            matches.append(path)
+    for path in matches:
+        if is_canonical_name(path):
+            return path
+    return matches[0] if matches else None
 
 
 def write_prompts(manifest, plan, out_dir, skill_dir=""):
@@ -124,8 +242,15 @@ def write_prompts(manifest, plan, out_dir, skill_dir=""):
 
 def load_result(path, agent_id):
     """Load and validate one agent result file."""
-    with open(path, encoding="utf-8-sig") as f:
-        data = json.load(f)
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except ValueError as exc:
+        # Name the file: the json error on its own says where in the text,
+        # not which result it belongs to.
+        raise ValueError(
+            "agent result is not valid JSON: {} ({})".format(path, exc)
+        )
     if not isinstance(data, dict):
         raise ValueError("agent result must be an object: " + str(path))
     findings = data.get("findings")
@@ -160,10 +285,8 @@ def load_results(out_dir, agent_ids, required=True):
     results = {}
     missing = []
     for agent_id in agent_ids:
-        path = result_path(out_dir, agent_id)
-        if not path.exists():
-            path = Path(out_dir) / (agent_id + ".json")
-        if path.exists():
+        path = find_result(out_dir, agent_id)
+        if path is not None:
             results[agent_id] = load_result(path, agent_id)
         else:
             missing.append(agent_id)
@@ -182,18 +305,11 @@ class RecordedProvider:
 
     def agent_ids(self):
         """Return agent ids discovered in the fixture directory."""
-        ids = []
-        for path in sorted(self.dir.glob("*.json")):
-            stem = path.stem
-            if stem.startswith("phase_"):
-                stem = stem[len("phase_"):]
-            if stem not in ids:
-                ids.append(stem)
-        return ids
+        return [agent_id for agent_id, _path in discover_results(self.dir)]
 
     def get(self, agent_id):
         """Return the recorded result for an agent."""
-        path = self.dir / ("phase_" + agent_id + ".json")
-        if not path.exists():
-            path = self.dir / (agent_id + ".json")
+        path = find_result(self.dir, agent_id)
+        if path is None:
+            path = self.dir / (agent_id + RESULT_SUFFIX)
         return load_result(path, agent_id)

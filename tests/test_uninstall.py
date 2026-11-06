@@ -44,6 +44,23 @@ class TestRemoveSkill(unittest.TestCase):
             self.assertTrue(install_mod.remove_skill(self.dest, True))
         self.assertTrue(target.exists())
 
+    def test_removes_crash_leftover_without_live_skill(self):
+        # The crash state leaves the old tree aside and no installed skill;
+        # the early "not installed" return must not make it permanent.
+        leftover = self.dest / (install_mod.PREVIOUS_PREFIX + "999")
+        leftover.mkdir()
+        (leftover / "SKILL.md").write_text("old", encoding="utf-8")
+        with patch("sys.stdout", new_callable=io.StringIO):
+            self.assertTrue(install_mod.remove_skill(self.dest, False))
+        self.assertFalse(leftover.exists())
+
+    def test_dry_run_keeps_crash_leftover(self):
+        leftover = self.dest / (install_mod.STAGING_PREFIX + "999")
+        leftover.mkdir()
+        with patch("sys.stdout", new_callable=io.StringIO):
+            self.assertTrue(install_mod.remove_skill(self.dest, True))
+        self.assertTrue(leftover.exists())
+
     def test_removes_plain_file(self):
         target = self.dest / "complete-codebase-review"
         target.write_text("x", encoding="utf-8")
