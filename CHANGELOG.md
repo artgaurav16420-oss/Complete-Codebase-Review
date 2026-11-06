@@ -21,6 +21,10 @@
   back to `CODE_REVIEW_AGENTS`; and the token rule applies only to source extensions and only to
   a trailing marker token (`test.js` and `module-test.js` count, `src/test-utils.js` and
   `docs/load-harness.md` do not).
+- **CI**: macOS runs only Python 3.9 and 3.15 in the `ci.yml` and `release.yml` matrices.
+  Seven queued macOS jobs overflowed the concurrent macOS runner cap, and GitHub cancelled
+  the overflow before it started, failing otherwise-green runs on `main` and on PRs. Linux
+  and Windows still cover every interpreter.
 
 ## v2.4.0 (2026-10-20)
 
