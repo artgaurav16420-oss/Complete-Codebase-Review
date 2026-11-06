@@ -263,7 +263,9 @@ class TestCopySkill(_BaseInstallTest):
             src = self._make_src(tmpdir)
             dest = Path(tmpdir) / "dest"
             dest.mkdir()
-            live = dest / (self.install.STAGING_PREFIX + "999")
+            # Not this process's own pid: copy_skill clears its own staging
+            # name before the copy, which would delete the tree under test.
+            live = dest / (self.install.STAGING_PREFIX + str(os.getpid() + 1))
             live.mkdir()
             (live / "SKILL.md").write_text("in flight")
 
@@ -312,6 +314,64 @@ class TestCopySkill(_BaseInstallTest):
                 (skill_dest / "SKILL.md").read_text(encoding="utf-8"),
                 "old install",
             )
+
+    def test_failed_swap_restores_a_link_like_install(self):
+        # A link is parked rather than deleted, so a failed swap leaves the
+        # user's configured path in place and the link's target untouched.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            root = Path(tmpdir)
+            dest = root / "dest"
+            dest.mkdir()
+            external = root / "external"
+            external.mkdir()
+            (external / "SKILL.md").write_text("external", encoding="utf-8")
+            skill_dest = dest / "complete-codebase-review"
+            try:
+                create_directory_link(skill_dest, external)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+
+            real_replace = self.install.os.replace
+
+            def swap_refused(source, target):
+                if self.install.STAGING_PREFIX in str(source):
+                    raise OSError("swap refused")
+                return real_replace(source, target)
+
+            with patch.object(self.install.os, "replace", swap_refused):
+                with self.assertRaises(OSError):
+                    self.install.copy_skill(src, dest)
+
+            self.assertTrue(self.install._is_link_like(skill_dest))
+            self.assertEqual(
+                (external / "SKILL.md").read_text(encoding="utf-8"),
+                "external",
+            )
+
+    def test_parked_previous_tree_is_stamped(self):
+        # A rename keeps the tree's old mtime, which makes the live backup
+        # look like a crashed run's leftover to a concurrent age-based sweep.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            skill_dest = dest / "complete-codebase-review"
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(str(skill_dest), (old, old))
+
+            ages = []
+            real_remove = self.install._remove_tree
+
+            def spy(path):
+                if Path(path).name.startswith(self.install.PREVIOUS_PREFIX):
+                    ages.append(time.time() - Path(path).lstat().st_mtime)
+                return real_remove(path)
+
+            with patch.object(self.install, "_remove_tree", spy):
+                self.install.copy_skill(src, dest)
+            self.assertEqual(len(ages), 1)
+            self.assertLess(ages[0], self.install.LEFTOVER_MAX_AGE_SEC)
 
     def test_calls_copytree_with_ignore_patterns(self):
         with tempfile.TemporaryDirectory() as tmpdir:

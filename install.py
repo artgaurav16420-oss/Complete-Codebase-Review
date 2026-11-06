@@ -334,7 +334,9 @@ def _leftovers(dest_dir, max_age=0):
         for path in sorted(Path(dest_dir).glob(prefix + "*")):
             if max_age:
                 try:
-                    age = now - path.stat().st_mtime
+                    # lstat: a parked link is judged by its own age, not by
+                    # whatever directory it points at.
+                    age = now - path.lstat().st_mtime
                 except OSError:
                     age = max_age
                 if age < max_age:
@@ -410,7 +412,11 @@ def copy_skill(src_dir, dest_dir):
             if os.path.lexists(skill_dest):
                 print_info(f"Updating existing installation in {skill_dest}")
                 if _is_link_like(skill_dest):
-                    _remove_link_like(skill_dest)
+                    # Park the link itself instead of deleting it: renaming
+                    # the entry leaves the link's target untouched, and if
+                    # the swap below fails the finally block puts the link
+                    # back where the user configured it.
+                    os.replace(str(skill_dest), str(previous))
                 else:
                     resolved = skill_dest.resolve(strict=False)
                     root = _containment_root(dest_dir)
@@ -423,6 +429,17 @@ def copy_skill(src_dir, dest_dir):
                             f"Resolved path {resolved} is outside target {root}"
                         )
                     os.replace(str(resolved), str(previous))
+                # A rename keeps the entry's old mtime, which would make this
+                # live backup look like a crashed run's leftover to a
+                # concurrent install's age-based sweep. Stamp the parked entry
+                # itself, never the target a link points at.
+                try:
+                    if _is_link_like(previous):
+                        os.utime(str(previous), None, follow_symlinks=False)
+                    else:
+                        os.utime(str(previous), None)
+                except (NotImplementedError, OSError):
+                    pass
 
             # Re-assert at the last moment: dest_dir was checked before the
             # copy, and a swap in between would send the final rename into the
@@ -709,6 +726,12 @@ def remove_skill(dest_dir, dry_run):
                 shutil.rmtree(str(resolved), onerror=_onerror)
         else:
             resolved.unlink()
+    if not swept:
+        # The live skill is gone but this tool's own leftovers are not: fail
+        # the uninstall instead of reporting a clean one that leaves trees.
+        raise OSError(
+            "could not remove the leftover files in " + str(dest_dir)
+        )
     print_success("Removed " + str(skill_dest))
     return True
 

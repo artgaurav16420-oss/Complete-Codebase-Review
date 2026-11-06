@@ -97,7 +97,6 @@ def build_prompt(agent, target, skill_dir, manifest_version=""):
 PHASE_PREFIX = "phase_"
 PROMPT_SUFFIX = ".prompt.md"
 RESULT_SUFFIX = ".json"
-RESULT_GLOB = PHASE_PREFIX + "*" + RESULT_SUFFIX
 
 
 def prompt_name(agent_id):
@@ -162,6 +161,31 @@ def _is_result_candidate(path):
                 and not isinstance(data.get("findings"), list))
 
 
+def _result_paths(root):
+    """Return the entries of root with a result suffix, canonical names first.
+
+    The tree is listed instead of globbed because a glob is case-sensitive on
+    POSIX: ``.JSON`` would be invisible to discovery while ``find_result``
+    reads it, so the two would disagree about the same directory.
+    """
+    try:
+        entries = sorted(Path(root).iterdir())
+    except OSError:
+        # Absent, unreadable or removed while we looked: no results, which is
+        # what an empty glob used to return.
+        return []
+    canonical = []
+    bare = []
+    for path in entries:
+        if path.suffix.lower() != RESULT_SUFFIX:
+            continue
+        if is_canonical_name(path):
+            canonical.append(path)
+        else:
+            bare.append(path)
+    return canonical + bare
+
+
 def discover_results(out_dir):
     """Return (agent_id, path) pairs for the agent results in a directory.
 
@@ -173,12 +197,7 @@ def discover_results(out_dir):
     """
     found = []
     seen = set()
-    root = Path(out_dir)
-    candidates = (
-        sorted(root.glob(RESULT_GLOB))
-        + sorted(root.glob("*" + RESULT_SUFFIX))
-    )
-    for path in candidates:
+    for path in _result_paths(out_dir):
         agent_id = agent_id_from_name(path)
         if agent_id is None or agent_id in seen:
             continue
@@ -192,32 +211,20 @@ def discover_results(out_dir):
 def find_result(out_dir, agent_id):
     """Return an agent's result path, or None when it is absent.
 
-    Both layouts are accepted, but the canonical one is checked first so a
+    Both layouts are accepted, but the canonical one comes first so a
     directory holding both reads the result the pipeline itself wrote. A file
     that is not a result is skipped and the next layout is tried, so a stray
-    baseline named phase_<id>.json cannot shadow a real fixture. The directory
-    is compared by name rather than by a constructed path because discovery
-    matches the prefix case-insensitively, and a case-sensitive filesystem
-    would otherwise hide the very file it found.
+    baseline named phase_<id>.json cannot shadow a real fixture. The match is
+    made on the directory entries rather than a constructed path because the
+    prefix is matched case-insensitively, and a case-sensitive filesystem
+    would otherwise hide the very file discovery found.
     """
-    root = Path(out_dir)
-    try:
-        entries = sorted(root.iterdir())
-    except OSError:
-        # Absent, unreadable or removed while we looked: no result to load.
-        return None
-    matches = []
-    for path in entries:
-        # The suffix test is case-insensitive because the globs behind
-        # discovery match that way on Windows.
-        if path.suffix.lower() != RESULT_SUFFIX or not path.is_file():
+    for path in _result_paths(out_dir):
+        if agent_id_from_name(path) != agent_id:
             continue
-        if agent_id_from_name(path) == agent_id and _is_result_candidate(path):
-            matches.append(path)
-    for path in matches:
-        if is_canonical_name(path):
+        if _is_result_candidate(path):
             return path
-    return matches[0] if matches else None
+    return None
 
 
 def write_prompts(manifest, plan, out_dir, skill_dir=""):

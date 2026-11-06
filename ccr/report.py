@@ -5,6 +5,18 @@ section names and table headers exactly as written here.
 """
 
 import math
+import unicodedata
+
+
+def _strip_format(text):
+    """Drop Unicode format characters (bidi overrides, isolates, joiners).
+
+    They render as nothing, so a finding lifted from an untrusted result can
+    reorder the rest of the line it sits in without looking different.
+    """
+    return "".join(
+        char for char in text if unicodedata.category(char) != "Cf"
+    )
 
 
 def _fmt_number(value):
@@ -39,13 +51,15 @@ def _cell(text):
     Agent-supplied finding text reaches the report verbatim, so HTML is
     escaped and link destinations are defused here as well: a prompt-injected
     result could otherwise render a live ``<img>`` or a ``[click](js:...)``
-    link in a report the reviewer trusts. The ``[file:line]`` anchor keeps its
-    brackets, which are only escaped in headings (see ``_title``).
+    link in a report the reviewer trusts. Format characters are dropped
+    because they are invisible but still reorder the text around them. The
+    ``[file:line]`` anchor keeps its brackets, which are only escaped in
+    headings (see ``_title``).
 
     Uses ``splitlines`` so every separator it honours (including ``\\x0b``,
     ``\\x0c`` and ``\\x85``) collapses, not just CR/LF.
     """
-    cleaned = str(text).replace("|", "/")
+    cleaned = _strip_format(str(text)).replace("|", "/")
     collapsed = " ".join(cleaned.splitlines()).strip()
     return (
         collapsed

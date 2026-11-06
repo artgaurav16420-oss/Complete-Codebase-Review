@@ -265,6 +265,18 @@ class TestResultDiscovery(unittest.TestCase):
         self.assertIsNone(providers.find_result(self.dir, "security"))
         self.assertEqual(providers.discover_results(self.dir), [])
 
+    def test_discovery_accepts_an_uppercase_suffix(self):
+        # A glob is case-sensitive on POSIX while find_result compared the
+        # suffix case-insensitively, so discovery could hide a file its own
+        # loader would read.
+        self._write("PHASE_security.JSON", {"findings": []})
+        self.assertEqual(
+            [agent_id for agent_id, _ in providers.discover_results(self.dir)],
+            ["security"],
+        )
+        self.assertEqual(providers.find_result(self.dir, "security").name,
+                         "PHASE_security.JSON")
+
     def test_agent_id_from_name_handles_both_layouts(self):
         self.assertEqual(providers.agent_id_from_name("phase_security.json"),
                          "security")

@@ -1,7 +1,9 @@
 """Tests for ccr.state: persistence, gates, and resume."""
 
 import json
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -224,6 +226,49 @@ class TestAgents(unittest.TestCase):
         self.assertEqual(
             state.merge_resume(self.state, Path(self.tmp.name) / "nope"), []
         )
+
+    def test_duplicate_completed_ids_do_not_inflate_the_ratio(self):
+        # A hand-edited or merged state file can repeat an id; counting it
+        # twice would report more than the roster and pass the gate early.
+        for agent_id in ("security", "security", "architecture",
+                         "architecture", "documentation", "documentation"):
+            self.state.data["agents_completed"].append(agent_id)
+        self.assertAlmostEqual(self.state.completion_ratio(), 1.0)
+        self.state.data["agents_completed"].extend(["security", "architecture"])
+        self.assertEqual(self.state.completion_ratio(), 1.0)
+
+
+class TestStateLock(unittest.TestCase):
+    """The advisory lock around a state read-modify-write."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "ccr-state.json"
+
+    def test_held_lock_is_released(self):
+        with state.StateLock(self.path) as lock:
+            self.assertTrue(lock.held)
+            self.assertTrue(lock.path.exists())
+        self.assertFalse(lock.path.exists())
+
+    def test_a_second_holder_does_not_wait_forever(self):
+        with state.StateLock(self.path):
+            with state.StateLock(self.path, wait=0.05, stale=60) as second:
+                self.assertFalse(second.held)
+
+    def test_stale_lock_is_taken_over(self):
+        lock_path = Path(str(self.path) + state.LOCK_SUFFIX)
+        lock_path.write_text("", encoding="utf-8")
+        old = time.time() - 120
+        os.utime(str(lock_path), (old, old))
+        with state.StateLock(self.path, wait=0.05, stale=60) as lock:
+            self.assertTrue(lock.held)
+
+    def test_unsupported_or_unwritable_lock_path_still_runs(self):
+        missing = Path(self.tmp.name) / "absent" / "ccr-state.json"
+        with state.StateLock(missing, wait=0.05) as lock:
+            self.assertFalse(lock.held)
 
 
 if __name__ == "__main__":

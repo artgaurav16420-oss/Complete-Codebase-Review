@@ -117,12 +117,24 @@ def _is_link_like(path):
 
 
 def _stale_results(root, agent_ids):
-    """Return the result files a new record run would otherwise re-ingest."""
-    stale = sorted(root.glob(providers.RESULT_GLOB))
-    for agent_id in sorted(set(agent_ids)):
-        candidate = root / (agent_id + ".json")
-        if candidate.is_file() and candidate not in stale:
-            stale.append(candidate)
+    """Return the result files a new record run would otherwise re-ingest.
+
+    Only files count: a directory that happens to be named like a result is
+    not one, and archiving it would relocate contents this tool never wrote.
+    The suffix is compared case-insensitively so the set matches what
+    discovery would find on a case-sensitive filesystem.
+    """
+    try:
+        entries = sorted(Path(root).iterdir())
+    except OSError:
+        return []
+    planned = set(agent_ids)
+    stale = []
+    for path in entries:
+        if path.suffix.lower() != providers.RESULT_SUFFIX or not path.is_file():
+            continue
+        if providers.is_canonical_name(path) or path.stem in planned:
+            stale.append(path)
     return stale
 
 
@@ -413,10 +425,17 @@ def _persist_review_counter(cached, signature, target):
     on unchanged results is the same review, not a new one. The base is the
     freshly loaded count, not the snapshot taken before synthesis: a
     concurrent run may have advanced it, and `snapshot + 1` would overwrite
-    that review.
+    that review. The load and the save are held under one lock, so two
+    syntheses cannot read the same count and each write its own increment.
     """
+    with state.StateLock(cached.path):
+        return _credit_review(cached.path, signature, target)
+
+
+def _credit_review(state_path, signature, target):
+    """Advance the re-review counter in a freshly loaded state file."""
     try:
-        fresh = state.State.load(cached.path)
+        fresh = state.State.load(state_path)
         if fresh is None:
             raise ValueError("state file disappeared")
     except (OSError, ValueError) as exc:

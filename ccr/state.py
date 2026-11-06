@@ -7,6 +7,7 @@ cannot leave a half-written ccr-state.json.
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from . import providers
@@ -217,15 +218,84 @@ class State:
         total = len(planned) or self.data["total_agents"]
         if not total:
             return 0.0
-        completed = self.data["agents_completed"]
+        # A hand-edited or merged state file can repeat an id; counting it
+        # twice would report more than the roster and pass the gate early.
+        completed = list(dict.fromkeys(self.data["agents_completed"]))
         if planned:
             completed = [agent_id for agent_id in completed if agent_id in planned]
-        return len(completed) / total
+        return min(len(completed) / total, 1.0)
 
     def threshold_passed(self, manifest):
         """Return True when enough agents completed to continue."""
         key = "quick_completion" if self.data["effort"] == "min" else "full_completion"
         return self.completion_ratio() >= manifest["thresholds"][key]
+
+
+LOCK_SUFFIX = ".lock"
+LOCK_WAIT_SEC = 2.0
+LOCK_POLL_SEC = 0.05
+LOCK_STALE_SEC = 300.0
+
+
+class StateLock:
+    """Best-effort exclusive lock around a state read-modify-write.
+
+    ``save`` replaces the file atomically, but load-then-save is still a race:
+    two runs can read the same counter and each write its own increment, so
+    one is lost. The lock is advisory and bounded. If it cannot be taken the
+    caller proceeds anyway, because a report that is already written must not
+    fail over a counter, and a lock older than ``stale`` is a crashed run's.
+    """
+
+    def __init__(self, path, wait=LOCK_WAIT_SEC, stale=LOCK_STALE_SEC):
+        self.path = Path(str(path) + LOCK_SUFFIX)
+        self.wait = wait
+        self.stale = stale
+        self.held = False
+
+    def __enter__(self):
+        deadline = time.monotonic() + self.wait
+        while True:
+            try:
+                fd = os.open(
+                    str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                )
+            except FileExistsError:
+                if self._clear_if_stale():
+                    continue
+                if time.monotonic() >= deadline:
+                    return self
+                time.sleep(LOCK_POLL_SEC)
+                continue
+            except OSError:
+                # Unwritable directory or no lock support: same as unlocked.
+                return self
+            os.close(fd)
+            self.held = True
+            return self
+
+    def _clear_if_stale(self):
+        """Remove a lock left by a crashed run; True when the lock is gone."""
+        try:
+            age = time.time() - self.path.lstat().st_mtime
+        except OSError:
+            return False
+        if age < self.stale:
+            return False
+        try:
+            os.unlink(str(self.path))
+        except OSError:
+            return False
+        return True
+
+    def __exit__(self, exc_type, exc, tb):
+        if self.held:
+            self.held = False
+            try:
+                os.unlink(str(self.path))
+            except OSError:
+                pass  # a leftover; the stale takeover clears it
+        return False
 
 
 def merge_resume(state, cache_dir):

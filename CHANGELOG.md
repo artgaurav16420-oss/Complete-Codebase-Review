@@ -47,6 +47,15 @@
   - CI: workflow-level permissions reduced to `contents: read` with per-job escalation,
     exact pins for `coverage` and `build`, a wheel smoke test before publishing, and a
     pull-request check that rejects empty commits.
+  - CodeAnt round 1: `record` archives only files, so a directory named like a result is
+    left alone; discovery compares the `.json` suffix case-insensitively, matching
+    `find_result` on a case-sensitive filesystem; duplicate completed ids cannot push the
+    completion ratio above the roster; and the re-review counter is updated under an
+    advisory lock, so two syntheses cannot lose an increment.
+  - Installer: a parked previous install is re-stamped so a concurrent age-based sweep
+    cannot delete the backup a rollback needs; a link-like install is parked rather than
+    unlinked, so a failed swap still restores it; and uninstall fails when its own
+    leftovers cannot be removed instead of reporting a clean removal.
 
 ## v2.4.0 (2026-10-20)
 

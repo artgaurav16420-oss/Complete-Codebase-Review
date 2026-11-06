@@ -128,6 +128,21 @@ class TestRecordCommand(unittest.TestCase):
             self.assertEqual(len(archived), 1)
             self.assertIn("archived 1", output)
 
+    def test_record_leaves_a_directory_named_like_a_result(self):
+        # Only files are results; archiving a directory that happens to carry
+        # the name would relocate contents ccr never wrote.
+        with tempfile.TemporaryDirectory() as tmp:
+            decoy = Path(tmp) / "phase_security.json"
+            decoy.mkdir()
+            (decoy / "keep.txt").write_text("unrelated", encoding="utf-8")
+            code, output = run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security",
+            ])
+            self.assertEqual(code, 0)
+            self.assertTrue((decoy / "keep.txt").exists())
+            self.assertNotIn("archived", output)
+
     def test_record_updates_effort(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli([
