@@ -44,6 +44,63 @@ class TestRemoveSkill(unittest.TestCase):
             self.assertTrue(install_mod.remove_skill(self.dest, True))
         self.assertTrue(target.exists())
 
+    def test_removes_crash_leftover_without_live_skill(self):
+        # The crash state leaves the old tree aside and no installed skill;
+        # the early "not installed" return must not make it permanent.
+        leftover = self.dest / (install_mod.PREVIOUS_PREFIX + "999")
+        leftover.mkdir()
+        (leftover / "SKILL.md").write_text("old", encoding="utf-8")
+        with patch("sys.stdout", new_callable=io.StringIO):
+            self.assertTrue(install_mod.remove_skill(self.dest, False))
+        self.assertFalse(leftover.exists())
+
+    def test_dry_run_keeps_crash_leftover(self):
+        leftover = self.dest / (install_mod.STAGING_PREFIX + "999")
+        leftover.mkdir()
+        with patch("sys.stdout", new_callable=io.StringIO):
+            self.assertTrue(install_mod.remove_skill(self.dest, True))
+        self.assertTrue(leftover.exists())
+
+    def test_failed_leftover_removal_without_a_live_install_fails(self):
+        # Returning False here would read as "nothing to uninstall" to the
+        # caller, which exits 0 while the trees survive.
+        leftover = self.dest / (install_mod.STAGING_PREFIX + "999")
+        leftover.mkdir()
+        real_remove = install_mod._remove_tree
+
+        def remove(path):
+            if str(path) == str(leftover):
+                raise OSError("locked")
+            return real_remove(path)
+
+        with patch("sys.stdout", new_callable=io.StringIO):
+            with patch.object(install_mod, "_remove_tree", remove):
+                with self.assertRaises(OSError) as ctx:
+                    install_mod.remove_skill(self.dest, False)
+        self.assertIn("leftover", str(ctx.exception))
+
+    def test_failed_leftover_removal_fails_a_live_uninstall(self):
+        # The live tree is gone but this tool's own leftover is not: the
+        # result must not claim a clean uninstall that leaves trees behind.
+        target = self.dest / "complete-codebase-review"
+        target.mkdir()
+        leftover = self.dest / (install_mod.STAGING_PREFIX + "999")
+        leftover.mkdir()
+        real_remove = install_mod._remove_tree
+
+        def remove(path):
+            if str(path) == str(leftover):
+                raise OSError("locked")
+            return real_remove(path)
+
+        with patch("sys.stdout", new_callable=io.StringIO):
+            with patch.object(install_mod, "_remove_tree", remove):
+                with self.assertRaises(OSError) as ctx:
+                    install_mod.remove_skill(self.dest, False)
+        self.assertIn("leftover", str(ctx.exception))
+        # Failing before the live delete leaves the user a working install.
+        self.assertTrue(target.exists())
+
     def test_removes_plain_file(self):
         target = self.dest / "complete-codebase-review"
         target.write_text("x", encoding="utf-8")

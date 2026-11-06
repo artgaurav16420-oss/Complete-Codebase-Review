@@ -9,6 +9,7 @@ import os
 import stat
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -233,6 +234,159 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue(skill_dest.is_dir())
             self.assertTrue((skill_dest / "SKILL.md").exists())
 
+    def test_sweeps_stale_staging_and_backup_trees(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            stale_staging = dest / (self.install.STAGING_PREFIX + "999")
+            stale_backup = dest / (self.install.PREVIOUS_PREFIX + "999")
+            stale_staging.mkdir()
+            stale_backup.mkdir()
+            (stale_staging / "left.txt").write_text("left")
+            # Age them past the liveness window: a young tree may belong to a
+            # run that is still working, an old one is a crash.
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(stale_staging, (old, old))
+            os.utime(stale_backup, (old, old))
+
+            self.install.copy_skill(src, dest)
+
+            self.assertFalse(stale_staging.exists())
+            self.assertFalse(stale_backup.exists())
+            self.assertTrue((dest / "complete-codebase-review" / "SKILL.md").exists())
+
+    def test_keeps_a_young_staging_tree(self):
+        # A concurrent install owns its staging tree; age is the only liveness
+        # signal available on Windows, so a fresh one must survive.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            live = dest / (self.install.STAGING_PREFIX + str(os.getpid() + 1))
+            live.mkdir()
+            (live / "SKILL.md").write_text("in flight")
+
+            self.install.copy_skill(src, dest)
+
+            self.assertTrue((live / "SKILL.md").exists())
+
+    def test_keeps_a_young_leftover_named_for_our_own_pid(self):
+        # Pids are reused: a crashed run's backup can carry the pid this run
+        # would use. Deleting it before the copy can destroy the only copy of
+        # the previous install, so the backup name must be this run's alone.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            crashed = dest / (self.install.PREVIOUS_PREFIX + str(os.getpid()))
+            crashed.mkdir()
+            (crashed / "SKILL.md").write_text("survivor")
+
+            self.install.copy_skill(src, dest)
+
+            self.assertTrue((crashed / "SKILL.md").exists())
+
+    def test_update_leaves_no_previous_tree_behind(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            (src / "SKILL.md").write_text("name: updated")
+            self.install.copy_skill(src, dest)
+
+            self.assertEqual(
+                [p.name for p in dest.iterdir() if p.name.startswith(".")],
+                [],
+            )
+            self.assertEqual(
+                (dest / "complete-codebase-review" / "SKILL.md").read_text(
+                    encoding="utf-8"),
+                "name: updated",
+            )
+
+    def test_failed_swap_restores_previous_install(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            skill_dest = dest / "complete-codebase-review"
+            skill_dest.mkdir(parents=True)
+            (skill_dest / "SKILL.md").write_text("old install")
+
+            real_replace = self.install.os.replace
+
+            def swap_refused(source, target):
+                if self.install.STAGING_PREFIX in str(source):
+                    raise OSError("swap refused")
+                return real_replace(source, target)
+
+            with patch.object(self.install.os, "replace", swap_refused):
+                with self.assertRaises(OSError):
+                    self.install.copy_skill(src, dest)
+
+            self.assertEqual(
+                (skill_dest / "SKILL.md").read_text(encoding="utf-8"),
+                "old install",
+            )
+
+    def test_failed_swap_restores_a_link_like_install(self):
+        # A link is parked rather than deleted, so a failed swap leaves the
+        # user's configured path in place and the link's target untouched.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            root = Path(tmpdir)
+            dest = root / "dest"
+            dest.mkdir()
+            external = root / "external"
+            external.mkdir()
+            (external / "SKILL.md").write_text("external", encoding="utf-8")
+            skill_dest = dest / "complete-codebase-review"
+            try:
+                create_directory_link(skill_dest, external)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+
+            real_replace = self.install.os.replace
+
+            def swap_refused(source, target):
+                if self.install.STAGING_PREFIX in str(source):
+                    raise OSError("swap refused")
+                return real_replace(source, target)
+
+            with patch.object(self.install.os, "replace", swap_refused):
+                with self.assertRaises(OSError):
+                    self.install.copy_skill(src, dest)
+
+            self.assertTrue(self.install._is_link_like(skill_dest))
+            self.assertEqual(
+                (external / "SKILL.md").read_text(encoding="utf-8"),
+                "external",
+            )
+
+    def test_parked_previous_tree_is_stamped(self):
+        # A rename keeps the tree's old mtime, which makes the live backup
+        # look like a crashed run's leftover to a concurrent age-based sweep.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            skill_dest = dest / "complete-codebase-review"
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(str(skill_dest), (old, old))
+
+            ages = []
+            real_remove = self.install._remove_tree
+
+            def spy(path):
+                if Path(path).name.startswith(self.install.PREVIOUS_PREFIX):
+                    ages.append(time.time() - Path(path).lstat().st_mtime)
+                return real_remove(path)
+
+            with patch.object(self.install, "_remove_tree", spy):
+                self.install.copy_skill(src, dest)
+            self.assertEqual(len(ages), 1)
+            self.assertLess(ages[0], self.install.LEFTOVER_MAX_AGE_SEC)
+
     def test_calls_copytree_with_ignore_patterns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
@@ -316,6 +470,27 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue((result / "ccr" / "pipeline.json").exists())
             self.assertTrue((result / "skills" / "review" / "SKILL.md").exists())
             self.assertTrue((result / "helpers" / "note.md").exists())
+
+    def test_sweep_refuses_a_link_like_target(self):
+        # A directory swapped for a link must not send the sweep through it
+        # and delete same-named trees inside the link's target.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            real = root / "external"
+            (real / (self.install.STAGING_PREFIX + "1")).mkdir(parents=True)
+            link = root / "dest"
+            try:
+                create_directory_link(link, real)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            with patch.object(self.install.sys, "stdout",
+                              new_callable=io.StringIO):
+                self.assertFalse(
+                    self.install._sweep_leftovers(link, max_age=0)
+                )
+            self.assertTrue(
+                (real / (self.install.STAGING_PREFIX + "1")).exists()
+            )
 
     def test_link_like_dest_dir_is_refused(self):
         # A link at the destination would move the containment root onto its

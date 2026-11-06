@@ -66,10 +66,21 @@ class TestEnvVarTable(unittest.TestCase):
     def test_each_var_has_default_documented(self):
         for var in TABLE_VARS:
             with self.subTest(var=var):
-                self.assertRegex(
-                    self.content,
-                    rf"`{var}`.*\|",
-                    f"{var} missing default-value column",
+                rows = [
+                    line for line in self.content.splitlines()
+                    if line.lstrip().startswith("|") and f"`{var}`" in line
+                ]
+                self.assertTrue(rows, f"{var} has no table row")
+                # A row already contains pipes, so matching ".*\|" proves
+                # nothing. Require the default column itself to be populated.
+                cells = [cell.strip() for cell in rows[0].split("|")]
+                self.assertGreaterEqual(
+                    len(cells), 4,
+                    f"{var} row has no default-value column: {rows[0]}",
+                )
+                self.assertTrue(
+                    cells[2],
+                    f"{var} has an empty default-value column: {rows[0]}",
                 )
 
 

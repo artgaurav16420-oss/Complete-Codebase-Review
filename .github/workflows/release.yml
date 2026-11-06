@@ -5,13 +5,13 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
   test:
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,7 +25,10 @@ jobs:
           python-version: '3.11'
 
       - name: Install test dependencies
-        run: python -m pip install 'coverage>=7.0,<8'
+        # Exact pin: this workflow publishes artifacts, so the test environment
+        # must resolve identically on every rebuild instead of picking up the
+        # newest 7.x release.
+        run: python -m pip install 'coverage==7.14.1'
 
       - name: Generate drift check
         run: python tools/generate.py --check
@@ -56,6 +59,8 @@ jobs:
 
   windows-test:
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -74,6 +79,8 @@ jobs:
 
   matrix-test:
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -108,7 +115,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install test dependencies
-        run: python -m pip install 'coverage>=7.0,<8'
+        # Exact pins: this workflow publishes artifacts, so the test
+        # environment must resolve identically on every rebuild instead of
+        # picking up the newest 7.x release. coverage 7.14 requires Python
+        # 3.10, so the 3.9 leg takes the last release that still supports it.
+        run: >
+          python -m pip install
+          'coverage==7.14.1; python_version >= "3.10"'
+          'coverage==7.10.7; python_version < "3.10"'
 
       - name: Syntax check every module
         run: >
@@ -135,6 +149,10 @@ jobs:
   build:
     needs: [test, windows-test, matrix-test]
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -171,6 +189,14 @@ jobs:
 
       - name: Build sdist and wheel
         run: python -m build
+
+      - name: Install built wheel and smoke-test
+        run: |
+          python -m venv .release-venv
+          .release-venv/bin/python -m pip install dist/*.whl
+          output="$(.release-venv/bin/ccr --version)"
+          test -n "$output" || { echo "ERROR: ccr --version printed nothing"; exit 1; }
+          echo "[SUCCESS] Installed wheel reports: $output"
 
       - name: Write checksums
         run: |

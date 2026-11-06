@@ -7,7 +7,19 @@ cannot leave a half-written ccr-state.json.
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
+
+from . import providers
+
+try:
+    import fcntl as _fcntl
+except ImportError:  # Windows has no flock
+    _fcntl = None
+try:
+    import msvcrt as _msvcrt
+except ImportError:  # POSIX has no msvcrt
+    _msvcrt = None
 
 PHASES = (1, 2, 3, 4, 5)
 
@@ -204,11 +216,23 @@ class State:
         self.save()
 
     def completion_ratio(self):
-        """Return completed agents divided by planned agents (0.0 if none)."""
-        total = self.data["total_agents"]
+        """Return completed agents divided by planned agents (0.0 if none).
+
+        The denominator is the planned roster, matching
+        ccr.pipeline.check_completion. total_agents is only a fallback for
+        state files written before agents_planned was populated: trusting it
+        first lets a stale count report 0% for a run that finished.
+        """
+        planned = self.data["agents_planned"] or []
+        total = len(planned) or self.data["total_agents"]
         if not total:
             return 0.0
-        return len(self.data["agents_completed"]) / total
+        # A hand-edited or merged state file can repeat an id; counting it
+        # twice would report more than the roster and pass the gate early.
+        completed = list(dict.fromkeys(self.data["agents_completed"]))
+        if planned:
+            completed = [agent_id for agent_id in completed if agent_id in planned]
+        return min(len(completed) / total, 1.0)
 
     def threshold_passed(self, manifest):
         """Return True when enough agents completed to continue."""
@@ -216,23 +240,125 @@ class State:
         return self.completion_ratio() >= manifest["thresholds"][key]
 
 
+LOCK_SUFFIX = ".lock"
+LOCK_WAIT_SEC = 2.0
+LOCK_POLL_SEC = 0.05
+
+
+class StateLock:
+    """Exclusive lock around a state read-modify-write, held by the OS.
+
+    ``save`` replaces the file atomically, but load-then-save is still a race:
+    two runs can read the same counter and each write its own increment, so
+    one is lost. The claim is an OS file lock, which the kernel drops when the
+    holding process ends. A lock file that is created and deleted instead
+    needs a staleness rule for a crashed holder, and that rule races with
+    itself: two contenders judge the same file stale, one replaces it, and the
+    other then removes the replacement, so both enter the protected section.
+
+    The wait is bounded. If the lock cannot be taken the caller sees ``held``
+    false instead of blocking forever, because a report that is already out
+    must not fail over a counter. The lock file itself is never deleted:
+    removing a locked file is exactly what splits one lock into two.
+    """
+
+    def __init__(self, path, wait=LOCK_WAIT_SEC):
+        self.path = Path(str(path) + LOCK_SUFFIX)
+        self.wait = wait
+        self.held = False
+        self._handle = None
+
+    def __enter__(self):
+        deadline = time.monotonic() + self.wait
+        while True:
+            handle = self._open()
+            if handle is None:
+                return self
+            if self._claim(handle):
+                self._handle = handle
+                self.held = True
+                return self
+            handle.close()
+            if time.monotonic() >= deadline:
+                return self
+            time.sleep(LOCK_POLL_SEC)
+
+    def _open(self):
+        """Open the lock file, creating it; None when that is impossible."""
+        try:
+            return open(str(self.path), "a+b")
+        except OSError:
+            # Unwritable directory: same as unlocked.
+            return None
+
+    @staticmethod
+    def _claim(handle):
+        """Take the exclusive lock without blocking; False when it is held."""
+        try:
+            if _msvcrt is not None:
+                # Windows locks a byte range, so the file needs a byte and
+                # the pointer must sit at the start of the range.
+                handle.seek(0)
+                if not handle.read(1):
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                _msvcrt.locking(handle.fileno(), _msvcrt.LK_NBLCK, 1)
+                return True
+            if _fcntl is not None:
+                _fcntl.flock(handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                return True
+        except OSError:
+            return False
+        # No locking primitive on this build: behave as the unlocked version.
+        return True
+
+    def __exit__(self, exc_type, exc, tb):
+        handle = self._handle
+        if handle is not None:
+            self._handle = None
+            self.held = False
+            try:
+                if _msvcrt is not None:
+                    handle.seek(0)
+                    _msvcrt.locking(handle.fileno(), _msvcrt.LK_UNLCK, 1)
+                elif _fcntl is not None:
+                    _fcntl.flock(handle.fileno(), _fcntl.LOCK_UN)
+            except OSError:
+                pass  # closing the handle releases the lock anyway
+            handle.close()
+        return False
+
+
 def merge_resume(state, cache_dir):
     """Cross-check state against cached agent files; disk wins.
+
+    Only the canonical phase_<agent>.json files count, and only for agents in
+    ``agents_planned``: a result left in the cache by an earlier, differently
+    scoped run is not evidence of progress in this one, and reporting it as
+    drift would make the caller resume agents it never planned. An empty plan
+    is treated as unknown and does not filter by name.
 
     Args:
         state: Loaded State object.
         cache_dir: Directory holding phase_<agent>.json files.
 
     Returns:
-        list: Agent ids present on disk but not recorded as completed.
+        list: Planned agent ids present on disk but not recorded as completed.
     """
     cache = Path(cache_dir)
     if not cache.is_dir():
         return []
+    planned = set(state.data["agents_planned"] or [])
+    # providers owns what counts as a result file; discovery also accepts the
+    # bare fixture layout, which this cache never uses and which lets a report
+    # or a baseline with a findings list pose as an agent.
     on_disk = sorted(
-        p.stem[len("phase_"):]
-        for p in cache.glob("phase_*.json")
-        if p.stem.lower() != "phase_"
+        agent_id for agent_id, path in providers.discover_results(cache)
+        if providers.is_canonical_name(path)
     )
     completed = set(state.data["agents_completed"])
-    return [agent_id for agent_id in on_disk if agent_id not in completed]
+    return [
+        agent_id for agent_id in on_disk
+        if agent_id not in completed and (not planned or agent_id in planned)
+    ]

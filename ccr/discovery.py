@@ -13,6 +13,11 @@ IGNORED_DIRS = frozenset({
     ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv",
     ".tox", ".mypy_cache", ".pytest_cache", ".code-review-cache", ".skills", "dist",
     "build", ".idea", ".vscode", ".eggs", ".next", "target",
+    # Third-party dependency trees that are not first-party source. Counting
+    # these inflates files/code_files and bills the review for code it must
+    # not comment on.
+    "vendor", "Pods", ".gradle", "bower_components", "htmlcov", ".cache",
+    ".terraform", ".bundle",
 })
 
 LANGUAGE_BY_EXT = {

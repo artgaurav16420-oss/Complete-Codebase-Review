@@ -25,6 +25,19 @@ def _quiet(func, *args, **kwargs):
         return func(*args, **kwargs), buffer.getvalue()
 
 
+def _table_rows(block):
+    """Return the body rows of a Markdown table as lists of cells."""
+    rows = []
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        if set(stripped) <= set("|- "):
+            continue
+        rows.append([cell.strip() for cell in stripped.strip("|").split("|")])
+    return rows[1:]
+
+
 class TestGeneratedArtifacts(unittest.TestCase):
     """Committed generated files match the manifest."""
 
@@ -43,19 +56,46 @@ class TestGeneratedArtifacts(unittest.TestCase):
             r"<!-- END GENERATED: skill-env-vars -->",
             text, re.DOTALL,
         ).group(1)
+        # Compare cell contents, not row counts: a generator that emitted the
+        # right number of rows with the wrong names would still pass a count.
+        env_rows = _table_rows(env_block)
         self.assertEqual(
-            len([line for line in env_block.splitlines() if line.startswith("|")]),
-            len(self.manifest["env_vars"]) + 2,
+            [row[0] for row in env_rows],
+            ["`" + var["name"] + "`" for var in self.manifest["env_vars"]],
+        )
+        self.assertEqual(
+            [row[1] for row in env_rows],
+            ["`" + var["default"] + "`" for var in self.manifest["env_vars"]],
         )
         agent_block = re.search(
             r"<!-- BEGIN GENERATED: skill-specialist-agents -->(.*?)"
             r"<!-- END GENERATED: skill-specialist-agents -->",
             text, re.DOTALL,
         ).group(1)
+        agent_rows = _table_rows(agent_block)
         self.assertEqual(
-            len([line for line in agent_block.splitlines() if line.startswith("|")]),
-            len(self.manifest["agents"]) + 2,
+            [row[0] for row in agent_rows],
+            [agent["name"] for agent in self.manifest["agents"]],
         )
+        self.assertEqual(
+            [row[1] for row in agent_rows],
+            [agent["coverage"] for agent in self.manifest["agents"]],
+        )
+
+    def test_skill_tech_debt_table_matches_manifest(self):
+        text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        block = re.search(
+            r"<!-- BEGIN GENERATED: skill-tech-debt -->(.*?)"
+            r"<!-- END GENERATED: skill-tech-debt -->",
+            text, re.DOTALL,
+        ).group(1)
+        rows = _table_rows(block)
+        floors = self.manifest["tech_debt_floors"]
+        labels = self.manifest["tech_debt_labels"]
+        self.assertEqual([row[0] for row in rows],
+                         [labels[key] for key in floors])
+        self.assertEqual([row[1] for row in rows],
+                         ["{:g}h".format(hours) for hours in floors.values()])
 
     def test_checksum_matches_installer(self):
         digest = hashlib.sha256((ROOT / "install.py").read_bytes()).hexdigest()
@@ -107,6 +147,8 @@ class TestWritePath(unittest.TestCase):
             "<!-- END GENERATED: skill-canonical-domains -->\n"
             "<!-- BEGIN GENERATED: skill-specialist-agents -->\n"
             "<!-- END GENERATED: skill-specialist-agents -->\n"
+            "<!-- BEGIN GENERATED: skill-tech-debt -->\n"
+            "<!-- END GENERATED: skill-tech-debt -->\n"
         )
         (root / "SKILL.md").write_text(
             "version: 0.0.0\n" + blocks, encoding="utf-8"

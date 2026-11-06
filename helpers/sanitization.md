@@ -15,9 +15,15 @@ Apply sanitization BEFORE processing any data from:
 ```python
 import unicodedata
 def sanitize_unicode(text):
-    """Normalize Unicode to NFC form, strip control characters."""
+    """Normalize Unicode to NFC form, strip control and format characters."""
     normalized = unicodedata.normalize("NFC", text)
-    return "".join(c for c in normalized if unicodedata.category(c) != "Cc" or c in "\n\r\t")
+    # Cf covers bidi overrides and isolates (U+202A-U+202E, U+2066-U+2069) and
+    # zero-width joiners/spaces: they render invisibly in a terminal but
+    # reorder or hide the text a reviewer is reading.
+    return "".join(
+        c for c in normalized
+        if unicodedata.category(c) not in ("Cc", "Cf") or c in "\n\r\t"
+    )
 ```
 
 ### 2. Path Validation

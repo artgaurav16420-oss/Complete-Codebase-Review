@@ -55,6 +55,16 @@ class TestManifestLoad(unittest.TestCase):
         )
         self.assertEqual(manifest_mod.floor_for(self.manifest, "other"), 1.0)
 
+    def test_load_pushes_calibration_into_findings(self):
+        from ccr import findings as findings_mod
+        calibration = self.manifest["calibration"]
+        self.assertEqual(findings_mod.OVERLAP_THRESHOLD,
+                         calibration["overlap_threshold"])
+        self.assertEqual(findings_mod.LARGE_FIX_HOURS,
+                         calibration["large_fix_hours"])
+        self.assertEqual(findings_mod.QUICK_WIN_CAP_HOURS,
+                         calibration["quick_win_cap_hours"])
+
     def test_version_matches_pyproject(self):
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         version = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text).group(1)
@@ -107,6 +117,62 @@ class TestManifestValidation(unittest.TestCase):
         data["thresholds"]["full_completion"] = 1.5
         with self.assertRaises(ValueError):
             manifest_mod.validate(data)
+
+    def test_calibration_out_of_range(self):
+        data = self._broken()
+        data["calibration"]["overlap_threshold"] = 1.5
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(data)
+
+    def test_calibration_unknown_key(self):
+        data = self._broken()
+        data["calibration"]["ghost"] = 1.0
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("unknown key", str(ctx.exception))
+
+    def test_calibration_bool_rejected(self):
+        data = self._broken()
+        data["calibration"]["large_fix_hours"] = True
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(data)
+
+    def test_calibration_overflowing_int_rejected(self):
+        data = self._broken()
+        data["calibration"]["large_fix_hours"] = 10 ** 400
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("out of range", str(ctx.exception))
+
+    def test_calibration_is_optional(self):
+        data = self._broken()
+        del data["calibration"]
+        manifest_mod.validate(data)
+
+    def test_tech_debt_label_missing(self):
+        data = self._broken()
+        del data["tech_debt_labels"]["circular_dependency"]
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("missing", str(ctx.exception))
+
+    def test_tech_debt_label_for_unknown_floor(self):
+        data = self._broken()
+        data["tech_debt_labels"]["ghost"] = "Ghost"
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("unknown floor", str(ctx.exception))
+
+    def test_tech_debt_labels_must_be_object(self):
+        data = self._broken()
+        data["tech_debt_labels"] = []
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(data)
+
+    def test_tech_debt_labels_are_optional(self):
+        data = self._broken()
+        del data["tech_debt_labels"]
+        manifest_mod.validate(data)
 
     def test_quick_agent_unknown(self):
         data = self._broken()

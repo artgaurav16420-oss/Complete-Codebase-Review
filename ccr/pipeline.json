@@ -229,6 +229,11 @@
       "architecture"
     ]
   },
+  "calibration": {
+    "overlap_threshold": 0.6,
+    "large_fix_hours": 8.0,
+    "quick_win_cap_hours": 40.0
+  },
   "tech_debt_floors": {
     "missing_test_coverage": 4.0,
     "cyclomatic_complexity": 2.0,
@@ -241,5 +246,19 @@
     "missing_error_handling": 1.0,
     "n_plus_one_query": 3.0,
     "accessibility_violation": 2.0
-  }
+  },
+  "tech_debt_labels": {
+    "missing_test_coverage": "Missing test coverage (per module)",
+    "cyclomatic_complexity": "Cyclomatic complexity > 15 (per function)",
+    "circular_dependency": "Circular dependency (per cycle)",
+    "missing_api_documentation": "Missing API documentation (per endpoint)",
+    "outdated_major_dependency": "Outdated major dependency",
+    "deprecated_api_usage": "Deprecated API usage (per call site)",
+    "hardcoded_secret": "Hardcoded secret/credential",
+    "unused_dead_code": "Unused dead code (per module)",
+    "missing_error_handling": "Missing error handling (per path)",
+    "n_plus_one_query": "N+1 query pattern (per instance)",
+    "accessibility_violation": "Accessibility violation WCAG A/AA (per component)"
+  },
+  "security_agent_id": "security"
 }

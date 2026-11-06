@@ -5,6 +5,7 @@ env vars, enums, thresholds, and tech-debt floors.
 """
 
 import json
+import math
 from pathlib import Path
 
 from . import findings as findings_mod
@@ -37,6 +38,10 @@ def load(path=None):
     with open(manifest_path, encoding="utf-8") as f:
         data = json.load(f)
     validate(data)
+    # ADR-005: agent identity lives in the manifest, not in a literal here.
+    findings_mod.set_security_agent_id(data.get("security_agent_id"))
+    # ADR-007: so do the calibration numbers that decide report output.
+    findings_mod.set_calibration(data.get("calibration"))
     return data
 
 
@@ -117,6 +122,20 @@ ENUM_SOURCES = (
 )
 
 
+def _validate_security_agent(data, agent_ids):
+    """Check the security agent id names a declared agent.
+
+    The findings engine promotes HIGH findings from this agent to Phase 1, so
+    an id that names nothing would silently demote them. Absent means the
+    historical default, which keeps older manifests loadable.
+    """
+    agent_id = data.get("security_agent_id")
+    if agent_id is None:
+        return
+    if not isinstance(agent_id, str) or agent_id not in agent_ids:
+        raise ValueError("security_agent_id is not a declared agent: " + repr(agent_id))
+
+
 def _validate_enums(data):
     """Check manifest enum lists match the constants the code enforces.
 
@@ -135,6 +154,65 @@ def _validate_enums(data):
             )
 
 
+# Calibration key -> (exclusive lower bound, inclusive upper bound or None).
+# The ranges live in the engine so a direct caller of set_calibration is held
+# to the same bounds the schema enforces here.
+CALIBRATION_RANGES = findings_mod.CALIBRATION_RANGES
+
+
+def _validate_calibration(data):
+    """Calibration values are finite numbers in the range the engine expects.
+
+    The block is optional so a manifest written before ADR-007 still loads and
+    keeps the engine defaults.
+    """
+    calibration = data.get("calibration")
+    if calibration is None:
+        return
+    if not isinstance(calibration, dict):
+        raise ValueError("manifest calibration must be an object")
+    for key in calibration:
+        if key not in CALIBRATION_RANGES:
+            raise ValueError("manifest calibration unknown key: " + key)
+    for key, (low, high) in CALIBRATION_RANGES.items():
+        if key not in calibration:
+            continue
+        value = calibration[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("manifest calibration " + key + " must be a number")
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            # An int too large for a float: out of range, not a crash.
+            finite = False
+        if not finite or value <= low:
+            raise ValueError("manifest calibration " + key + " out of range")
+        if high is not None and value > high:
+            raise ValueError("manifest calibration " + key + " out of range")
+
+
+def _validate_tech_debt_labels(data):
+    """Every floor key carries the label the generated SKILL.md table shows.
+
+    The table is generated from these labels, so a missing one would drop a
+    row silently. Absent labels are allowed for older manifests; the generator
+    then falls back to the key itself.
+    """
+    labels = data.get("tech_debt_labels")
+    if labels is None:
+        return
+    if not isinstance(labels, dict):
+        raise ValueError("manifest tech_debt_labels must be an object")
+    floors = data["tech_debt_floors"]
+    for key in floors:
+        label = labels.get(key)
+        if not isinstance(label, str) or not label:
+            raise ValueError("manifest tech_debt_labels missing: " + key)
+    for key in labels:
+        if key not in floors:
+            raise ValueError("manifest tech_debt_labels unknown floor: " + key)
+
+
 def validate(data):
     """Validate manifest structure. Raises ValueError on the first problem."""
     if not isinstance(data, dict):
@@ -147,6 +225,9 @@ def validate(data):
     _validate_base_agents(data, agent_ids)
     _validate_env_vars(data)
     _validate_thresholds(data, agent_ids)
+    _validate_calibration(data)
+    _validate_tech_debt_labels(data)
+    _validate_security_agent(data, agent_ids)
     _validate_enums(data)
 
 

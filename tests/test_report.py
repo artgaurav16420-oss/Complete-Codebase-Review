@@ -175,6 +175,41 @@ class TestMarkdown(unittest.TestCase):
                 self.assertIn("click", heading)
                 self.assertIn("example.com", heading)
 
+    def test_finding_html_and_links_are_neutralised(self):
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] — <img src=x onerror=alert(1)> and "
+                "[click](https://example.invalid) → live payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        self.assertNotIn("<img", row)
+        self.assertIn("&lt;img", row)
+        self.assertNotIn("](https://example.invalid)", row)
+        # The anchor keeps its literal brackets so findings stay greppable.
+        self.assertIn("[src/app.py:1]", row)
+
+    def test_finding_format_characters_are_dropped(self):
+        # Bidi overrides and isolates are invisible but reorder the text
+        # around them, so agent text carrying them must not reach the cell.
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] ‮⁦wrong order⁩ "
+                "​‬ → payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        for char in ("‪", "‬", "‮", "⁦", "⁩",
+                     "​"):
+            self.assertNotIn(char, row)
+        self.assertIn("wrong order", row)
+
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")
         self.assertTrue(report_mod.validate_markdown(broken))
