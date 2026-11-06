@@ -428,7 +428,17 @@ def _persist_review_counter(cached, signature, target):
     that review. The load and the save are held under one lock, so two
     syntheses cannot read the same count and each write its own increment.
     """
-    with state.StateLock(cached.path):
+    with state.StateLock(cached.path) as lock:
+        if not lock.held:
+            # Another run holds it. Skipping costs one count, which only
+            # delays a full rescan; updating unlocked could lose both
+            # increments and leave the two runs fighting over the file.
+            print(
+                "[WARN] state file is locked by another run; "
+                "re-review counter unchanged",
+                file=sys.stderr,
+            )
+            return False
         return _credit_review(cached.path, signature, target)
 
 

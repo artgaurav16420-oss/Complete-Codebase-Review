@@ -352,7 +352,18 @@ def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC):
     to the copy that follows, so it must not abort the install. Returns True
     when every leftover was removed, so callers that only sweep (uninstall)
     can report the failure.
+
+    A target that has become a link is refused rather than swept: the glob
+    would run through it and delete same-named trees inside whatever it points
+    at, which is the traversal the containment checks exist to stop. The
+    window between this check and the glob is accepted: it takes a writer with
+    control of the parent directory acting between two statements.
     """
+    if _is_link_like(dest_dir):
+        print_info(
+            f"[WARN] refusing to sweep a link-like target: {dest_dir}"
+        )
+        return False
     removed_all = True
     for path in _leftovers(dest_dir, max_age):
         try:
@@ -698,11 +709,13 @@ def remove_skill(dest_dir, dry_run):
         )
     # An explicit uninstall clears every leftover, whatever its age: it is a
     # destructive request to remove this tool from the tree.
-    swept = _sweep_leftovers(target, max_age=0)
+    if not _sweep_leftovers(target, max_age=0):
+        # Nothing else is removed: a caller that treats "removed nothing" as
+        # "nothing to do" would report success while these trees survive.
+        raise OSError(
+            "could not remove the leftover files in " + str(dest_dir)
+        )
     if not installed:
-        if not swept:
-            print_error("Could not remove the leftover files in " + str(dest_dir))
-            return False
         print_success("Removed leftover files from " + str(dest_dir))
         return True
     if _is_link_like(skill_dest):
@@ -726,12 +739,6 @@ def remove_skill(dest_dir, dry_run):
                 shutil.rmtree(str(resolved), onerror=_onerror)
         else:
             resolved.unlink()
-    if not swept:
-        # The live skill is gone but this tool's own leftovers are not: fail
-        # the uninstall instead of reporting a clean one that leaves trees.
-        raise OSError(
-            "could not remove the leftover files in " + str(dest_dir)
-        )
     print_success("Removed " + str(skill_dest))
     return True
 

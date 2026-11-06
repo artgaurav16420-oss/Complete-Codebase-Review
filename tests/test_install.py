@@ -457,6 +457,27 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue((result / "skills" / "review" / "SKILL.md").exists())
             self.assertTrue((result / "helpers" / "note.md").exists())
 
+    def test_sweep_refuses_a_link_like_target(self):
+        # A directory swapped for a link must not send the sweep through it
+        # and delete same-named trees inside the link's target.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            real = root / "external"
+            (real / (self.install.STAGING_PREFIX + "1")).mkdir(parents=True)
+            link = root / "dest"
+            try:
+                create_directory_link(link, real)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            with patch.object(self.install.sys, "stdout",
+                              new_callable=io.StringIO):
+                self.assertFalse(
+                    self.install._sweep_leftovers(link, max_age=0)
+                )
+            self.assertTrue(
+                (real / (self.install.STAGING_PREFIX + "1")).exists()
+            )
+
     def test_link_like_dest_dir_is_refused(self):
         # A link at the destination would move the containment root onto its
         # target, so the old install would be deleted from there.

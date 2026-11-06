@@ -29,6 +29,11 @@ jobs:
         # must resolve identically on every rebuild instead of picking up the
         # newest 7.x release.
         run: python -m pip install 'coverage==7.14.1'
+      - name: Install test dependencies
+        # Exact pin: this workflow publishes artifacts, so the test environment
+        # must resolve identically on every rebuild instead of picking up the
+        # newest 7.x release.
+        run: python -m pip install 'coverage==7.14.1'
 
       - name: Generate drift check
         run: python tools/generate.py --check
@@ -115,10 +120,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install test dependencies
-        # Exact pin: this workflow publishes artifacts, so the test environment
-        # must resolve identically on every rebuild instead of picking up the
-        # newest 7.x release.
-        run: python -m pip install 'coverage==7.14.1'
+        # Exact pins: this workflow publishes artifacts, so the test
+        # environment must resolve identically on every rebuild instead of
+        # picking up the newest 7.x release. coverage 7.14 requires Python
+        # 3.10, so the 3.9 leg takes the last release that still supports it.
+        run: >
+          python -m pip install
+          'coverage==7.14.1; python_version >= "3.10"'
+          'coverage==7.10.7; python_version < "3.10"'
 
       - name: Syntax check every module
         run: >

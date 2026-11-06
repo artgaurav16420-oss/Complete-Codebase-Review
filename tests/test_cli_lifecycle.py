@@ -787,6 +787,27 @@ class TestPersistReviewCounter(unittest.TestCase):
         data = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.assertNotIn("last_synth_signature", data)
 
+    def test_lock_held_elsewhere_leaves_the_counter_unchanged(self):
+        # A second run in the same cache: skipping one count only delays a
+        # full rescan, while an unlocked update could lose both increments.
+        class Unheld(object):
+            held = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        err = io.StringIO()
+        with mock.patch.object(cli.state, "StateLock", lambda path: Unheld()):
+            with redirect_stderr(err):
+                saved = cli._persist_review_counter(
+                    self.cached, "sig-b", str(TARGET))
+        self.assertFalse(saved)
+        self.assertIn("locked by another run", err.getvalue())
+        self.assertEqual(self._count(), 2)
+
     def test_missing_state_file_warns_and_returns_false(self):
         self.state_path.unlink()
         err = io.StringIO()

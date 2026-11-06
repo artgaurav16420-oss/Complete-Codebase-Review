@@ -56,6 +56,12 @@
     cannot delete the backup a rollback needs; a link-like install is parked rather than
     unlinked, so a failed swap still restores it; and uninstall fails when its own
     leftovers cannot be removed instead of reporting a clean removal.
+  - CodeAnt round 2: the release matrix splits its coverage pin by interpreter (coverage
+    7.14 requires Python 3.10, so the 3.9 leg takes 7.10.7) instead of failing to install on
+    the floor and blocking every tag; the re-review counter is skipped, not updated, when
+    another run holds the lock; the installer refuses to sweep a target that has become a
+    link; and a failed leftover removal fails the uninstall instead of reading as nothing
+    to uninstall.
 
 ## v2.4.0 (2026-10-20)
 

@@ -67,5 +67,45 @@ class TestNo310Apis(unittest.TestCase):
                     self.assertNotIn(needle, text)
 
 
+COVERAGE_PIN = re.compile(r"coverage==")
+
+
+def workflow_job(text, name):
+    """Return the text of one top-level job in a workflow file.
+
+    Job keys sit at two-space indent under ``jobs:``; every key inside a job
+    is deeper, so the next two-space key ends the block.
+    """
+    lines = text.splitlines(True)
+    start = lines.index("  " + name + ":\n")
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        line = lines[index]
+        if line.startswith("  ") and not line.startswith("   "):
+            if line.rstrip().endswith(":"):
+                end = index
+                break
+    return "".join(lines[start:end])
+
+
+class TestReleaseCoveragePin(unittest.TestCase):
+    """The release matrix runs 3.9, so an exact coverage pin must be split.
+
+    coverage 7.14 and later require Python 3.10; an unscoped pin fails to
+    install on the 3.9 leg and blocks every tag release before any test runs.
+    """
+
+    def test_matrix_coverage_pin_is_scoped_to_an_interpreter(self):
+        text = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+        job = workflow_job(text, "matrix-test")
+        pins = [line for line in job.splitlines() if COVERAGE_PIN.search(line)]
+        self.assertTrue(pins)
+        for line in pins:
+            with self.subTest(line=line.strip()):
+                self.assertIn("python_version", line)
+
+
 if __name__ == "__main__":
     unittest.main()
