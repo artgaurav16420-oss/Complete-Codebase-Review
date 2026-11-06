@@ -245,7 +245,26 @@ def cmd_record(args):
         print("[ERROR] " + str(exc))
         return 2
     cache = Path(args.out)
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"[ERROR] could not create cache directory: {exc}")
+        return 2
     state_path = cache / "ccr-state.json"
+    # Record rewrites the whole state file from a snapshot it loads here, so
+    # it must hold the same lock synthesize takes to credit a re-review.
+    # Without it a credit written in between is silently overwritten.
+    with state.StateLock(state_path) as lock:
+        if not lock.held:
+            print(
+                "[ERROR] another ccr run holds " + str(state_path),
+            )
+            return 2
+        return _record_locked(args, data, plan, cache, state_path)
+
+
+def _record_locked(args, data, plan, cache, state_path):
+    """Write prompts and state for cmd_record, holding the state lock."""
     try:
         current = state.State.load(state_path)
     except (OSError, ValueError) as exc:

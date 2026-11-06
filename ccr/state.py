@@ -12,6 +12,15 @@ from pathlib import Path
 
 from . import providers
 
+try:
+    import fcntl as _fcntl
+except ImportError:  # Windows has no flock
+    _fcntl = None
+try:
+    import msvcrt as _msvcrt
+except ImportError:  # POSIX has no msvcrt
+    _msvcrt = None
+
 PHASES = (1, 2, 3, 4, 5)
 
 GATES = (
@@ -234,67 +243,90 @@ class State:
 LOCK_SUFFIX = ".lock"
 LOCK_WAIT_SEC = 2.0
 LOCK_POLL_SEC = 0.05
-LOCK_STALE_SEC = 300.0
 
 
 class StateLock:
-    """Best-effort exclusive lock around a state read-modify-write.
+    """Exclusive lock around a state read-modify-write, held by the OS.
 
     ``save`` replaces the file atomically, but load-then-save is still a race:
     two runs can read the same counter and each write its own increment, so
-    one is lost. The lock is advisory and bounded. If it cannot be taken the
-    caller proceeds anyway, because a report that is already written must not
-    fail over a counter, and a lock older than ``stale`` is a crashed run's.
+    one is lost. The claim is an OS file lock, which the kernel drops when the
+    holding process ends. A lock file that is created and deleted instead
+    needs a staleness rule for a crashed holder, and that rule races with
+    itself: two contenders judge the same file stale, one replaces it, and the
+    other then removes the replacement, so both enter the protected section.
+
+    The wait is bounded. If the lock cannot be taken the caller sees ``held``
+    false instead of blocking forever, because a report that is already out
+    must not fail over a counter. The lock file itself is never deleted:
+    removing a locked file is exactly what splits one lock into two.
     """
 
-    def __init__(self, path, wait=LOCK_WAIT_SEC, stale=LOCK_STALE_SEC):
+    def __init__(self, path, wait=LOCK_WAIT_SEC):
         self.path = Path(str(path) + LOCK_SUFFIX)
         self.wait = wait
-        self.stale = stale
         self.held = False
+        self._handle = None
 
     def __enter__(self):
         deadline = time.monotonic() + self.wait
         while True:
-            try:
-                fd = os.open(
-                    str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY
-                )
-            except FileExistsError:
-                if self._clear_if_stale():
-                    continue
-                if time.monotonic() >= deadline:
-                    return self
-                time.sleep(LOCK_POLL_SEC)
-                continue
-            except OSError:
-                # Unwritable directory or no lock support: same as unlocked.
+            handle = self._open()
+            if handle is None:
                 return self
-            os.close(fd)
-            self.held = True
-            return self
+            if self._claim(handle):
+                self._handle = handle
+                self.held = True
+                return self
+            handle.close()
+            if time.monotonic() >= deadline:
+                return self
+            time.sleep(LOCK_POLL_SEC)
 
-    def _clear_if_stale(self):
-        """Remove a lock left by a crashed run; True when the lock is gone."""
+    def _open(self):
+        """Open the lock file, creating it; None when that is impossible."""
         try:
-            age = time.time() - self.path.lstat().st_mtime
+            return open(str(self.path), "a+b")
+        except OSError:
+            # Unwritable directory: same as unlocked.
+            return None
+
+    @staticmethod
+    def _claim(handle):
+        """Take the exclusive lock without blocking; False when it is held."""
+        try:
+            if _msvcrt is not None:
+                # Windows locks a byte range, so the file needs a byte and
+                # the pointer must sit at the start of the range.
+                handle.seek(0)
+                if not handle.read(1):
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                _msvcrt.locking(handle.fileno(), _msvcrt.LK_NBLCK, 1)
+                return True
+            if _fcntl is not None:
+                _fcntl.flock(handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                return True
         except OSError:
             return False
-        if age < self.stale:
-            return False
-        try:
-            os.unlink(str(self.path))
-        except OSError:
-            return False
+        # No locking primitive on this build: behave as the unlocked version.
         return True
 
     def __exit__(self, exc_type, exc, tb):
-        if self.held:
+        handle = self._handle
+        if handle is not None:
+            self._handle = None
             self.held = False
             try:
-                os.unlink(str(self.path))
+                if _msvcrt is not None:
+                    handle.seek(0)
+                    _msvcrt.locking(handle.fileno(), _msvcrt.LK_UNLCK, 1)
+                elif _fcntl is not None:
+                    _fcntl.flock(handle.fileno(), _fcntl.LOCK_UN)
             except OSError:
-                pass  # a leftover; the stale takeover clears it
+                pass  # closing the handle releases the lock anyway
+            handle.close()
         return False
 
 

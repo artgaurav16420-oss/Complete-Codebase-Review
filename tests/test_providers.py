@@ -224,6 +224,17 @@ class TestResultDiscovery(unittest.TestCase):
             providers.load_result(found[0][1], "architecture")
         self.assertIn("missing findings list", str(ctx.exception))
 
+    def test_skips_a_synthesized_report_in_the_bare_layout(self):
+        # render_json emits a top-level findings list too. Read as an agent it
+        # would add an id the run never planned, and replay would abort on it.
+        self._write("health-report.json", {
+            "overall_health": "FAIR",
+            "critical_issues": 0,
+            "findings": [],
+        })
+        self.assertEqual(providers.discover_results(self.dir), [])
+        self.assertIsNone(providers.find_result(self.dir, "health-report"))
+
     def test_canonical_name_wins_over_bare_layout(self):
         # "architecture.json" sorts before "phase_architecture.json", so this
         # pins the canonical-first choice rather than the sort order.

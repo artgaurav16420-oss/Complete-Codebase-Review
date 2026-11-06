@@ -29,11 +29,6 @@ jobs:
         # must resolve identically on every rebuild instead of picking up the
         # newest 7.x release.
         run: python -m pip install 'coverage==7.14.1'
-      - name: Install test dependencies
-        # Exact pin: this workflow publishes artifacts, so the test environment
-        # must resolve identically on every rebuild instead of picking up the
-        # newest 7.x release.
-        run: python -m pip install 'coverage==7.14.1'
 
       - name: Generate drift check
         run: python tools/generate.py --check

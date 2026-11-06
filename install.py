@@ -403,8 +403,14 @@ def copy_skill(src_dir, dest_dir):
             dest_dir.mkdir(parents=True, exist_ok=True)
 
         skill_dest = dest_dir / "complete-codebase-review"
-        staging = dest_dir / (STAGING_PREFIX + str(os.getpid()))
-        previous = dest_dir / (PREVIOUS_PREFIX + str(os.getpid()))
+        # The pid alone is not unique over time: after a crash the OS can hand
+        # the same pid to a later run. Clearing a name this run would reuse
+        # would then delete that dead run's backup, which can be the only copy
+        # of the previous install when the crash landed between the park and
+        # the swap. A random suffix makes the name belong to this run alone.
+        token = str(os.getpid()) + "-" + os.urandom(4).hex()
+        staging = dest_dir / (STAGING_PREFIX + token)
+        previous = dest_dir / (PREVIOUS_PREFIX + token)
 
         # Build the new tree beside the old one and swap it in at the end.
         # Deleting the working install first means a failure mid-copy leaves
@@ -412,10 +418,6 @@ def copy_skill(src_dir, dest_dir):
         # rather than deleted for the same reason: if the swap fails it is
         # moved back, so the previous install survives every failure path.
         _sweep_leftovers(dest_dir)
-        if os.path.lexists(staging):
-            _remove_tree(staging)
-        if os.path.lexists(previous):
-            _remove_tree(previous)
         try:
             shutil.copytree(src_dir, staging, ignore=_ignore_skill_files, symlinks=True)
             _validate_no_escaped_symlinks(staging)

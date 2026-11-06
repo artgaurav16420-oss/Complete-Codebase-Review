@@ -263,8 +263,6 @@ class TestCopySkill(_BaseInstallTest):
             src = self._make_src(tmpdir)
             dest = Path(tmpdir) / "dest"
             dest.mkdir()
-            # Not this process's own pid: copy_skill clears its own staging
-            # name before the copy, which would delete the tree under test.
             live = dest / (self.install.STAGING_PREFIX + str(os.getpid() + 1))
             live.mkdir()
             (live / "SKILL.md").write_text("in flight")
@@ -272,6 +270,22 @@ class TestCopySkill(_BaseInstallTest):
             self.install.copy_skill(src, dest)
 
             self.assertTrue((live / "SKILL.md").exists())
+
+    def test_keeps_a_young_leftover_named_for_our_own_pid(self):
+        # Pids are reused: a crashed run's backup can carry the pid this run
+        # would use. Deleting it before the copy can destroy the only copy of
+        # the previous install, so the backup name must be this run's alone.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            crashed = dest / (self.install.PREVIOUS_PREFIX + str(os.getpid()))
+            crashed.mkdir()
+            (crashed / "SKILL.md").write_text("survivor")
+
+            self.install.copy_skill(src, dest)
+
+            self.assertTrue((crashed / "SKILL.md").exists())
 
     def test_update_leaves_no_previous_tree_behind(self):
         with tempfile.TemporaryDirectory() as tmpdir:

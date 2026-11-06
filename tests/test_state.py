@@ -250,19 +250,25 @@ class TestStateLock(unittest.TestCase):
         with state.StateLock(self.path) as lock:
             self.assertTrue(lock.held)
             self.assertTrue(lock.path.exists())
-        self.assertFalse(lock.path.exists())
+        # The file stays: deleting a lock file is what lets two contenders
+        # take the same claim. Its release is the kernel dropping the lock.
+        self.assertTrue(lock.path.exists())
+        with state.StateLock(self.path, wait=0.05) as again:
+            self.assertTrue(again.held)
 
     def test_a_second_holder_does_not_wait_forever(self):
         with state.StateLock(self.path):
-            with state.StateLock(self.path, wait=0.05, stale=60) as second:
+            with state.StateLock(self.path, wait=0.05) as second:
                 self.assertFalse(second.held)
 
-    def test_stale_lock_is_taken_over(self):
+    def test_an_abandoned_lock_file_does_not_block(self):
+        # A crashed holder leaves the file but no OS lock behind, so the next
+        # run takes it over without any staleness rule of its own.
         lock_path = Path(str(self.path) + state.LOCK_SUFFIX)
         lock_path.write_text("", encoding="utf-8")
         old = time.time() - 120
         os.utime(str(lock_path), (old, old))
-        with state.StateLock(self.path, wait=0.05, stale=60) as lock:
+        with state.StateLock(self.path, wait=0.05) as lock:
             self.assertTrue(lock.held)
 
     def test_unsupported_or_unwritable_lock_path_still_runs(self):

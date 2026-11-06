@@ -96,6 +96,28 @@ class TestRecordCommand(unittest.TestCase):
             self.assertTrue(data["phase_gates"]["p1_discovery"])
             self.assertEqual(data["agents_planned"], ["architecture", "security"])
 
+    def test_record_refuses_a_state_file_another_run_holds(self):
+        # record rewrites the whole document from a snapshot. Proceeding while
+        # a synthesize holds the lock would overwrite anything it crediting.
+        class Unheld(object):
+            held = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(cli.state, "StateLock", lambda path: Unheld()):
+                code, output = run_cli([
+                    "record", "--target", str(DUMMY), "--out", tmp,
+                    "--agents", "security",
+                ])
+            self.assertEqual(code, 2)
+            self.assertIn("another ccr run holds", output)
+            self.assertFalse((Path(tmp) / "ccr-state.json").exists())
+
     def test_record_reuses_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli([

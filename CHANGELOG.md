@@ -62,6 +62,13 @@
     another run holds the lock; the installer refuses to sweep a target that has become a
     link; and a failed leftover removal fails the uninstall instead of reading as nothing
     to uninstall.
+  - CodeAnt round 3: the state lock is an OS lock (`fcntl`/`msvcrt`) released by the kernel,
+    so a crashed holder needs no staleness rule and two contenders cannot take over the same
+    lock; `record` takes that lock too, so it cannot overwrite a re-review credited while it
+    ran; the installer names its staging and backup trees for one run (pid plus random) so a
+    reused pid cannot delete a crashed run's only backup; and a bare-layout result must carry
+    only the agent-result keys, so a synthesized report sitting beside the fixtures is not
+    read as an agent.
 
 ## v2.4.0 (2026-10-20)
 

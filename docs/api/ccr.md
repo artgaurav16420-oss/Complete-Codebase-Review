@@ -146,7 +146,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `State.record_agent` | `state.record_agent(agent_id, status='completed')` | `None` |
 | `State.completion_ratio` | `state.completion_ratio()` | Float completed / planned |
 | `State.threshold_passed` | `state.threshold_passed(manifest)` | `bool`; enforces the 75%/66% completion gate |
-| `StateLock` | `StateLock(path)` | Context manager; advisory lock around a state read-modify-write, released on exit |
+| `StateLock` | `StateLock(path)` | Context manager; exclusive OS lock (`fcntl`/`msvcrt`) around a state read-modify-write; the kernel drops it on exit, the lock file stays |
 
 ### `ccr.findings`
 
@@ -190,6 +190,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `agent_id_from_name` | `agent_id_from_name(filename)` | Agent id encoded in a result file name, or `None` |
 | `discover_results` | `discover_results(out_dir)` | `(agent_id, Path)` pairs; one definition of "a result file", shared by fixture replay, synthesis and state resume; the suffix is matched case-insensitively |
 | `find_result` | `find_result(out_dir, agent_id)` | `Path` or `None`; canonical name wins over the bare fixture layout, and a file discovery rejects is skipped |
+| `RESULT_KEYS` | `frozenset({'agent', 'score', 'findings'})` | Top-level keys a bare-layout result may carry; anything else is a report or another document |
 | `write_prompts` | `write_prompts(manifest, plan, out_dir, skill_dir='')` | Written paths |
 | `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |
 | `load_results` | `load_results(out_dir, agent_ids, required=True)` | `{agent_id: result}`; `phase_<id>.json` wins over `<id>.json` |

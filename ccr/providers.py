@@ -98,6 +98,10 @@ PHASE_PREFIX = "phase_"
 PROMPT_SUFFIX = ".prompt.md"
 RESULT_SUFFIX = ".json"
 
+# Top-level keys an agent result may carry. Anything else marks a document
+# this pipeline did not write, whatever its name.
+RESULT_KEYS = frozenset({"agent", "score", "findings"})
+
 
 def prompt_name(agent_id):
     """Return the canonical file name of an agent prompt."""
@@ -145,8 +149,10 @@ def _is_result_candidate(path):
     load_result is the right place to say what is wrong. In the bare fixture
     layout a stray json of any kind may sit beside the fixtures, so there a
     json object without a findings list (a baseline, a report, a state file)
-    is not a result; one that is not even an object is kept so load_result can
-    name that too.
+    is not a result, and neither is one that does not name its agent: the
+    synthesis report also carries a top-level findings list, and reading it as
+    an agent would make replay abort on an agent the run never planned. One
+    that is not even an object is kept so load_result can name that too.
     """
     if not path.is_file():
         return False
@@ -157,8 +163,14 @@ def _is_result_candidate(path):
             data = json.load(f)
     except (OSError, ValueError):
         return False
-    return not (isinstance(data, dict)
-                and not isinstance(data.get("findings"), list))
+    if not isinstance(data, dict):
+        return True
+    if not isinstance(data.get("findings"), list):
+        return False
+    # The result shape is the three keys the prompt asks for. The synthesis
+    # report also carries a top-level findings list, but it adds its own
+    # report keys, so a whitelist keeps it from being read as an agent.
+    return not (set(data) - RESULT_KEYS)
 
 
 def _result_paths(root):
