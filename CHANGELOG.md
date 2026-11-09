@@ -77,6 +77,11 @@
     leaving it under `.old-*`; report cells defuse bare `https://` and `www.` autolinks that
     GitHub would otherwise render as live links; and replay ignores a findings-only json
     beside the fixtures instead of aborting on an agent the manifest never planned.
+  - CodeAnt round 5: `State.load` rejects a non-string `target_dir` (null still reads as an
+    old state), so a hand-edited number exits with an error instead of a `TypeError`
+    traceback in `synthesize`; and replay treats a file named for a planned agent as that
+    agent's result whatever it contains, so a corrupt fixture is reported by path instead of
+    being skipped as a stray file.
 
 ## v2.4.0 (2026-10-20)
 

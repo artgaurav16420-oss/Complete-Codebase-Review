@@ -208,6 +208,20 @@ class TestRecordedProvider(unittest.TestCase):
             )
             self.assertEqual(provider.agent_ids({"security"}), ["security"])
 
+    def test_known_agent_with_a_corrupt_file_is_reported(self):
+        # Naming a planned agent makes the file its result whatever it holds,
+        # so the loader can name the bad path instead of the file vanishing
+        # with the stray json.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "security.json").write_text("not json", encoding="utf-8")
+            provider = providers.RecordedProvider(root)
+            self.assertEqual(provider.agent_ids(), [])
+            self.assertEqual(provider.agent_ids({"security"}), ["security"])
+            with self.assertRaises(ValueError) as caught:
+                provider.get("security")
+            self.assertIn("security.json", str(caught.exception))
+
 
 class TestResultDiscovery(unittest.TestCase):
     """One definition of "a result file", shared by every consumer."""

@@ -198,7 +198,7 @@ def _result_paths(root):
     return canonical + bare
 
 
-def discover_results(out_dir):
+def discover_results(out_dir, known=None):
     """Return (agent_id, path) pairs for the agent results in a directory.
 
     This is the one definition of "a result file", shared by fixture replay,
@@ -206,6 +206,11 @@ def discover_results(out_dir):
     agree: an agent reported here always loads, and a file this skips is never
     picked up by find_result. The canonical name wins a tie against the bare
     fixture layout, matching find_result.
+
+    ``known`` is the id set a manifest declares. Only those ids are returned,
+    and the name alone is enough: naming a planned agent makes the file its
+    result, so a corrupt one reaches load_result and is reported by path
+    instead of disappearing with the stray json.
     """
     found = []
     seen = set()
@@ -213,7 +218,10 @@ def discover_results(out_dir):
         agent_id = agent_id_from_name(path)
         if agent_id is None or agent_id in seen:
             continue
-        if not _is_result_candidate(path):
+        if known is None:
+            if not _is_result_candidate(path):
+                continue
+        elif agent_id not in known:
             continue
         seen.add(agent_id)
         found.append((agent_id, path))
@@ -325,16 +333,15 @@ class RecordedProvider:
     def agent_ids(self, known=None):
         """Return agent ids discovered in the fixture directory.
 
-        ``known`` limits the result to the ids a manifest declares. A stray
-        json that still looks like a result (for example a findings-only
-        object some other tool wrote beside the fixtures) would otherwise
-        become an agent id, and replay then aborts on an agent the run never
-        planned.
+        ``known`` limits the result to the ids a manifest declares. Those are
+        the run's agents, so a file named for one is its result even when
+        broken: the loader reports it by path. A stray json that merely looks
+        like a result no longer becomes an agent id, and replay no longer
+        aborts on an agent the run never planned.
         """
-        ids = [agent_id for agent_id, _path in discover_results(self.dir)]
-        if known is None:
-            return ids
-        return [agent_id for agent_id in ids if agent_id in known]
+        return [
+            agent_id for agent_id, _path in discover_results(self.dir, known)
+        ]
 
     def get(self, agent_id):
         """Return the recorded result for an agent."""

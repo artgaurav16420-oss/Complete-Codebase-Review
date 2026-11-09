@@ -66,6 +66,20 @@ class TestStateLifecycle(unittest.TestCase):
             state.State.load(self.path)
         self.assertIn("invalid phase", str(caught.exception))
 
+    def test_numeric_target_dir_rejected(self):
+        # A hand-edited state with a number here loads as valid and then
+        # raises TypeError in the first caller that builds a Path from it.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": 5,
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": [],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.State.load(self.path)
+        self.assertIn("target_dir must be a string", str(caught.exception))
+
     def test_minimal_state_gets_defaults(self):
         self.path.parent.mkdir(parents=True)
         self.path.write_text(json.dumps({

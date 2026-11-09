@@ -120,6 +120,18 @@ class TestEvalCliExit(unittest.TestCase):
             {item["agent"] for item in model["findings"]}, {"security"}
         )
 
+    def test_corrupt_bare_fixture_is_reported_by_path(self):
+        # Skipping a broken fixture as "not a result" would score a replay
+        # that is missing an agent without naming the file that broke it.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "security.json").write_text(
+                "not json", encoding="utf-8"
+            )
+            with self.assertRaises(ValueError) as caught:
+                pipeline.run_eval(manifest_mod.load(), root, EXPECTED)
+            self.assertIn("security.json", str(caught.exception))
+
     def test_duplicate_expected_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "expected.json"

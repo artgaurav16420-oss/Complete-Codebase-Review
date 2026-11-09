@@ -136,6 +136,14 @@ class State:
         for key in ("target_dir", "current_phase", "phase_gates", "agents_planned"):
             if key not in data:
                 raise ValueError("state missing key: " + key)
+        if data["target_dir"] is not None and not isinstance(
+            data["target_dir"], str
+        ):
+            # Null is an old state that predates target recording; the callers
+            # treat it as absent. A number or object cannot name a directory
+            # and would raise TypeError in the first caller that builds a Path
+            # from it, after load() had reported success.
+            raise ValueError("state target_dir must be a string")
         if not isinstance(data["phase_gates"], dict):
             raise ValueError("state phase_gates must be a JSON object")
         if not isinstance(data["agents_planned"], list):
