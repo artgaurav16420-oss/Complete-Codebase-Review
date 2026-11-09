@@ -281,6 +281,11 @@ class StateLock:
         self._handle = None
 
     def __enter__(self):
+        if _msvcrt is None and _fcntl is None:
+            # Nothing to take a lock with on this build. Report it unheld
+            # instead of claiming one: the callers skip the read-modify-write
+            # they would otherwise race rather than trust an empty promise.
+            return self
         deadline = time.monotonic() + self.wait
         while True:
             handle = self._open()
@@ -322,8 +327,9 @@ class StateLock:
                 return True
         except OSError:
             return False
-        # No locking primitive on this build: behave as the unlocked version.
-        return True
+        # No locking primitive on this build. Never report a lock that is not
+        # held: callers act on ``held`` to decide whether the section is safe.
+        return False
 
     def __exit__(self, exc_type, exc, tb):
         handle = self._handle

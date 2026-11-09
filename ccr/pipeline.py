@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import findings as findings_mod
+from . import manifest as manifest_mod
 from . import report as report_mod
 from .fileio import write_text
 from .providers import RecordedProvider
@@ -137,6 +138,10 @@ def synthesize(manifest, results, planned, completed=None, target="",
     Returns:
         dict: Report model.
     """
+    # Agent identity and calibration are process-wide in the findings engine,
+    # and another load would have overwritten them. Re-apply this manifest so
+    # the report depends on it, not on the one loaded last.
+    manifest_mod.apply_settings(manifest)
     completed = list(completed if completed is not None else results.keys())
     raw = _collect_raw(manifest, results, planned)
     kept, rejected = findings_mod.review_findings(

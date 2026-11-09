@@ -82,6 +82,12 @@
     traceback in `synthesize`; and replay treats a file named for a planned agent as that
     agent's result whatever it contains, so a corrupt fixture is reported by path instead of
     being skipped as a stray file.
+  - CodeAnt round 6: `synthesize` re-applies the identity and calibration of the manifest it
+    was handed, so a second `manifest.load` cannot change an earlier report; a build without
+    `fcntl`/`msvcrt` reports the state lock unheld instead of claiming one; a failed mtime
+    stamp aborts the update before the live install is parked, since the backup would
+    otherwise carry its old age; the score validator rejects any non-numeric cell rather
+    than only `N/A`; and a test comment no longer cites stale line numbers.
 
 ## v2.4.0 (2026-10-20)
 

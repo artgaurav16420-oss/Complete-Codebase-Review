@@ -450,13 +450,24 @@ def copy_skill(src_dir, dest_dir):
                 # and stamp it before the rename: refreshing the mtime after
                 # the park leaves a window in which the backup already has its
                 # old name and the sweep would delete it.
+                link_like = _is_link_like(parked)
                 try:
-                    if _is_link_like(parked):
+                    if link_like:
                         os.utime(str(parked), None, follow_symlinks=False)
                     else:
                         os.utime(str(parked), None)
-                except (NotImplementedError, OSError):
-                    pass
+                except (NotImplementedError, OSError) as exc:
+                    # A directory whose mtime cannot be refreshed would be
+                    # parked with its old age, so a concurrent sweep could
+                    # delete the only rollback copy. Refuse before touching
+                    # the live install instead. A link is parked anyway:
+                    # stamping one is not supported everywhere, and losing
+                    # it costs the entry, never what it points at.
+                    if not link_like:
+                        raise OSError(
+                            "cannot refresh the mtime of the existing install "
+                            "before parking it: " + str(parked)
+                        ) from exc
                 os.replace(str(parked), str(previous))
 
             # Re-assert at the last moment: dest_dir was checked before the

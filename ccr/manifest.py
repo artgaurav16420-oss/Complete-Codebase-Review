@@ -19,6 +19,21 @@ REQUIRED_KEYS = [
 ]
 
 
+def apply_settings(data):
+    """Point the engine's process-wide settings at one manifest.
+
+    The findings engine keeps agent identity and calibration at module level
+    so direct callers work without a manifest. ``load`` applies them for the
+    manifest it just read, which means a second load overwrites the first.
+    ``pipeline.synthesize`` re-applies the manifest it was handed, so a report
+    depends on that manifest and not on whichever one was loaded last.
+    """
+    # ADR-005: agent identity lives in the manifest, not in a literal here.
+    findings_mod.set_security_agent_id(data.get("security_agent_id"))
+    # ADR-007: so do the calibration numbers that decide report output.
+    findings_mod.set_calibration(data.get("calibration"))
+
+
 def load(path=None):
     """Load the manifest from disk and validate it.
 
@@ -38,10 +53,7 @@ def load(path=None):
     with open(manifest_path, encoding="utf-8") as f:
         data = json.load(f)
     validate(data)
-    # ADR-005: agent identity lives in the manifest, not in a literal here.
-    findings_mod.set_security_agent_id(data.get("security_agent_id"))
-    # ADR-007: so do the calibration numbers that decide report output.
-    findings_mod.set_calibration(data.get("calibration"))
+    apply_settings(data)
     return data
 
 

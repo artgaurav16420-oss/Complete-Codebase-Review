@@ -417,6 +417,30 @@ class TestCopySkill(_BaseInstallTest):
             self.assertEqual(len(ages), 1)
             self.assertLess(ages[0], self.install.LEFTOVER_MAX_AGE_SEC)
 
+    def test_failed_stamp_leaves_the_live_install_in_place(self):
+        # Parking a tree with its old mtime lets a concurrent sweep delete the
+        # only rollback copy, so a failed stamp must abort before the move.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            skill_dest = dest / "complete-codebase-review"
+            real_utime = os.utime
+
+            def refuse_park(path, *args, **kwargs):
+                if Path(path) in (skill_dest, skill_dest.resolve()):
+                    raise OSError("stamp denied")
+                return real_utime(path, *args, **kwargs)
+
+            with patch.object(self.install.os, "utime", refuse_park):
+                with self.assertRaises(OSError) as caught:
+                    self.install.copy_skill(src, dest)
+            self.assertIn("mtime", str(caught.exception))
+            self.assertTrue((skill_dest / "SKILL.md").exists())
+            self.assertEqual(
+                list(dest.glob(self.install.PREVIOUS_PREFIX + "*")), []
+            )
+
     def test_calls_copytree_with_ignore_patterns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)

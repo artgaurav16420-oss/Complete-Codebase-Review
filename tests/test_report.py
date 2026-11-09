@@ -235,6 +235,16 @@ class TestMarkdown(unittest.TestCase):
         broken = self.md.replace("| Security |", "| Security | N/A |", 1)
         self.assertTrue(report_mod.validate_markdown(broken))
 
+    def test_internal_validator_rejects_any_non_numeric_score(self):
+        # The docstring promises non-numeric, not just the N/A spelling.
+        bad = copy.deepcopy(self.model)
+        bad["per_domain_scores"][0]["score"] = "five"
+        errors = report_mod.validate_markdown(report_mod.render_markdown(bad))
+        self.assertTrue(
+            any("non-numeric domain score" in error for error in errors),
+            errors,
+        )
+
     def test_na_in_finding_text_is_not_a_score(self):
         model = pipeline.synthesize(
             _manifest(),

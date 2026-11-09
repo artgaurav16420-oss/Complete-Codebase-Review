@@ -376,9 +376,24 @@ def _overall_health(md):
 
 
 def _check_scores(md, errors):
-    """Reject non-numeric domain scores in the scores table."""
+    """Reject non-numeric domain scores in the scores table.
+
+    The score is the second cell. The header ("Score (/10)") and the
+    ``|---|`` separator are skipped by validating only the rows after the
+    separator; every later row, including the **Overall** one, must parse as
+    a number.
+    """
+    in_body = False
     for line in _section_text(md, "## Per-Domain Scores").splitlines():
-        if line.startswith("|") and (" N/A " in line or " n/a " in line):
+        if not line.startswith("|"):
+            continue
+        if not in_body:
+            chars = set(line.replace("|", "").replace(" ", ""))
+            if chars and chars <= set("-:"):
+                in_body = True
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or _num(cells[1]) is None:
             errors.append("non-numeric domain score: " + line.strip())
 
 

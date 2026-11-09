@@ -1,5 +1,6 @@
 """Tests for ccr.pipeline: gates, synthesis, rendering, scoring."""
 
+import copy
 import json
 import sys
 import tempfile
@@ -81,6 +82,32 @@ class TestCompletion(unittest.TestCase):
 
 class TestSynthesize(unittest.TestCase):
     """Model assembly."""
+
+    def test_manifest_settings_are_applied_per_call(self):
+        # Agent identity and calibration are module-level in the findings
+        # engine, and each load overwrites them. A report must follow the
+        # manifest it was handed, not whichever one was loaded last.
+        from ccr import findings as findings_mod
+
+        saved = {
+            "overlap_threshold": findings_mod.OVERLAP_THRESHOLD,
+            "large_fix_hours": findings_mod.LARGE_FIX_HOURS,
+            "quick_win_cap_hours": findings_mod.QUICK_WIN_CAP_HOURS,
+        }
+        self.addCleanup(findings_mod.set_calibration, saved)
+        manifest_a = copy.deepcopy(_manifest())
+        manifest_a.setdefault("calibration", {})["quick_win_cap_hours"] = 0.5
+        # What a later load leaves live must not decide A's roadmap.
+        findings_mod.set_calibration({"quick_win_cap_hours": 10.0})
+        results = {"code_quality": {"findings": [{
+            "finding": "[b.py:2] \u2014 flaw \u2192 failure",
+            "severity": "MEDIUM", "est_hours": 2,
+            "da_verdict": "CONFIRMED",
+        }]}}
+        model = pipeline.synthesize(manifest_a, results, ["code_quality"])
+        # A 2h quick win is beyond A's 0.5h cap, so it belongs to phase 2.
+        self.assertEqual(model["roadmap"][1], [])
+        self.assertEqual(len(model["roadmap"][2]), 1)
 
     def test_domains_come_from_manifest(self):
         model = pipeline.synthesize(

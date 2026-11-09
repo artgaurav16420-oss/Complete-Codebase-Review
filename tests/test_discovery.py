@@ -64,9 +64,10 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(self.facts["dependency_manifests"], [])
 
     def test_dependency_manifests_and_containers_are_recorded(self):
-        # Without this fixture neither branch at discovery.py:151/:153 runs,
-        # so a regression that stopped recording them would only show up as
-        # two agents silently vanishing from the next review.
+        # Without this fixture neither the dependency-manifest nor the
+        # container branch in discovery.discover runs, so a regression that
+        # stopped recording them would only show up as two agents silently
+        # vanishing from the next review.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")

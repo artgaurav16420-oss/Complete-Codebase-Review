@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from ccr import manifest as manifest_mod
 from ccr import state
@@ -299,6 +300,17 @@ class TestStateLock(unittest.TestCase):
         missing = Path(self.tmp.name) / "absent" / "ccr-state.json"
         with state.StateLock(missing, wait=0.05) as lock:
             self.assertFalse(lock.held)
+
+    def test_no_locking_primitive_reports_the_lock_unheld(self):
+        # Claiming a lock that was never taken would let record and the
+        # re-review counter race on a build without fcntl/msvcrt. Report it
+        # unheld instead, and do not sit out the full wait either.
+        started = time.monotonic()
+        with patch.object(state, "_msvcrt", None), \
+             patch.object(state, "_fcntl", None):
+            with state.StateLock(self.path) as lock:
+                self.assertFalse(lock.held)
+        self.assertLess(time.monotonic() - started, 1.0)
 
 
 if __name__ == "__main__":
