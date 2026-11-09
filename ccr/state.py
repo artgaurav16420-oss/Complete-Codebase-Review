@@ -223,7 +223,11 @@ class State:
         state files written before agents_planned was populated: trusting it
         first lets a stale count report 0% for a run that finished.
         """
-        planned = self.data["agents_planned"] or []
+        # A merged or hand-edited roster can repeat an id. check_completion
+        # deduplicates before dividing, so the denominator here must do the
+        # same or a run that finished every distinct agent reports a lower
+        # ratio and blocks the gate.
+        planned = list(dict.fromkeys(self.data["agents_planned"] or []))
         total = len(planned) or self.data["total_agents"]
         if not total:
             return 0.0

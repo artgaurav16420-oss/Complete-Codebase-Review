@@ -322,9 +322,19 @@ class RecordedProvider:
     def __init__(self, fixtures_dir):
         self.dir = Path(fixtures_dir)
 
-    def agent_ids(self):
-        """Return agent ids discovered in the fixture directory."""
-        return [agent_id for agent_id, _path in discover_results(self.dir)]
+    def agent_ids(self, known=None):
+        """Return agent ids discovered in the fixture directory.
+
+        ``known`` limits the result to the ids a manifest declares. A stray
+        json that still looks like a result (for example a findings-only
+        object some other tool wrote beside the fixtures) would otherwise
+        become an agent id, and replay then aborts on an agent the run never
+        planned.
+        """
+        ids = [agent_id for agent_id, _path in discover_results(self.dir)]
+        if known is None:
+            return ids
+        return [agent_id for agent_id in ids if agent_id in known]
 
     def get(self, agent_id):
         """Return the recorded result for an agent."""

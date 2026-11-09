@@ -190,6 +190,24 @@ class TestRecordedProvider(unittest.TestCase):
             self.assertEqual(providers.RecordedProvider(root).agent_ids(),
                              ["security"])
 
+    def test_agent_ids_can_be_limited_to_known_agents(self):
+        # A findings-only object is still the bare fixture layout, so discovery
+        # keeps it; the manifest filter is what stops a stray file beside the
+        # fixtures from becoming an agent id that replay rejects as unknown.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "phase_security.json").write_text(
+                '{"findings": []}', encoding="utf-8"
+            )
+            (root / "scratch.json").write_text(
+                '{"findings": []}', encoding="utf-8"
+            )
+            provider = providers.RecordedProvider(root)
+            self.assertEqual(
+                set(provider.agent_ids()), {"security", "scratch"}
+            )
+            self.assertEqual(provider.agent_ids({"security"}), ["security"])
+
 
 class TestResultDiscovery(unittest.TestCase):
     """One definition of "a result file", shared by every consumer."""

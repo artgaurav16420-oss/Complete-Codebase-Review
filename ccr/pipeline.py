@@ -274,7 +274,11 @@ def _validate_expected(expected):
 def run_eval(manifest, fixtures_dir, expected_path):
     """Replay recorded fixtures through synthesis and score the result."""
     provider = RecordedProvider(fixtures_dir)
-    agent_ids = provider.agent_ids()
+    # Only manifest agents are replayed. A file that merely looks like a
+    # result (a findings-only object written beside the fixtures) must not
+    # become an agent id synthesize then rejects as unknown.
+    planned = {agent["id"] for agent in manifest["agents"]}
+    agent_ids = provider.agent_ids(planned)
     if not agent_ids:
         raise ValueError("no fixture results in " + str(fixtures_dir))
     results = {agent_id: provider.get(agent_id) for agent_id in agent_ids}

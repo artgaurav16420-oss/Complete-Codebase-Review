@@ -69,6 +69,14 @@
     reused pid cannot delete a crashed run's only backup; and a bare-layout result must carry
     only the agent-result keys, so a synthesized report sitting beside the fixtures is not
     read as an agent.
+  - CodeAnt round 4: the completion denominator deduplicates the planned roster exactly as
+    `pipeline.check_completion` does, so a repeated id cannot block the gate after every
+    distinct agent finished; the parked backup is stamped before the rename, closing the
+    window in which a concurrent age-based sweep could delete it; `_remove_tree` removes a
+    directory symlink or junction through its reparse point instead of failing the unlink and
+    leaving it under `.old-*`; report cells defuse bare `https://` and `www.` autolinks that
+    GitHub would otherwise render as live links; and replay ignores a findings-only json
+    beside the fixtures instead of aborting on an agent the manifest never planned.
 
 ## v2.4.0 (2026-10-20)
 

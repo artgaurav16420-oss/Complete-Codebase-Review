@@ -210,6 +210,23 @@ class TestMarkdown(unittest.TestCase):
             self.assertNotIn(char, row)
         self.assertIn("wrong order", row)
 
+    def test_bare_urls_are_not_autolinked(self):
+        # GitHub links a bare scheme or www host in plain text even when "<"
+        # is escaped, so the cell must carry an escape of its own.
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] — see https://example.invalid/fix and "
+                "www.example.invalid → payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        self.assertNotIn("https://", row)
+        self.assertNotIn("www.example", row)
+        self.assertIn("example.invalid", row)
+
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")
         self.assertTrue(report_mod.validate_markdown(broken))

@@ -45,6 +45,17 @@ def fmt_hours_long(value):
     return _fmt_number(value) + " hours"
 
 
+def _defang_urls(text):
+    """Break GitHub's plain-text autolinks without changing what is read.
+
+    GitHub links ``https://...`` and ``www....`` even when ``<`` is escaped.
+    A backslash before the colon (and the host dot) is dropped by the
+    renderer, so the words still read as a URL while no live destination is
+    left for a finding to smuggle into the report.
+    """
+    return text.replace("://", "\\://").replace("www.", "www\\.")
+
+
 def _cell(text):
     """Make text safe inside a Markdown table cell or section body.
 
@@ -56,9 +67,19 @@ def _cell(text):
     ``[file:line]`` anchor keeps its brackets, which are only escaped in
     headings (see ``_title``).
 
+    A bare URL is defused too: GitHub autolinks ``https://...`` and
+    ``www....`` in plain text even after ``<`` is escaped. ``_defang_urls``
+    does that last, after the backslashes and entities above exist, so its
+    own escape is never doubled.
+
     Uses ``splitlines`` so every separator it honours (including ``\\x0b``,
     ``\\x0c`` and ``\\x85``) collapses, not just CR/LF.
     """
+    return _defang_urls(_escape_cell(text))
+
+
+def _escape_cell(text):
+    """Escape one cell's HTML, pipes and line breaks, without defanging URLs."""
     cleaned = _strip_format(str(text)).replace("|", "/")
     collapsed = " ".join(cleaned.splitlines()).strip()
     return (
@@ -263,12 +284,13 @@ def _overlap_candidates(model):
 def _title(text):
     """Escape the heading text so a path cannot inject HTML or a link.
 
-    HTML escaping is already done by ``_cell``; only the bracket escape is
-    added here. Backslashes are escaped first: a target carrying ``\\[`` would
+    HTML escaping is already done by ``_escape_cell``; only the bracket escape
+    is added here. Backslashes are escaped first: a target carrying ``\\[`` would
     otherwise turn the bracket escape into ``\\\\[`` and leave the ``[`` active.
+    URLs are defanged last so the escape that adds is not doubled.
     """
-    return (
-        _cell(text)
+    return _defang_urls(
+        _escape_cell(text)
         .replace("\\", "\\\\")
         .replace("[", "\\[")
         .replace("]", "\\]")

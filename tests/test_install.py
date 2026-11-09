@@ -387,6 +387,36 @@ class TestCopySkill(_BaseInstallTest):
             self.assertEqual(len(ages), 1)
             self.assertLess(ages[0], self.install.LEFTOVER_MAX_AGE_SEC)
 
+    def test_previous_tree_is_stamped_before_the_rename(self):
+        # A concurrent sweep judges age from the mtime the parked entry has
+        # when it appears. Refreshing that mtime after the rename leaves a
+        # window in which the backup still carries the old install's age and
+        # can be swept away, so the stamp must happen while the tree is still
+        # at its live name.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(str(dest / "complete-codebase-review"), (old, old))
+
+            ages = []
+            real_replace = os.replace
+
+            def spy(src_path, dst_path):
+                if Path(dst_path).name.startswith(
+                    self.install.PREVIOUS_PREFIX
+                ):
+                    ages.append(
+                        time.time() - Path(src_path).lstat().st_mtime
+                    )
+                return real_replace(src_path, dst_path)
+
+            with patch.object(self.install.os, "replace", spy):
+                self.install.copy_skill(src, dest)
+            self.assertEqual(len(ages), 1)
+            self.assertLess(ages[0], self.install.LEFTOVER_MAX_AGE_SEC)
+
     def test_calls_copytree_with_ignore_patterns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
@@ -1428,6 +1458,24 @@ class TestInternalFunctions(_BaseInstallTest):
     def test_validate_xdg_path_rejects_relative(self):
         result = self.install._validate_xdg_path(Path("relative/path"))
         self.assertIsNone(result)
+
+    def test_remove_tree_removes_a_directory_link(self):
+        # Windows refuses os.unlink on a junction or a directory symlink, so
+        # the link must be removed through its reparse point and its target
+        # left alone.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "target"
+            target.mkdir()
+            (target / "keep.txt").write_text("keep", encoding="utf-8")
+            link = root / "link"
+            try:
+                create_directory_link(link, target)
+            except OSError as exc:
+                self.skipTest("directory links unavailable: " + str(exc))
+            self.install._remove_tree(link)
+            self.assertFalse(os.path.lexists(str(link)))
+            self.assertTrue((target / "keep.txt").exists())
 
     def test_get_version_caches_result(self):
         self.install._VERSION_CACHE = None

@@ -237,6 +237,16 @@ class TestAgents(unittest.TestCase):
         self.state.data["agents_completed"].extend(["security", "architecture"])
         self.assertEqual(self.state.completion_ratio(), 1.0)
 
+    def test_duplicate_planned_ids_do_not_lower_the_ratio(self):
+        # check_completion deduplicates the roster before dividing, so the
+        # same repeat must not inflate the denominator here and block the gate
+        # after every distinct agent finished.
+        self.state.data["agents_planned"] = [
+            "security", "security", "architecture", "architecture",
+        ]
+        self.state.data["agents_completed"] = ["security", "architecture"]
+        self.assertEqual(self.state.completion_ratio(), 1.0)
+
 
 class TestStateLock(unittest.TestCase):
     """The advisory lock around a state read-modify-write."""

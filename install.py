@@ -51,13 +51,15 @@ def _is_link_like(path):
 def _remove_link_like(path):
     """Remove a symlink or junction without touching its target."""
     path = Path(path)
-    if os.path.islink(str(path)):
+    try:
+        # Works for a file symlink and for a symlink to a directory on POSIX.
         path.unlink()
         return
-    try:
-        os.rmdir(str(path))
     except OSError:
-        path.unlink()
+        pass
+    # Windows refuses unlink on a directory symlink and on a junction; both
+    # are removed by rmdir, which deletes the reparse point, not its target.
+    os.rmdir(str(path))
 
 
 def _containment_root(path):
@@ -429,30 +431,33 @@ def copy_skill(src_dir, dest_dir):
                     # the entry leaves the link's target untouched, and if
                     # the swap below fails the finally block puts the link
                     # back where the user configured it.
-                    os.replace(str(skill_dest), str(previous))
+                    parked = skill_dest
                 else:
-                    resolved = skill_dest.resolve(strict=False)
+                    parked = skill_dest.resolve(strict=False)
                     root = _containment_root(dest_dir)
-                    if resolved == root:
+                    if parked == root:
                         raise ValueError(
                             f"Refusing to replace target root {root}"
                         )
-                    if not resolved.is_relative_to(root):
+                    if not parked.is_relative_to(root):
                         raise ValueError(
-                            f"Resolved path {resolved} is outside target {root}"
+                            f"Resolved path {parked} is outside target {root}"
                         )
-                    os.replace(str(resolved), str(previous))
                 # A rename keeps the entry's old mtime, which would make this
                 # live backup look like a crashed run's leftover to a
-                # concurrent install's age-based sweep. Stamp the parked entry
-                # itself, never the target a link points at.
+                # concurrent install's age-based sweep. Stamp the entry that
+                # is about to be renamed, never the target a link points at,
+                # and stamp it before the rename: refreshing the mtime after
+                # the park leaves a window in which the backup already has its
+                # old name and the sweep would delete it.
                 try:
-                    if _is_link_like(previous):
-                        os.utime(str(previous), None, follow_symlinks=False)
+                    if _is_link_like(parked):
+                        os.utime(str(parked), None, follow_symlinks=False)
                     else:
-                        os.utime(str(previous), None)
+                        os.utime(str(parked), None)
                 except (NotImplementedError, OSError):
                     pass
+                os.replace(str(parked), str(previous))
 
             # Re-assert at the last moment: dest_dir was checked before the
             # copy, and a swap in between would send the final rename into the
@@ -505,7 +510,12 @@ def _remove_tree(path):
     """
     if not os.path.lexists(path):
         return
-    if os.path.isdir(path) and not _is_link_like(path):
+    if _is_link_like(path):
+        # Windows refuses to unlink a directory symlink or junction; only
+        # rmdir removes the reparse point itself without entering the target.
+        _remove_link_like(path)
+        return
+    if os.path.isdir(path):
         if sys.version_info >= (3, 12):
             shutil.rmtree(str(path), onexc=_onerror)
         else:
