@@ -308,6 +308,19 @@ class TestResultDiscovery(unittest.TestCase):
         self.assertIsNone(providers.find_result(self.dir, "security"))
         self.assertEqual(providers.discover_results(self.dir), [])
 
+    def test_known_ids_do_not_make_a_directory_a_result(self):
+        # With a known id set, discovery trusts the name and never opens the
+        # entry, so the entry type has to be checked first: a directory named
+        # security.json would otherwise be handed to the loader.
+        (self.dir / "security.json").mkdir()
+        (self.dir / "phase_architecture.json").mkdir()
+        self.assertEqual(
+            providers.discover_results(
+                self.dir, {"security", "architecture"}
+            ),
+            [],
+        )
+
     def test_discovery_accepts_an_uppercase_suffix(self):
         # A glob is case-sensitive on POSIX while find_result compared the
         # suffix case-insensitively, so discovery could hide a file its own

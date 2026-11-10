@@ -179,6 +179,11 @@ def _result_paths(root):
     The tree is listed instead of globbed because a glob is case-sensitive on
     POSIX: ``.JSON`` would be invisible to discovery while ``find_result``
     reads it, so the two would disagree about the same directory.
+
+    Only regular files are returned. The suffix alone is not enough: a
+    directory can be named ``security.json``, and discovery with a known id
+    set trusts the name without opening the entry, so it would hand back
+    something no loader can read.
     """
     try:
         entries = sorted(Path(root).iterdir())
@@ -189,7 +194,7 @@ def _result_paths(root):
     canonical = []
     bare = []
     for path in entries:
-        if path.suffix.lower() != RESULT_SUFFIX:
+        if path.suffix.lower() != RESULT_SUFFIX or not path.is_file():
             continue
         if is_canonical_name(path):
             canonical.append(path)

@@ -166,6 +166,33 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("could not archive stale results", out)
 
+    def test_missing_cache_has_nothing_to_archive(self):
+        self.assertEqual(cli._archive_results(self.cache / "absent"), 0)
+
+    def test_unlistable_cache_fails_instead_of_skipping_the_archive(self):
+        # An unreadable cache is not an empty one: record must not succeed
+        # with the previous run's results still in place for synthesize.
+        stale = self.cache / "phase_security.json"
+        stale.write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        real_iterdir = Path.iterdir
+
+        def denied_iterdir(path):
+            if path == self.cache:
+                raise PermissionError("simulated listing failure")
+            return real_iterdir(path)
+
+        with mock.patch.object(Path, "iterdir", denied_iterdir):
+            code, out, _ = run([
+                "record", str(TARGET), "--out", str(self.cache),
+                "--agents", "security",
+            ])
+        self.assertEqual(code, 2)
+        self.assertIn("[ERROR] could not archive stale results", out)
+        self.assertIn("could not list", out)
+        self.assertTrue(stale.exists())
+
     def test_archive_refuses_file_blocking_previous_results(self):
         (self.cache / "phase_security.json").write_text(
             '{"agent": "security", "findings": []}', encoding="utf-8"

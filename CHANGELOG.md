@@ -88,6 +88,12 @@
     stamp aborts the update before the live install is parked, since the backup would
     otherwise carry its old age; the score validator rejects any non-numeric cell rather
     than only `N/A`; and a test comment no longer cites stale line numbers.
+  - CodeAnt round 7: result discovery returns regular files only, so a directory named
+    `security.json` is not planned as an agent result when the manifest's id set is known;
+    a cache that cannot be listed fails `record` with an error instead of reading as empty
+    and leaving the previous run's results for `synthesize` to ingest; and a manifest agent
+    id may not start with the reserved `phase_` prefix, which would make a bare fixture
+    indistinguishable from another agent's canonical result.
 
 ## v2.4.0 (2026-10-20)
 

@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 
 from . import findings as findings_mod
+from . import providers as providers_mod
 from . import report as report_mod
 
 MANIFEST_PATH = Path(__file__).resolve().parent / "pipeline.json"
@@ -71,6 +72,16 @@ def _validate_agents(data):
                         agent["id"], field
                     )
                 )
+        # An id is also a file-name stem (phase_<id>.json). Reserving the
+        # prefix keeps the canonical layout unambiguous: without it, a bare
+        # fixture for an agent called phase_security is indistinguishable from
+        # the canonical result of an agent called security.
+        prefix = providers_mod.PHASE_PREFIX
+        if agent["id"][:len(prefix)].lower() == prefix:
+            raise ValueError(
+                "agent id must not start with the reserved prefix "
+                + prefix + ": " + agent["id"]
+            )
         agent_ids.append(agent["id"])
     if len(agent_ids) != len(set(agent_ids)):
         raise ValueError("duplicate agent id in manifest")

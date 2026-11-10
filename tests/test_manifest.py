@@ -106,6 +106,15 @@ class TestManifestValidation(unittest.TestCase):
             manifest_mod.validate(data)
         self.assertIn("must be a string", str(ctx.exception))
 
+    def test_agent_id_may_not_use_the_result_file_prefix(self):
+        # A result is phase_<id>.json. An agent called phase_security would
+        # name its fixture exactly as the canonical result of agent security.
+        data = self._broken()
+        data["agents"][0]["id"] = "phase_security"
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("reserved prefix", str(ctx.exception))
+
     def test_duplicate_env_var(self):
         data = self._broken()
         data["env_vars"].append(dict(data["env_vars"][0]))

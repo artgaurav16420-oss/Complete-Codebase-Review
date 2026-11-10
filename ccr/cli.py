@@ -123,11 +123,19 @@ def _stale_results(root, agent_ids):
     not one, and archiving it would relocate contents this tool never wrote.
     The suffix is compared case-insensitively so the set matches what
     discovery would find on a case-sensitive filesystem.
+
+    A cache that cannot be listed is an error, not an empty cache. Reporting
+    it as empty would let record succeed with the previous run's results still
+    in place, and the next synthesize would ingest them as this run's.
     """
     try:
         entries = sorted(Path(root).iterdir())
-    except OSError:
+    except FileNotFoundError:
         return []
+    except OSError as exc:
+        raise OSError(
+            "could not list " + str(root) + " for stale results: " + str(exc)
+        ) from exc
     planned = set(agent_ids)
     stale = []
     for path in entries:
