@@ -448,6 +448,44 @@ class TestCliSynthesizeOptions(unittest.TestCase):
             encoding="utf-8"))
         self.assertEqual(report["report"]["codebase_size"]["files"], 0)
 
+    def test_a_concurrent_record_cannot_archive_a_result_mid_synthesis(self):
+        # Record holds the state lock while it archives the previous run's
+        # results. Synthesis must hold the same lock while it reads the
+        # roster and loads the results, or a record that starts in between
+        # moves the file away and the report goes out without the domain
+        # that file held.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        result = cache / "phase_security.json"
+        result.write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        state_path = cache / "ccr-state.json"
+        original = cli._resolve_planned
+
+        def racing_resolve(*args, **kwargs):
+            planned = original(*args, **kwargs)
+            # A concurrent record: it takes the lock, then archives.
+            with cli.state.StateLock(state_path) as lock:
+                if lock.held:
+                    cli._archive_results(str(cache), ["security"])
+            return planned
+
+        with mock.patch.object(cli, "_resolve_planned", racing_resolve):
+            code, out, _ = run([
+                "synthesize", "--in", str(cache), "--agents", "security",
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, out)
+        self.assertTrue(result.exists())
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(len(report["findings"]), 1)
+
     def test_invalid_baseline_exits_two(self):
         bad = self.dir / "baseline.json"
         bad.write_text("[]", encoding="utf-8")
@@ -885,6 +923,25 @@ class TestPersistReviewCounter(unittest.TestCase):
         saved = cli._persist_review_counter(cached, "sig-a", str(TARGET))
         self.assertTrue(saved)
         self.assertEqual(self._count(), 2)
+
+    def test_a_state_without_a_target_still_counts_the_review(self):
+        # A state that predates target recording names no codebase, so its
+        # count cannot belong to another one: it is the cache's own history.
+        # Left at zero it never reaches the every-3rd full rescan.
+        data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        data["target_dir"] = None
+        data["re_review_count"] = 0
+        self.state_path.write_text(json.dumps(data), encoding="utf-8")
+        (self.dir / "phase_security.json").write_text(
+            json.dumps({"agent": "security", "findings": []}),
+            encoding="utf-8")
+        code, out, err = run([
+            "synthesize", "--in", str(self.dir), "--agents", "security",
+            "--format", "json", "--out", str(self.dir / "report"),
+        ])
+        self.assertEqual(code, 0, out)
+        self.assertIn("records no target", err)
+        self.assertEqual(self._count(), 1)
 
     def test_lock_held_elsewhere_leaves_the_counter_unchanged(self):
         # A second run in the same cache: skipping one count only delays a

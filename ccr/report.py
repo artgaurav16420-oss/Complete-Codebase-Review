@@ -400,8 +400,12 @@ def _check_scores(md, errors):
     a number in range. ``float`` also reads "nan" and "inf", and every
     comparison against NaN is False, so the range check rejects those as
     well as a score outside the scale the section declares.
+
+    The separator is what starts the body, so a table without it has no row
+    to check: its absence is an error, not a table that passes unchecked.
     """
     in_body = False
+    rows = 0
     for line in _section_text(md, "## Per-Domain Scores").splitlines():
         if not line.startswith("|"):
             continue
@@ -410,6 +414,7 @@ def _check_scores(md, errors):
             if chars and chars <= set("-:"):
                 in_body = True
             continue
+        rows += 1
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if len(cells) < 2:
             errors.append("non-numeric domain score: " + line.strip())
@@ -419,6 +424,10 @@ def _check_scores(md, errors):
             errors.append("non-numeric domain score: " + line.strip())
         elif not 0.0 <= score <= 10.0:
             errors.append("domain score out of range: " + line.strip())
+    if not in_body:
+        errors.append("score table separator missing")
+    elif not rows:
+        errors.append("score table has no rows")
 
 
 def _tech_debt_totals(md, errors):

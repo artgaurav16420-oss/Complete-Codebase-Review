@@ -150,12 +150,14 @@ def _is_result_candidate(path):
 
     The canonical phase_<id>.json name is written by the pipeline for an agent
     and nothing else, so anything under it is a result however broken, and
-    load_result is the right place to say what is wrong. In the bare fixture
-    layout a stray json of any kind may sit beside the fixtures, so there a
-    json object without a findings list (a baseline, a report, a state file)
-    is not a result: the findings list is what says the file is an agent
-    result at all. One that is not even an object is kept so load_result can
-    name that too.
+    load_result is the right place to say what is wrong. The one exception is
+    a file that parses as one of the pipeline's own documents: a report saved
+    under that name is that document, not the agent's result. In the bare
+    fixture layout a stray json of any kind may sit beside the fixtures, so
+    there a json object without a findings list (a baseline, a report, a state
+    file) is not a result: the findings list is what says the file is an
+    agent result at all. One that is not even an object is kept so
+    load_result can name that too.
 
     A result may carry more than the three keys the prompt asks for and the
     loader accepts it, so the rule is not a whitelist of the result keys: it
@@ -165,7 +167,7 @@ def _is_result_candidate(path):
     if not path.is_file():
         return False
     if is_canonical_name(path):
-        return True
+        return not is_pipeline_document(path)
     try:
         with open(path, encoding="utf-8-sig") as f:
             data = json.load(f)
@@ -261,7 +263,7 @@ def discover_results(out_dir, known=None):
                 continue
         elif agent_id not in known:
             continue
-        elif not is_canonical_name(path) and is_pipeline_document(path):
+        elif is_pipeline_document(path):
             # A document named for a planned agent is that document, not the
             # agent's result. find_result refuses it, so counting it here
             # would put an agent in the roster that the loader cannot load.
@@ -284,12 +286,13 @@ def find_result(out_dir, agent_id):
     loader judges the content and names a broken file by path. The exception
     is a file that is one of the pipeline's own documents, such as the
     synthesis report: reading that as an agent would put the report's own
-    findings into the report.
+    findings into the report. The canonical name is no exception — a report
+    saved as phase_<id>.json is that report, not the agent's result.
     """
     for path in _result_paths(out_dir):
         if agent_id_from_name(path) != agent_id:
             continue
-        if is_canonical_name(path) or not is_pipeline_document(path):
+        if not is_pipeline_document(path):
             return path
     return None
 

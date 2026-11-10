@@ -351,6 +351,20 @@ class TestResultDiscovery(unittest.TestCase):
         })
         self.assertEqual(providers.discover_results(self.dir, {"security"}), [])
 
+    def test_a_report_named_after_a_canonical_result_is_not_discovered(self):
+        # The canonical name is the pipeline's convention for an agent, but
+        # a report saved under it is still a report: loading it as the
+        # agent would put the report's own findings into the report.
+        self._write("phase_security.json", {
+            "report": {"overall_health": "FAIR"},
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+            }],
+        })
+        self.assertEqual(providers.discover_results(self.dir), [])
+        self.assertEqual(providers.discover_results(self.dir, {"security"}), [])
+        self.assertIsNone(providers.find_result(self.dir, "security"))
+
     def test_a_report_named_after_an_agent_is_not_replayed(self):
         # The report carries its own findings. Read as an agent result it
         # would put the report's findings into the next report.

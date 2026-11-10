@@ -298,6 +298,39 @@ class TestMarkdown(unittest.TestCase):
                 (value, errors),
             )
 
+    def test_internal_validator_rejects_a_score_table_without_a_separator(self):
+        # The separator is what starts the body, so a table without it has
+        # no row to check: the scores would go unchecked and the report
+        # would pass validation.
+        broken = self.md.replace(
+            "|--------|-------------|----------|------|--------|-----|",
+            "| Domain | Score (/10) | Critical | High | Medium | Low |",
+        )
+        self.assertNotEqual(broken, self.md)
+        errors = report_mod.validate_markdown(broken)
+        self.assertTrue(
+            any("score table separator missing" in error for error in errors),
+            errors,
+        )
+
+    def test_internal_validator_rejects_a_score_table_without_rows(self):
+        # A separator with no row after it checks nothing either.
+        lines = self.md.splitlines()
+        start = lines.index("## Per-Domain Scores")
+        end = lines.index("## Detailed Findings")
+        body = lines[start:end]
+        separator = next(
+            index for index, line in enumerate(body)
+            if line.startswith("|")
+            and set(line.replace("|", "").replace(" ", "")) <= set("-:")
+        )
+        broken = "\n".join(lines[:start] + body[:separator + 1] + lines[end:])
+        errors = report_mod.validate_markdown(broken)
+        self.assertTrue(
+            any("score table has no rows" in error for error in errors),
+            errors,
+        )
+
     def test_na_in_finding_text_is_not_a_score(self):
         model = pipeline.synthesize(
             _manifest(),

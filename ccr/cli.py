@@ -307,7 +307,15 @@ def _record_locked(args, data, plan, cache, state_path):
         print(f"[ERROR] could not archive stale results: {exc}")
         return 2
     previous = None
-    if current is not None and current.data["target_dir"] == plan["target"]:
+    if current is not None and (
+        not current.data["target_dir"]
+        or current.data["target_dir"] == plan["target"]
+    ):
+        # A state that predates target recording names no codebase, so it
+        # cannot be ruled out as this run's predecessor: its review count is
+        # the cache's own history and travels with the new state. A state
+        # that names another codebase is that codebase's history and starts
+        # over.
         previous = current.data
     current = state.State.create(
         state_path, plan["target"], args.skill_dir, args.effort
@@ -570,12 +578,17 @@ def _synthesis_context(args, cached):
     if not stored:
         # A state that predates target recording cannot say which codebase its
         # facts describe, so attributing them to the target this run names
-        # would put another codebase's size in the report.
+        # would put another codebase's size in the report. The review count
+        # is not a fact about the codebase: it is the cache's own history, so
+        # it travels with the state and keeps advancing. Left at zero it
+        # never reaches the every-3rd full rescan.
         print(
             "[WARN] cached state records no target; codebase size omitted",
             file=sys.stderr,
         )
-        return effort, target, None, 0, None
+        return (
+            effort, target, None, cached.data.get("re_review_count", 0), cached,
+        )
     if not _same_target(target, stored):
         print(
             "[WARN] cached facts belong to " + stored
@@ -616,34 +629,46 @@ def cmd_synthesize(args):
     except (OSError, ValueError) as exc:
         print(f"[ERROR] invalid state in {args.cache}: {exc}")
         return 2
-    try:
-        planned = _resolve_planned(
-            args, cached, manifest=data,
-            valid_ids={agent["id"] for agent in data["agents"]},
-        )
-    except ValueError as exc:
-        print("[ERROR] " + str(exc))
-        return 2
-    if not planned:
-        print("[ERROR] no agent results found in " + args.cache)
-        return 2
+    # The roster and the results are read under the same lock record takes
+    # while it archives the previous run's results. Without it a concurrent
+    # record can move a result between the scan and the load, and the report
+    # goes out without the domain that file held.
+    state_path = Path(args.cache) / "ccr-state.json"
+    with state.StateLock(state_path) as lock:
+        if not lock.held:
+            print(
+                "[WARN] could not lock " + str(state_path)
+                + "; another run may be changing the cache",
+                file=sys.stderr,
+            )
+        try:
+            planned = _resolve_planned(
+                args, cached, manifest=data,
+                valid_ids={agent["id"] for agent in data["agents"]},
+            )
+        except ValueError as exc:
+            print("[ERROR] " + str(exc))
+            return 2
+        if not planned:
+            print("[ERROR] no agent results found in " + args.cache)
+            return 2
 
-    effort, target, facts, re_review_count, counted_state = (
-        _synthesis_context(args, cached)
-    )
-    gate_known = _gate_is_known(args, cached)
-    if not gate_known:
-        print(
-            "[WARN] planned agent set unknown (no state, no --agents); "
-            "completion gate skipped",
-            file=sys.stderr,
+        effort, target, facts, re_review_count, counted_state = (
+            _synthesis_context(args, cached)
         )
+        gate_known = _gate_is_known(args, cached)
+        if not gate_known:
+            print(
+                "[WARN] planned agent set unknown (no state, no --agents); "
+                "completion gate skipped",
+                file=sys.stderr,
+            )
 
-    try:
-        results, completed = _load_synthesis_results(args, planned)
-    except (OSError, ValueError) as exc:
-        print("[ERROR] " + str(exc))
-        return 2
+        try:
+            results, completed = _load_synthesis_results(args, planned)
+        except (OSError, ValueError) as exc:
+            print("[ERROR] " + str(exc))
+            return 2
     gate_error = _check_completion_gate(
         data, effort, planned, completed, gate_known, args
     )

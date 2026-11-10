@@ -147,6 +147,16 @@
     named after a planned agent in the cache instead of moving it into
     `previous-results`, because the archive step is for results the next run would
     otherwise re-ingest.
+  - CodeAnt round 15: the canonical name is no longer an exception to the document rule,
+    so a report saved as `phase_<id>.json` is that report and not the agent's result:
+    loading it would put the report's own findings into the report. `synthesize` reads
+    the roster and loads the results under the same lock `record` takes while it
+    archives the previous run's results, so a concurrent `record` can no longer move a
+    result between the scan and the load and leave the report without that domain. A
+    state that predates target recording keeps its re-review count and keeps advancing
+    it: the count is the cache's own history, not a fact about the codebase, and left at
+    zero it never reached the every-3rd full rescan. The score validator now rejects a
+    score table with no separator and one with no rows, which checked no score at all.
 
 ## v2.4.0 (2026-10-20)
 
