@@ -358,6 +358,24 @@ class TestCliRecordLifecycle(unittest.TestCase):
             "*/security.json"))
         self.assertEqual(len(archived), 1)
 
+    def test_a_document_named_after_an_agent_is_not_archived(self):
+        # The report written under an agent's name is the pipeline's own
+        # document, not that agent's result: find_result refuses it and
+        # synthesis never reads it, so record must leave it in the cache.
+        document = self.cache / "security.json"
+        document.write_text(
+            json.dumps({"report": {"overall_health": "FAIR"},
+                        "findings": []}),
+            encoding="utf-8",
+        )
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        self.assertTrue(document.exists())
+        self.assertFalse((self.cache / "previous-results").exists())
+
     def test_prompt_write_failure_keeps_stale_results(self):
         stale = self.cache / "phase_security.json"
         stale.write_text('{"agent": "security", "findings": []}',

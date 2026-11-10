@@ -138,6 +138,15 @@
     `record` carries the last synthesis signature forward with the re-review count, so a
     concurrent `record` for the same target cannot make the same review count twice and
     fire the every-3rd full rescan early.
+  - CodeAnt round 14: discovery no longer hides a bare result that carries more than the
+    three documented keys, because the loader accepts it and the old whitelist made the
+    agent vanish while its file sat right there; the rule is now the pipeline's own
+    documents, the only files with a findings list that are not an agent's result.
+    Discovery excludes those documents whether or not the manifest's id set is known, so
+    the roster never lists an agent the loader refuses; and `record` leaves a document
+    named after a planned agent in the cache instead of moving it into
+    `previous-results`, because the archive step is for results the next run would
+    otherwise re-ingest.
 
 ## v2.4.0 (2026-10-20)
 

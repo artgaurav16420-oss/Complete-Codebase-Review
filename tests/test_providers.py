@@ -330,6 +330,27 @@ class TestResultDiscovery(unittest.TestCase):
             providers.load_result(path, "security")["findings"], []
         )
 
+    def test_a_bare_result_with_an_extra_field_is_discovered(self):
+        # The loader accepts it, so discovery must list it too: a roster
+        # that omits the agent leaves the report missing a domain the file
+        # was there to fill.
+        self._write("security.json", {"findings": [], "note": "extra"})
+        found = providers.discover_results(self.dir)
+        self.assertEqual([agent_id for agent_id, _ in found], ["security"])
+        provider = providers.RecordedProvider(self.dir)
+        self.assertEqual(provider.agent_ids(), ["security"])
+
+    def test_a_document_named_after_an_agent_is_not_discovered(self):
+        # The report carries its own findings, but it is not an agent's
+        # result: find_result refuses it, so the roster must not list the
+        # agent either. An agent in the roster that the loader cannot load
+        # fails the completion gate with nothing to show for it.
+        self._write("security.json", {
+            "report": {"overall_health": "FAIR"},
+            "findings": [],
+        })
+        self.assertEqual(providers.discover_results(self.dir, {"security"}), [])
+
     def test_a_report_named_after_an_agent_is_not_replayed(self):
         # The report carries its own findings. Read as an agent result it
         # would put the report's findings into the next report.

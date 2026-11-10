@@ -188,9 +188,9 @@ All return values are plain dicts/lists unless stated otherwise.
 | `result_path` | `result_path(out_dir, agent_id)` | `Path` to `phase_<id>.json` |
 | `is_canonical_name` | `is_canonical_name(filename)` | `bool`; the name carries the `phase_` prefix, matched case-insensitively |
 | `agent_id_from_name` | `agent_id_from_name(filename)` | Agent id encoded in a result file name, or `None` |
-| `discover_results` | `discover_results(out_dir, known=None)` | `(agent_id, Path)` pairs; one definition of "a result file", shared by fixture replay, synthesis and state resume; the suffix is matched case-insensitively; with `known` (the manifest's id set) the name decides, so a corrupt result is reported by path instead of being skipped |
+| `discover_results` | `discover_results(out_dir, known=None)` | `(agent_id, Path)` pairs; one definition of "a result file", shared by fixture replay, synthesis and state resume; the suffix is matched case-insensitively; with `known` (the manifest's id set) the name decides, so a corrupt result is reported by path instead of being skipped; the pipeline's own documents are never results |
 | `find_result` | `find_result(out_dir, agent_id)` | `Path` or `None`; canonical name wins over the bare fixture layout; a file named for the agent is its result whatever it holds, unless it is one of the pipeline's own documents (the report or the model a baseline is read from) |
-| `RESULT_KEYS` | `frozenset({'agent', 'score', 'findings'})` | Top-level keys an agent result carries; a result may carry more, and the loader accepts them |
+| `is_pipeline_document` | `is_pipeline_document(path)` | `bool`; the file is one of the pipeline's own documents, so it is not an agent's result |
 | `DOCUMENT_KEYS` | `frozenset({'report', 'per_domain_scores', 'overall_health', 'agent_status'})` | Top-level keys the pipeline's own documents carry and an agent result never has |
 | `write_prompts` | `write_prompts(manifest, plan, out_dir, skill_dir='')` | Written paths |
 | `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |

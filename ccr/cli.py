@@ -124,6 +124,12 @@ def _stale_results(root, agent_ids):
     The suffix is compared case-insensitively so the set matches what
     discovery would find on a case-sensitive filesystem.
 
+    A file named for a planned agent is that agent's result, so it is
+    archived even when it is broken. The pipeline's own documents (the
+    synthesis report, the model a baseline is read from) are not results:
+    find_result refuses them and synthesis never reads them, so they stay
+    in the cache where the user put them.
+
     A cache that cannot be listed is an error, not an empty cache. Reporting
     it as empty would let record succeed with the previous run's results still
     in place, and the next synthesize would ingest them as this run's.
@@ -146,7 +152,9 @@ def _stale_results(root, agent_ids):
         # also relocate a link whose target belongs to someone else.
         if _is_link_like(path) or not path.is_file():
             continue
-        if providers.is_canonical_name(path) or path.stem in planned:
+        if providers.is_canonical_name(path):
+            stale.append(path)
+        elif path.stem in planned and not providers.is_pipeline_document(path):
             stale.append(path)
     return stale
 

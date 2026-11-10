@@ -98,9 +98,13 @@ PHASE_PREFIX = "phase_"
 PROMPT_SUFFIX = ".prompt.md"
 RESULT_SUFFIX = ".json"
 
-# Top-level keys an agent result may carry. Anything else marks a document
-# this pipeline did not write, whatever its name.
-RESULT_KEYS = frozenset({"agent", "score", "findings"})
+# Top-level keys the pipeline's own documents carry and an agent result
+# never has. The report JSON opens with "report"; the model a baseline is
+# read from carries the rest. A file named for an agent that has one of them
+# is that document, not the agent's result.
+DOCUMENT_KEYS = frozenset({
+    "report", "per_domain_scores", "overall_health", "agent_status",
+})
 
 
 def prompt_name(agent_id):
@@ -149,10 +153,14 @@ def _is_result_candidate(path):
     load_result is the right place to say what is wrong. In the bare fixture
     layout a stray json of any kind may sit beside the fixtures, so there a
     json object without a findings list (a baseline, a report, a state file)
-    is not a result, and neither is one that does not name its agent: the
-    synthesis report also carries a top-level findings list, and reading it as
-    an agent would make replay abort on an agent the run never planned. One
-    that is not even an object is kept so load_result can name that too.
+    is not a result: the findings list is what says the file is an agent
+    result at all. One that is not even an object is kept so load_result can
+    name that too.
+
+    A result may carry more than the three keys the prompt asks for and the
+    loader accepts it, so the rule is not a whitelist of the result keys: it
+    is the pipeline's own documents, the only files that carry a findings
+    list and are not an agent result.
     """
     if not path.is_file():
         return False
@@ -167,10 +175,26 @@ def _is_result_candidate(path):
         return True
     if not isinstance(data.get("findings"), list):
         return False
-    # The result shape is the three keys the prompt asks for. The synthesis
-    # report also carries a top-level findings list, but it adds its own
-    # report keys, so a whitelist keeps it from being read as an agent.
-    return not (set(data) - RESULT_KEYS)
+    return not (set(data) & DOCUMENT_KEYS)
+
+
+def is_pipeline_document(path):
+    """True when path holds one of the pipeline's own documents.
+
+    The report JSON and the model a baseline is read from both carry keys an
+    agent result never has. A file named for an agent that is one of them is
+    that document, not the agent's result: reading the report as an agent
+    would put the report's own findings into the report, and archiving it as
+    a result would move the report out of the cache.
+    """
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    return bool(set(data) & DOCUMENT_KEYS)
 
 
 def _result_paths(root):
@@ -212,15 +236,19 @@ def discover_results(out_dir, known=None):
     """Return (agent_id, path) pairs for the agent results in a directory.
 
     This is the one definition of "a result file", shared by fixture replay,
-    synthesize's cache scan and state resume. Discovering and loading therefore
-    agree: an agent reported here always loads, and a file this skips is never
-    picked up by find_result. The canonical name wins a tie against the bare
-    fixture layout, matching find_result.
+    synthesize's cache scan and state resume. Discovering and loading agree:
+    an agent reported here always loads. The finder answers a different
+    question — the caller named the agent, so the file named after it is that
+    agent's result and the loader says what is wrong with it — which is why a
+    file this skips can still be named by find_result. The canonical name
+    wins a tie against the bare fixture layout, matching find_result.
 
     ``known`` is the id set a manifest declares. Only those ids are returned,
     and the name alone is enough: naming a planned agent makes the file its
     result, so a corrupt one reaches load_result and is reported by path
-    instead of disappearing with the stray json.
+    instead of disappearing with the stray json. A file that is one of the
+    pipeline's own documents is excluded either way: it is not an agent's
+    result, and find_result refuses it.
     """
     found = []
     seen = set()
@@ -233,36 +261,14 @@ def discover_results(out_dir, known=None):
                 continue
         elif agent_id not in known:
             continue
+        elif not is_canonical_name(path) and is_pipeline_document(path):
+            # A document named for a planned agent is that document, not the
+            # agent's result. find_result refuses it, so counting it here
+            # would put an agent in the roster that the loader cannot load.
+            continue
         seen.add(agent_id)
         found.append((agent_id, path))
     return found
-
-
-# Top-level keys the pipeline's own documents carry and an agent result
-# never has. The report JSON opens with "report"; the model a baseline is
-# read from carries the rest. A file named for an agent that has one of them
-# is that document, not the agent's result.
-DOCUMENT_KEYS = frozenset({
-    "report", "per_domain_scores", "overall_health", "agent_status",
-})
-
-
-def _is_pipeline_document(path):
-    """True when path holds one of the pipeline's own documents.
-
-    The report JSON and the model a baseline is read from both carry keys an
-    agent result never has. A file named for an agent that is one of them is
-    that document, not the agent's result: reading the report as an agent
-    would put the report's own findings into the report.
-    """
-    try:
-        with open(path, encoding="utf-8-sig") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        return False
-    if not isinstance(data, dict):
-        return False
-    return bool(set(data) & DOCUMENT_KEYS)
 
 
 def find_result(out_dir, agent_id):
@@ -283,7 +289,7 @@ def find_result(out_dir, agent_id):
     for path in _result_paths(out_dir):
         if agent_id_from_name(path) != agent_id:
             continue
-        if is_canonical_name(path) or not _is_pipeline_document(path):
+        if is_canonical_name(path) or not is_pipeline_document(path):
             return path
     return None
 
