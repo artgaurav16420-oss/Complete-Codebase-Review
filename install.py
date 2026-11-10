@@ -23,6 +23,7 @@ import stat
 import sys
 import time
 import platform
+from functools import partial
 from pathlib import Path
 
 
@@ -183,6 +184,12 @@ _CREDENTIAL_STEMS = {
     "env", "envrc", "direnv", "netrc", "npmrc", "pypirc", "htpasswd",
     "credential", "credentials", "git-credentials", "secret", "secrets",
 }
+# The environment-file extension. A deployment secrets file is named
+# after the environment it configures (prod.env, staging.env), and the
+# local override can follow it (prod.env.local). The stem rule above
+# catches the leading-dot forms (.env, .env.local); this catches the
+# ones with a prefix.
+_CREDENTIAL_ENV_WORDS = ("env", "envrc")
 
 
 def _is_credential_name(name):
@@ -202,17 +209,32 @@ def _is_credential_name(name):
     # The word the file is named after: no leading dot, and nothing
     # before the first dot ("credentials.json" -> "credentials").
     stem = lowered.lstrip(".").split(".")[0]
-    return stem in _CREDENTIAL_STEMS
+    if stem in _CREDENTIAL_STEMS:
+        return True
+    # An environment file is named after the environment it configures:
+    # prod.env, staging.env, prod.env.local. The extension is what
+    # marks it, so every dot-separated part is checked. A file called
+    # "env.example.py" is left out as well; shipping a secrets file
+    # costs more than skipping an example.
+    return any(
+        part in _CREDENTIAL_ENV_WORDS for part in lowered.split(".")[1:]
+    )
 
 
-def _ignore_skill_files(path, names):
+def _ignore_skill_files(path, names, dest=None):
     """Filter files to exclude from skill copy based on _SKILL_EXCLUDED.
 
     Links are skipped outright: a copy either dangles (its target was filtered)
     or resolves outside the checkout (a junction on Windows is not a symlink,
     so ``copytree`` follows it). The skill tree needs neither.
+
+    ``dest`` is the directory the copy installs into, and it is left out of
+    the copy. The staging tree is created inside it, so a destination inside
+    the source tree is copied into itself: the copy walks into the
+    destination, finds the staging tree it is building, and copies that too,
+    until the copy fails.
     """
-    return [
+    skipped = [
         n for n in names
         if n in _SKILL_EXCLUDED
         or _is_credential_name(n)
@@ -221,6 +243,26 @@ def _ignore_skill_files(path, names):
         or n.endswith(".egg-info")
         or n == ".coverage"
     ]
+    if dest is None:
+        return skipped
+    try:
+        here = Path(path).resolve(strict=False)
+    except (OSError, RuntimeError):
+        here = None
+    if here is not None and (here == dest or dest in here.parents):
+        # The directory being scanned is the destination, or lives inside
+        # it: nothing in there belongs in the copy.
+        return list(names)
+    for n in names:
+        if n in skipped or n != dest.name:
+            continue
+        try:
+            child = (Path(path) / n).resolve(strict=False)
+        except (OSError, RuntimeError):
+            continue
+        if child == dest:
+            skipped.append(n)
+    return skipped
 
 
 def _read_version():
@@ -490,6 +532,8 @@ def copy_skill(src_dir, dest_dir):
     Raises:
         PermissionError: If the destination is not writable.
         OSError: If the copy operation fails.
+        ValueError: If the destination is a link-like target, or is the
+            source directory itself.
     """
     try:
         if _is_link_like(dest_dir):
@@ -499,6 +543,21 @@ def copy_skill(src_dir, dest_dir):
                 "Refusing to install through a link-like target: "
                 + str(dest_dir)
             )
+        # The staging tree is created inside the destination. A destination
+        # inside the source tree is therefore copied into itself: the copy
+        # walks into the destination, finds the staging tree it is building,
+        # and copies that too, until the copy fails. The destination is left
+        # out of the copy instead, so the install still succeeds.
+        resolved_src = Path(src_dir).resolve(strict=False)
+        resolved_dest = Path(dest_dir).resolve(strict=False)
+        if resolved_dest == resolved_src:
+            raise ValueError(
+                "Refusing to install the skill into its own source directory: "
+                + str(dest_dir)
+            )
+        ignore = None
+        if resolved_dest.is_relative_to(resolved_src):
+            ignore = partial(_ignore_skill_files, dest=resolved_dest)
         if not dest_dir.exists():
             dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -534,7 +593,8 @@ def copy_skill(src_dir, dest_dir):
         swapped = False
         try:
             shutil.copytree(
-                src_dir, staging, ignore=_ignore_skill_files, symlinks=True,
+                src_dir, staging, ignore=ignore or _ignore_skill_files,
+                symlinks=True,
                 copy_function=_copy_with_heartbeat(staging),
             )
             # The copy ends by putting the source directory's own

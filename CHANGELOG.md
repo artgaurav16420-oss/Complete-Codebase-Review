@@ -202,6 +202,14 @@
     `secrets.json` are credential stores and are no longer copied into the installed
     skill tree. Words that merely start like one (`environment.py`, `secretary.md`) are
     still kept.
+  - CodeAnt round 22: the installer's credential filter also covers the environment-file
+    extension wherever it sits in the name: a deployment secrets file is named after the
+    environment it configures (`prod.env`, `staging.env`, `prod.env.local`), and those
+    were copied into every installed skill. The installer also leaves the destination out
+    of the copy when it sits inside the source tree: the staging tree is created inside
+    the destination, so the copy walked into the destination, found the staging tree it
+    was building, and copied that too until the copy failed. Installing the skill into
+    its own source directory is refused instead.
 
 ## v2.4.0 (2026-10-20)
 

@@ -620,6 +620,58 @@ class TestCopySkill(_BaseInstallTest):
             # The skill itself is there.
             self.assertTrue((installed / "SKILL.md").exists())
 
+    def test_does_not_copy_a_deployment_environment_file_into_the_install(self):
+        # A deployment secrets file is named after the environment it
+        # configures (prod.env, staging.env), not after the word "env"
+        # alone, so the extension is what marks it. It must not be
+        # copied into the skill tree.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {
+                "prod.env": "DATABASE_URL=postgres://user:pass@host/db\n",
+                "staging.env": "API_KEY=abc123\n",
+            })
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            installed = dest / "complete-codebase-review"
+            for name in ("prod.env", "staging.env"):
+                self.assertFalse((installed / name).exists())
+            # The skill itself is there.
+            self.assertTrue((installed / "SKILL.md").exists())
+
+    def test_installs_into_a_directory_inside_the_source_tree(self):
+        # The staging tree is created inside the destination, so a
+        # destination inside the source tree is copied into itself: the
+        # copy walks into the destination, finds the staging tree it is
+        # building, and copies that too, until the copy fails. The
+        # destination is left out of the copy instead, so the install
+        # succeeds and carries the source tree without the directory it
+        # installs into.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = src / "out"
+            dest.mkdir()
+            result = self.install.copy_skill(src, dest)
+            self.assertTrue((result / "SKILL.md").exists())
+            self.assertTrue((result / "README.md").exists())
+            # The destination is not part of the copy.
+            self.assertFalse((result / "out").exists())
+            # The source tree is untouched.
+            self.assertTrue((src / "SKILL.md").exists())
+            self.assertTrue((src / "out" / "complete-codebase-review").exists())
+
+    def test_refuses_to_install_into_its_own_source_directory(self):
+        # The source directory is the thing being copied, so installing
+        # into it would replace it with a copy of itself.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            with self.assertRaises(ValueError) as caught:
+                self.install.copy_skill(src, src)
+            self.assertIn("source directory", str(caught.exception))
+            # Nothing was written.
+            self.assertEqual(
+                list(src.glob(self.install.STAGING_PREFIX + "*")), []
+            )
+
     def test_a_concurrent_park_leaves_the_older_backup_alone(self):
         # Two installs overlap. The second one parks the tree the first
         # one just put in place, so the live install is briefly missing.
@@ -627,6 +679,12 @@ class TestCopySkill(_BaseInstallTest):
         # gap: the backup predates the tree the second run parked, and
         # restoring it leaves the stale version installed. The backup
         # stays a leftover for the next run's sweep instead.
+        #
+        # The second run is simulated faithfully: after parking, it
+        # cleans up the way the installer does, so its parked tree goes
+        # back when the live install is missing and is removed when
+        # another install put one in place. The user is left with a
+        # usable install either way.
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
             dest = Path(tmpdir) / "dest"
@@ -638,6 +696,9 @@ class TestCopySkill(_BaseInstallTest):
             )
             real_replace = os.replace
             state = {"parked": False}
+            second_backup = dest / (
+                self.install.PREVIOUS_PREFIX + "second-run"
+            )
 
             def replacing(source, target):
                 if (
@@ -649,12 +710,7 @@ class TestCopySkill(_BaseInstallTest):
                     # and the second run is about to put its own tree
                     # there.
                     real_replace(source, target)
-                    real_replace(
-                        str(skill_dest),
-                        str(dest / (
-                            self.install.PREVIOUS_PREFIX + "second-run"
-                        )),
-                    )
+                    real_replace(str(skill_dest), str(second_backup))
                     state["parked"] = True
                     return
                 return real_replace(source, target)
@@ -663,8 +719,20 @@ class TestCopySkill(_BaseInstallTest):
                 self.install.copy_skill(src, dest)
 
             self.assertTrue(state["parked"])
-            # Nothing was put back over the gap the second install left.
-            self.assertFalse(os.path.lexists(skill_dest))
+            # The second run cleans up the way the installer does: its
+            # parked tree goes back when the live install is missing, and
+            # is removed when another install put one in place.
+            if os.path.lexists(skill_dest):
+                self.install._remove_tree(second_backup)
+            else:
+                real_replace(str(second_backup), str(skill_dest))
+            # The user is left with a usable install, and it is the newer
+            # tree, not the stale backup the first run kept.
+            self.assertTrue(os.path.lexists(skill_dest))
+            self.assertEqual(
+                (skill_dest / "SKILL.md").read_text(encoding="utf-8"),
+                "name: test-skill",
+            )
             # The older backup is still there, as a leftover.
             old_backups = [
                 path for path in dest.glob(self.install.PREVIOUS_PREFIX + "*")
@@ -1513,11 +1581,14 @@ class TestCredentialName(_BaseInstallTest):
         # The extension and local-override variants of the same word.
         ".envrc.local", ".direnv.local", "credentials.yaml", "secrets.json",
         "secret.yml", ".secrets", "netrc", ".env.production.local",
+        # A deployment secrets file is named after its environment.
+        "prod.env", "staging.env", "prod.env.local", "production.envrc",
     )
     NON_MATCHES = (
         ".gitignore", "notes.txt", "README.md",
         # Words that only start like a credential word.
         "environment.py", "secretary.md", "credentialing.md", "envelope.md",
+        "env-config.yaml", "myenv.txt",
     )
 
     def test_credential_names_match(self):
