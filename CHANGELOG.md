@@ -129,6 +129,15 @@
     result. The score validator now rejects a score that is not a number on the 0-10
     scale, which also rejects `nan` and `inf`: `float` reads them and every comparison
     against `nan` is false.
+  - CodeAnt round 13: the `www` prefix in agent text is defanged whatever its case, since
+    GitHub's autolinker matches it case-insensitively; a result file that carries more
+    than the three documented keys is found again, because the loader accepts it, while a
+    file that is one of the pipeline's own documents is still not read as an agent's
+    result; fixture replay no longer loads a file the finder rejected, so the report
+    cannot be replayed as an agent and put its own findings into the next report; and
+    `record` carries the last synthesis signature forward with the re-review count, so a
+    concurrent `record` for the same target cannot make the same review count twice and
+    fire the every-3rd full rescan early.
 
 ## v2.4.0 (2026-10-20)
 

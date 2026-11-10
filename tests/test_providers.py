@@ -319,6 +319,31 @@ class TestResultDiscovery(unittest.TestCase):
         self._write("security.json", {"report": {"findings": []}})
         self.assertIsNone(providers.find_result(self.dir, "security"))
 
+    def test_a_bare_result_with_an_extra_field_is_found(self):
+        # load_result accepts a result that carries more than the three
+        # documented keys, so the finder must not hide it: the agent would
+        # be reported missing while its file sits right there.
+        self._write("security.json", {"findings": [], "note": "extra"})
+        path = providers.find_result(self.dir, "security")
+        self.assertIsNotNone(path)
+        self.assertEqual(
+            providers.load_result(path, "security")["findings"], []
+        )
+
+    def test_a_report_named_after_an_agent_is_not_replayed(self):
+        # The report carries its own findings. Read as an agent result it
+        # would put the report's findings into the next report.
+        self._write("security.json", {
+            "report": {"overall_health": "FAIR"},
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+            }],
+        })
+        provider = providers.RecordedProvider(self.dir)
+        with self.assertRaises(ValueError) as ctx:
+            provider.get("security")
+        self.assertIn("no agent result", str(ctx.exception))
+
     def test_find_result_matches_a_case_varied_prefix(self):
         # Discovery matches phase_ case-insensitively; find_result must not
         # construct a lowercase name that misses the file it just found.
@@ -326,10 +351,18 @@ class TestResultDiscovery(unittest.TestCase):
         self.assertEqual(providers.find_result(self.dir, "security").name,
                          "PHASE_security.json")
 
-    def test_find_result_skips_what_discovery_skips(self):
+    def test_find_result_names_what_discovery_skips(self):
+        # Discovery infers agent ids from the shape of a file, so a stray
+        # json never becomes an agent. The finder answers a different
+        # question: the caller named the agent, so the file named after it
+        # is that agent's result and the loader says what is wrong with it.
         self._write("security.json", {"note": "not a result"})
-        self.assertIsNone(providers.find_result(self.dir, "security"))
         self.assertEqual(providers.discover_results(self.dir), [])
+        path = providers.find_result(self.dir, "security")
+        self.assertIsNotNone(path)
+        with self.assertRaises(ValueError) as ctx:
+            providers.load_result(path, "security")
+        self.assertIn("missing findings list", str(ctx.exception))
         self._write("security.json", {"findings": []})
         self.assertEqual(providers.find_result(self.dir, "security").name,
                          "security.json")

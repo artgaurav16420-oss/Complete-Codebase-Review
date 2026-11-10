@@ -227,6 +227,21 @@ class TestMarkdown(unittest.TestCase):
         self.assertNotIn("www.example", row)
         self.assertIn("example.invalid", row)
 
+    def test_bare_hosts_are_not_autolinked_in_any_case(self):
+        # GitHub's autolinker matches the www prefix case-insensitively, so
+        # "WWW.example" is a live link too and must be defanged the same way.
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] — see WWW.example.invalid now → payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        self.assertNotIn("WWW.example", row)
+        self.assertIn("example.invalid", row)
+
     def test_bare_addresses_are_not_autolinked(self):
         # GitHub links a plain address in plain text too, as a mailto:
         # destination, so the cell must defang the sign as well.

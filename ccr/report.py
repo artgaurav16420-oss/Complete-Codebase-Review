@@ -50,6 +50,10 @@ def fmt_hours_long(value):
 # dotted domain.
 _EMAIL_RE = re.compile(r"(?<=[\w.+-])@(?=[\w-]+(?:\.[\w-]+)+)")
 
+# A bare host. The autolinker matches the prefix case-insensitively, so
+# "WWW.example" is a link too.
+_WWW_RE = re.compile(r"www\.", re.IGNORECASE)
+
 
 def _defang_urls(text):
     """Break GitHub's plain-text autolinks without changing what is read.
@@ -61,7 +65,10 @@ def _defang_urls(text):
     the same way, as a ``mailto:`` destination, so its ``@`` becomes an
     entity: the renderer shows the sign and the autolinker does not see one.
     """
-    defanged = text.replace("://", "\\://").replace("www.", "www\\.")
+    defanged = text.replace("://", "\\://")
+    # The backslash goes before the dot, and the spelling of the prefix is
+    # kept: the renderer shows the text as written.
+    defanged = _WWW_RE.sub(lambda m: m.group(0)[:-1] + "\\.", defanged)
     return _EMAIL_RE.sub("&#64;", defanged)
 
 

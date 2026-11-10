@@ -310,6 +310,14 @@ def _record_locked(args, data, plan, cache, state_path):
         current.data["re_review_count"] = int(
             previous.get("re_review_count") or 0
         )
+        # The signature names the payload of the last synthesis for this
+        # target, so it moves with the count. Without it the fresh state has
+        # no signature to compare against, and a synthesis that reuses the
+        # same results looks like a new review: the same review is counted
+        # twice and the full rescan fires early.
+        signature = previous.get("last_synth_signature")
+        if isinstance(signature, str) and signature:
+            current.data["last_synth_signature"] = signature
     current.data["effort"] = args.effort
     current.data["skill_dir"] = args.skill_dir
     current.data["facts"] = plan["facts"]

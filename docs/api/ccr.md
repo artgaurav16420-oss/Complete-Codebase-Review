@@ -189,13 +189,14 @@ All return values are plain dicts/lists unless stated otherwise.
 | `is_canonical_name` | `is_canonical_name(filename)` | `bool`; the name carries the `phase_` prefix, matched case-insensitively |
 | `agent_id_from_name` | `agent_id_from_name(filename)` | Agent id encoded in a result file name, or `None` |
 | `discover_results` | `discover_results(out_dir, known=None)` | `(agent_id, Path)` pairs; one definition of "a result file", shared by fixture replay, synthesis and state resume; the suffix is matched case-insensitively; with `known` (the manifest's id set) the name decides, so a corrupt result is reported by path instead of being skipped |
-| `find_result` | `find_result(out_dir, agent_id)` | `Path` or `None`; canonical name wins over the bare fixture layout; a file named for the agent is its result whatever it holds, unless it parses as another document the pipeline wrote (a report or a baseline) |
-| `RESULT_KEYS` | `frozenset({'agent', 'score', 'findings'})` | Top-level keys a bare-layout result may carry; anything else is a report or another document |
+| `find_result` | `find_result(out_dir, agent_id)` | `Path` or `None`; canonical name wins over the bare fixture layout; a file named for the agent is its result whatever it holds, unless it is one of the pipeline's own documents (the report or the model a baseline is read from) |
+| `RESULT_KEYS` | `frozenset({'agent', 'score', 'findings'})` | Top-level keys an agent result carries; a result may carry more, and the loader accepts them |
+| `DOCUMENT_KEYS` | `frozenset({'report', 'per_domain_scores', 'overall_health', 'agent_status'})` | Top-level keys the pipeline's own documents carry and an agent result never has |
 | `write_prompts` | `write_prompts(manifest, plan, out_dir, skill_dir='')` | Written paths |
 | `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |
 | `load_results` | `load_results(out_dir, agent_ids, required=True)` | `{agent_id: result}`; `phase_<id>.json` wins over `<id>.json` |
 | `RecordedProvider` | `RecordedProvider(fixtures_dir)` | Class holding the fixture dir; `agent_ids()` lists ids for `ccr eval` |
-| `RecordedProvider.get` | `provider.get(agent_id)` | Validated result dict; `phase_<id>.json` wins over `<id>.json`, raises `ValueError` when malformed |
+| `RecordedProvider.get` | `provider.get(agent_id)` | Validated result dict; `phase_<id>.json` wins over `<id>.json`, raises `ValueError` when the file is malformed or is one of the pipeline's own documents |
 
 ### `ccr.pipeline`
 

@@ -850,6 +850,24 @@ class TestPersistReviewCounter(unittest.TestCase):
         data = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.assertNotIn("last_synth_signature", data)
 
+    def test_a_concurrent_record_does_not_count_the_same_review_twice(self):
+        # A `record` for the same target creates a new state. The signature
+        # names the payload of the last synthesis for that target, so it
+        # moves with the count: a synthesis already in flight is the same
+        # review, and the every-3rd full rescan must not fire early.
+        data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        data["last_synth_signature"] = "sig-a"
+        self.state_path.write_text(json.dumps(data), encoding="utf-8")
+        cached = cli.state.State.load(self.state_path)
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.dir),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        saved = cli._persist_review_counter(cached, "sig-a", str(TARGET))
+        self.assertTrue(saved)
+        self.assertEqual(self._count(), 2)
+
     def test_lock_held_elsewhere_leaves_the_counter_unchanged(self):
         # A second run in the same cache: skipping one count only delays a
         # full rescan, while an unlocked update could lose both increments.

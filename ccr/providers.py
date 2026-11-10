@@ -238,14 +238,22 @@ def discover_results(out_dir, known=None):
     return found
 
 
-def _is_foreign_document(path):
-    """True when path holds a document this pipeline did not write.
+# Top-level keys the pipeline's own documents carry and an agent result
+# never has. The report JSON opens with "report"; the model a baseline is
+# read from carries the rest. A file named for an agent that has one of them
+# is that document, not the agent's result.
+DOCUMENT_KEYS = frozenset({
+    "report", "per_domain_scores", "overall_health", "agent_status",
+})
 
-    The synthesis report and a baseline both carry keys an agent result never
-    has. A file named for an agent that parses as one of those is that
-    document, not a broken result, so the loader must not read it as the
-    agent's. A file that does not parse, or that parses as something else,
-    is a broken result: the loader names it instead of dropping it.
+
+def _is_pipeline_document(path):
+    """True when path holds one of the pipeline's own documents.
+
+    The report JSON and the model a baseline is read from both carry keys an
+    agent result never has. A file named for an agent that is one of them is
+    that document, not the agent's result: reading the report as an agent
+    would put the report's own findings into the report.
     """
     try:
         with open(path, encoding="utf-8-sig") as f:
@@ -254,7 +262,7 @@ def _is_foreign_document(path):
         return False
     if not isinstance(data, dict):
         return False
-    return bool(set(data) - RESULT_KEYS)
+    return bool(set(data) & DOCUMENT_KEYS)
 
 
 def find_result(out_dir, agent_id):
@@ -266,16 +274,16 @@ def find_result(out_dir, agent_id):
     because the prefix is matched case-insensitively, and a case-sensitive
     filesystem would otherwise hide the very file discovery found.
 
-    A file named for the agent is that agent's result, whatever it holds: a
-    broken one is named by the loader instead of disappearing with the stray
-    json. The exception is a file that parses as another document the
-    pipeline wrote, such as the synthesis report: reading that as an agent
-    would put the wrong findings in the report.
+    A file named for the agent is that agent's result, whatever it holds: the
+    loader judges the content and names a broken file by path. The exception
+    is a file that is one of the pipeline's own documents, such as the
+    synthesis report: reading that as an agent would put the report's own
+    findings into the report.
     """
     for path in _result_paths(out_dir):
         if agent_id_from_name(path) != agent_id:
             continue
-        if is_canonical_name(path) or not _is_foreign_document(path):
+        if is_canonical_name(path) or not _is_pipeline_document(path):
             return path
     return None
 
@@ -380,5 +388,10 @@ class RecordedProvider:
         """Return the recorded result for an agent."""
         path = find_result(self.dir, agent_id)
         if path is None:
-            path = self.dir / (agent_id + RESULT_SUFFIX)
+            # The finder is the one place that decides what an agent's file
+            # is. Loading the bare name here anyway would read a file the
+            # finder rejected, such as the report, as the agent's result.
+            raise ValueError(
+                "no agent result for " + agent_id + " in " + str(self.dir)
+            )
         return load_result(path, agent_id)
