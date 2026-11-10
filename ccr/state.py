@@ -284,11 +284,14 @@ class StateLock:
     them apart:
 
     * ``held`` — the lock is taken and the section is protected.
-    * ``unavailable`` — there is no lock to take: the build has no locking
-      primitive, or the lock file cannot be opened. Nobody is holding the
-      lock, but nothing can coordinate through it either.
-    * neither — another run holds the lock. The caller must not work in the
-      section, because the other run is changing what the section reads.
+    * ``unavailable`` — no run can hold a lock here: the build has no
+      locking primitive, so every run reports the same. A reader may
+      proceed, because nothing can be changing the cache underneath it;
+      a writer may not, because it would write what it cannot protect.
+    * neither — the lock could not be taken: another run holds it, or the
+      lock file could not be opened. The caller must not work in the
+      section, because it cannot tell which is true and the other run may
+      be changing what the section reads.
 
     A caller that cannot tell the last two apart cannot decide whether it
     may continue, so the flag exists rather than a single "not held".
@@ -306,19 +309,18 @@ class StateLock:
     def __enter__(self):
         if _msvcrt is None and _fcntl is None:
             # Nothing to take a lock with on this build. Report it
-            # unavailable instead of claiming one: the callers skip the
-            # read-modify-write they would otherwise race rather than trust
-            # an empty promise.
+            # unavailable: no run can hold one either, so a reader may work
+            # without it while a writer may not.
             self.unavailable = True
             return self
         deadline = time.monotonic() + self.wait
         while True:
             handle = self._open()
             if handle is None:
-                # The lock file cannot be opened, so there is no lock to
-                # coordinate through. Say so: the caller decides whether it
-                # can work without one.
-                self.unavailable = True
+                # The lock file cannot be opened, so no lock was claimed.
+                # Do not call it unavailable: another run may be holding
+                # one, and a reader that proceeds on that guess reads a
+                # cache that is being changed underneath it.
                 return self
             if self._claim(handle):
                 self._handle = handle

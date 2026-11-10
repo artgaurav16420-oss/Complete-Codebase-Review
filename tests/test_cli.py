@@ -116,7 +116,7 @@ class TestRecordCommand(unittest.TestCase):
                     "--agents", "security",
                 ])
             self.assertEqual(code, 2)
-            self.assertIn("another ccr run holds", output)
+            self.assertIn("could not take the lock", output)
             self.assertFalse((Path(tmp) / "ccr-state.json").exists())
 
     def test_record_refuses_a_cache_it_cannot_lock(self):

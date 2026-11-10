@@ -168,6 +168,15 @@
     `<cache>/phase_<id>.json` and the cache scan lists the cache root only, so such an id
     named a file the scan never sees. The `sanitize_unicode` docstring now says that
     newline, carriage return and tab survive.
+  - CodeAnt round 17: an agent id is now checked against the characters a file name
+    cannot carry, so an id Windows rejects (`?`, `:`, `*`, `|`, `"`) is refused at load
+    instead of failing when `record` writes the prompt. A lock file that cannot be
+    opened is no longer reported as "no lock is available": another run may be holding
+    one, so `synthesize` refuses instead of reading a cache that is being changed
+    underneath it, and only a build with no locking primitive at all — where no run can
+    hold a lock — lets a reader continue. `record` no longer archives a pipeline
+    document saved under the canonical name: the rule that decides what is a result now
+    applies to every name, as it already did for discovery and the loader.
 
 ## v2.4.0 (2026-10-20)
 

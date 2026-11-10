@@ -152,9 +152,15 @@ def _stale_results(root, agent_ids):
         # also relocate a link whose target belongs to someone else.
         if _is_link_like(path) or not path.is_file():
             continue
+        # One rule for every name: the pipeline's own documents are not
+        # results, whatever they are called. A report saved as
+        # phase_<id>.json is that report, and the loader refuses it, so it
+        # stays in the cache where the user put it.
+        if providers.is_pipeline_document(path):
+            continue
         if providers.is_canonical_name(path):
             stale.append(path)
-        elif path.stem in planned and not providers.is_pipeline_document(path):
+        elif path.stem in planned:
             stale.append(path)
     return stale
 
@@ -279,12 +285,13 @@ def cmd_record(args):
         if not lock.held:
             if lock.unavailable:
                 print(
-                    "[ERROR] no lock is available for " + str(state_path)
-                    + "; refusing to write the cache without one",
+                    "[ERROR] no lock is available on this build; "
+                    "refusing to write the cache without one",
                 )
             else:
                 print(
-                    "[ERROR] another ccr run holds " + str(state_path),
+                    "[ERROR] could not take the lock on " + str(state_path)
+                    + "; another run may hold it",
                 )
             return 2
         return _record_locked(args, data, plan, cache, state_path)
@@ -499,8 +506,8 @@ def _persist_review_counter(cached, signature, target):
             # over the file.
             if lock.unavailable:
                 print(
-                    "[WARN] no lock is available for "
-                    + str(cached.path) + "; re-review counter unchanged",
+                    "[WARN] no lock is available on this build; "
+                    "re-review counter unchanged",
                     file=sys.stderr,
                 )
             else:
@@ -638,6 +645,12 @@ def _warn_rejected(rejected):
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
+    cache = Path(args.cache)
+    if not cache.is_dir():
+        # There is no cache to lock and nothing to read. Say so plainly
+        # instead of reporting a lock that could not be taken.
+        print("[ERROR] no agent results found in " + args.cache)
+        return 2
     # The roster and the results are read under the same lock record takes
     # while it archives the previous run's results. Without it a concurrent
     # record can move a result between the scan and the load, and the report
@@ -645,27 +658,26 @@ def cmd_synthesize(args):
     # the lock for the same reason: the roster it names is what the lock
     # protects, and a roster read before it can be replaced by a concurrent
     # record.
-    state_path = Path(args.cache) / "ccr-state.json"
+    state_path = cache / "ccr-state.json"
     with state.StateLock(state_path) as lock:
         if not lock.held:
             if lock.unavailable:
-                # There is no lock to coordinate through: the lock file
-                # cannot be opened, or the build has no locking primitive.
-                # Record refuses to write the cache without one, so nothing
-                # can be moving the results underneath this run.
+                # No run can hold a lock on this build, so nothing can be
+                # moving the results underneath this run.
                 print(
-                    "[WARN] no lock is available for " + str(state_path)
-                    + "; continuing without one",
+                    "[WARN] no lock is available on this build; "
+                    "continuing without one",
                     file=sys.stderr,
                 )
             else:
-                # Another run holds the lock, so the roster and the results
-                # are being changed underneath this run. A report built from
-                # a roster that no longer matches the cache would go out
-                # without a domain, so refuse instead of emitting it.
+                # The lock could not be taken: another run holds it, or the
+                # lock file could not be opened and it may still be held.
+                # The roster and the results are being changed underneath
+                # this run, so a report built here could go out without a
+                # domain. Refuse instead of emitting it.
                 print(
-                    "[ERROR] another ccr run holds " + str(state_path)
-                    + "; refusing to read a roster that may be changing",
+                    "[ERROR] could not take the lock on " + str(state_path)
+                    + "; another run may hold it",
                     file=sys.stderr,
                 )
                 return 2

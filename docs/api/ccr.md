@@ -76,24 +76,26 @@ to the state file), and `--allow-partial` to emit a report below the gate.
 Exit codes: `0` success; `1` completion gate, a `validate-results`
 malformed-findings threshold breach, or eval miss; `2` usage, manifest,
 invalid state, unreadable or missing results, malformed agent JSON, a
-`synthesize` malformed-findings threshold breach, baseline, or cache/report
-write error.
+`synthesize` malformed-findings threshold breach, baseline, cache/report
+write error, or a cache lock the run cannot take.
 
 `record` and `synthesize` coordinate through `ccr-state.json.lock` in the
 cache: `record` holds it while it archives the previous run's results, and
 `synthesize` holds it while it reads the roster and loads the results, so a
 concurrent `record` cannot move a result out from under a report in flight.
-The wait is bounded, and the two commands report a lock they cannot take
-differently:
+The wait is bounded, and a run that cannot take the lock says why:
 
-- another run holds the lock: `synthesize` exits with status 2 rather than
-  read a roster that may be changing, and `record` exits with status 2
-  because it would write the cache over the other run's work;
-- no lock is available at all (the lock file cannot be opened, or the build
-  has no locking primitive): `synthesize` warns and continues, because
-  `record` refuses to write the cache without a lock and so nothing can be
-  moving the results underneath it, while `record` exits with status 2
-  because it would write the cache without the lock that protects it.
+| The lock | `record` | `synthesize` |
+|----------|----------|--------------|
+| taken | writes the cache | reads the cache |
+| held by another run | exit 2 | exit 2 |
+| the lock file cannot be opened | exit 2 | exit 2 |
+| no locking primitive on this build | exit 2 | warns and continues |
+
+The last row is safe for a reader because no run on such a build can hold a
+lock, so nothing can be moving the results underneath it. A writer refuses
+in every case it cannot hold the lock, because it would write the cache
+over a run it cannot see.
 
 ## Benchmarks
 
@@ -133,10 +135,11 @@ All return values are plain dicts/lists unless stated otherwise.
 | `env_var_names` | `env_var_names(manifest)` | List of env-var names |
 | `floor_for` | `floor_for(manifest, key)` | Float hours; defaults to `1.0` when no floor is defined |
 
-An agent id is also a file-name component: the result is
-`<cache>/phase_<id>.json`, and the cache scan lists the cache root only. An
-id with a path separator would name a file the scan never sees, so
-`validate` rejects one.
+An agent id is also a file name: the prompt is `phase_<id>.prompt.md` and
+the result is `phase_<id>.json`, both in the cache root the scan lists. An
+id with a path separator would name a file the scan never sees, and an id
+with a character the platform rejects in a file name would fail when the
+run writes the prompt, so `validate` rejects both.
 
 ### `ccr.discovery`
 
@@ -167,7 +170,7 @@ id with a path separator would name a file the scan never sees, so
 | `State.record_agent` | `state.record_agent(agent_id, status='completed')` | `None` |
 | `State.completion_ratio` | `state.completion_ratio()` | Float completed / planned |
 | `State.threshold_passed` | `state.threshold_passed(manifest)` | `bool`; enforces the 75%/66% completion gate |
-| `StateLock` | `StateLock(path)` | Context manager; exclusive OS lock (`fcntl`/`msvcrt`) around a state read-modify-write; the kernel drops it on exit, the lock file stays. `lock.held` says the section is protected, `lock.unavailable` says there is no lock to take (no locking primitive, or the lock file cannot be opened); neither means another run holds it |
+| `StateLock` | `StateLock(path)` | Context manager; exclusive OS lock (`fcntl`/`msvcrt`) around a state read-modify-write; the kernel drops it on exit, the lock file stays. `lock.held` says the section is protected; `lock.unavailable` says no run on this build can hold a lock (no locking primitive); neither means the lock could not be taken and the caller must refuse |
 
 ### `ccr.findings`
 

@@ -332,9 +332,10 @@ class TestStateLock(unittest.TestCase):
         missing = Path(self.tmp.name) / "absent" / "ccr-state.json"
         with state.StateLock(missing, wait=0.05) as lock:
             self.assertFalse(lock.held)
-            # The lock file cannot be opened, so there is no lock to take:
-            # the caller decides whether it can work without one.
-            self.assertTrue(lock.unavailable)
+            # The lock file cannot be opened, so no lock was claimed. That is
+            # not the same as "no run can hold a lock": another run may be
+            # holding one, so the caller must refuse the section.
+            self.assertFalse(lock.unavailable)
 
     def test_no_locking_primitive_reports_the_lock_unheld(self):
         # Claiming a lock that was never taken would let record and the

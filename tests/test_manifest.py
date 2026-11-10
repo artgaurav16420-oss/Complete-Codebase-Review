@@ -146,7 +146,27 @@ class TestManifestValidation(unittest.TestCase):
             ]
             with self.assertRaises(ValueError) as ctx:
                 manifest_mod.validate(data)
-            self.assertIn("path separator", str(ctx.exception))
+            self.assertIn("valid file name", str(ctx.exception))
+
+    def test_agent_id_may_not_contain_a_character_windows_rejects(self):
+        # The prompt and the result are file names, and Windows rejects
+        # these characters in one. An id carrying one passes validation on
+        # Linux and fails when record writes the prompt on Windows.
+        for agent_id in ("why?", "a:b", "star*", "pipe|", "quote\""):
+            data = self._broken()
+            old = data["agents"][0]["id"]
+            data["agents"][0]["id"] = agent_id
+            data["base_agents"] = [
+                agent_id if item == old else item
+                for item in data["base_agents"]
+            ]
+            data["thresholds"]["quick_agents"] = [
+                agent_id if item == old else item
+                for item in data["thresholds"]["quick_agents"]
+            ]
+            with self.assertRaises(ValueError) as ctx:
+                manifest_mod.validate(data)
+            self.assertIn("valid file name", str(ctx.exception))
 
     def test_explicit_null_security_agent_is_rejected(self):
         # A null id says "no agent", not "the default": it would point the

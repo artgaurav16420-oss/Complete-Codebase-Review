@@ -344,6 +344,23 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(list(outside.rglob("*.json")), [])
         self.assertTrue((self.cache / "phase_security.json").exists())
 
+    def test_a_report_named_after_a_canonical_result_is_not_archived(self):
+        # The report written under the canonical name is the pipeline's own
+        # document, not that agent's result: find_result refuses it and
+        # synthesis never reads it, so record must leave it in the cache.
+        document = self.cache / "phase_security.json"
+        document.write_text(json.dumps({
+            "report": {"overall_health": "FAIR"},
+            "findings": [],
+        }), encoding="utf-8")
+        code, out, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0, out)
+        self.assertTrue(document.exists())
+        self.assertFalse((self.cache / "previous-results").exists())
+
     def test_bare_agent_result_is_archived(self):
         result = self.cache / "security.json"
         result.write_text('{"agent": "security", "findings": []}',
@@ -516,7 +533,29 @@ class TestCliSynthesizeOptions(unittest.TestCase):
                     "--format", "json", "--out", str(self.dir / "report"),
                 ])
         self.assertEqual(code, 2, out)
-        self.assertIn("another ccr run holds", err)
+        self.assertIn("could not take the lock", err)
+        self.assertFalse((self.dir / "report.json").exists())
+
+    def test_synthesize_refuses_when_the_lock_file_cannot_be_opened(self):
+        # A lock file that cannot be opened may still be held by another
+        # run, so a reader must not proceed on the assumption that nobody
+        # holds it: the results could be archived underneath it.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        with mock.patch.object(cli.state.StateLock, "_open", return_value=None):
+            code, out, err = run([
+                "synthesize", "--in", str(cache), "--agents", "security",
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 2, out)
+        self.assertIn("could not take the lock", err)
         self.assertFalse((self.dir / "report.json").exists())
 
     def test_synthesize_continues_when_no_lock_is_available(self):

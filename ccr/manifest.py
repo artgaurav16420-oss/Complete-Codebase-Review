@@ -19,6 +19,12 @@ REQUIRED_KEYS = [
     "health", "thresholds", "tech_debt_floors",
 ]
 
+# The characters Windows rejects in a file name. An agent id becomes one
+# (phase_<id>.json), so an id carrying one of them passes validation on
+# Linux and fails when the run writes the prompt on Windows. The id must
+# be a file name everywhere the tool runs.
+INVALID_ID_CHARS = '<>:"/\\|?*'
+
 
 def apply_settings(data):
     """Point the engine's process-wide settings at one manifest.
@@ -87,14 +93,22 @@ def _validate_agents(data):
                 "agent id must not start with the reserved prefix "
                 + prefix + ": " + agent["id"]
             )
-        # An id is also a path component: the result is <cache>/phase_<id>.json
-        # and the cache scan lists the cache root only. A separator would name
-        # a file in a subdirectory the scan never sees, so the agent's result
-        # could never be found, and a ".." in the id could name a file outside
-        # the cache. The id must be one file name.
-        if "/" in agent["id"] or "\\" in agent["id"]:
+        # An id is also a file name: the prompt is phase_<id>.prompt.md and
+        # the result is phase_<id>.json, both in the cache root the scan
+        # lists. A separator would name a file in a subdirectory the scan
+        # never sees, and a character the platform rejects in a file name
+        # would pass here and fail when record writes the prompt. The id
+        # must be a file name on every platform the tool runs on, so the
+        # invalid set is the union of what they reject.
+        invalid = [
+            char for char in agent["id"]
+            if char in INVALID_ID_CHARS or ord(char) < 32
+        ]
+        if invalid:
             raise ValueError(
-                "agent id must not contain a path separator: " + agent["id"]
+                "agent id must be a valid file name, without "
+                + INVALID_ID_CHARS + " or control characters: "
+                + agent["id"]
             )
         agent_ids.append(agent["id"])
     if len(agent_ids) != len(set(agent_ids)):
