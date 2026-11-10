@@ -101,6 +101,7 @@ class TestRecordCommand(unittest.TestCase):
         # a synthesize holds the lock would overwrite anything it crediting.
         class Unheld(object):
             held = False
+            unavailable = False
 
             def __enter__(self):
                 return self
@@ -116,6 +117,29 @@ class TestRecordCommand(unittest.TestCase):
                 ])
             self.assertEqual(code, 2)
             self.assertIn("another ccr run holds", output)
+            self.assertFalse((Path(tmp) / "ccr-state.json").exists())
+
+    def test_record_refuses_a_cache_it_cannot_lock(self):
+        # There is no lock to take, so there is no lock protecting the state
+        # file the run is about to rewrite. Refuse rather than write it.
+        class Unavailable(object):
+            held = False
+            unavailable = True
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(cli.state, "StateLock", lambda path: Unavailable()):
+                code, output = run_cli([
+                    "record", "--target", str(DUMMY), "--out", tmp,
+                    "--agents", "security",
+                ])
+            self.assertEqual(code, 2)
+            self.assertIn("no lock is available", output)
             self.assertFalse((Path(tmp) / "ccr-state.json").exists())
 
     def test_record_reuses_state(self):

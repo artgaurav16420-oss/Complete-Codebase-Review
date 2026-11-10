@@ -280,28 +280,45 @@ class StateLock:
     itself: two contenders judge the same file stale, one replaces it, and the
     other then removes the replacement, so both enter the protected section.
 
-    The wait is bounded. If the lock cannot be taken the caller sees ``held``
-    false instead of blocking forever, because a report that is already out
-    must not fail over a counter. The lock file itself is never deleted:
-    removing a locked file is exactly what splits one lock into two.
+    The wait is bounded. Three outcomes are reported, and the caller tells
+    them apart:
+
+    * ``held`` — the lock is taken and the section is protected.
+    * ``unavailable`` — there is no lock to take: the build has no locking
+      primitive, or the lock file cannot be opened. Nobody is holding the
+      lock, but nothing can coordinate through it either.
+    * neither — another run holds the lock. The caller must not work in the
+      section, because the other run is changing what the section reads.
+
+    A caller that cannot tell the last two apart cannot decide whether it
+    may continue, so the flag exists rather than a single "not held".
+    The lock file itself is never deleted: removing a locked file is exactly
+    what splits one lock into two.
     """
 
     def __init__(self, path, wait=LOCK_WAIT_SEC):
         self.path = Path(str(path) + LOCK_SUFFIX)
         self.wait = wait
         self.held = False
+        self.unavailable = False
         self._handle = None
 
     def __enter__(self):
         if _msvcrt is None and _fcntl is None:
-            # Nothing to take a lock with on this build. Report it unheld
-            # instead of claiming one: the callers skip the read-modify-write
-            # they would otherwise race rather than trust an empty promise.
+            # Nothing to take a lock with on this build. Report it
+            # unavailable instead of claiming one: the callers skip the
+            # read-modify-write they would otherwise race rather than trust
+            # an empty promise.
+            self.unavailable = True
             return self
         deadline = time.monotonic() + self.wait
         while True:
             handle = self._open()
             if handle is None:
+                # The lock file cannot be opened, so there is no lock to
+                # coordinate through. Say so: the caller decides whether it
+                # can work without one.
+                self.unavailable = True
                 return self
             if self._claim(handle):
                 self._handle = handle

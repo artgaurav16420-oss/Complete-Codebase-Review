@@ -277,9 +277,15 @@ def cmd_record(args):
     # Without it a credit written in between is silently overwritten.
     with state.StateLock(state_path) as lock:
         if not lock.held:
-            print(
-                "[ERROR] another ccr run holds " + str(state_path),
-            )
+            if lock.unavailable:
+                print(
+                    "[ERROR] no lock is available for " + str(state_path)
+                    + "; refusing to write the cache without one",
+                )
+            else:
+                print(
+                    "[ERROR] another ccr run holds " + str(state_path),
+                )
             return 2
         return _record_locked(args, data, plan, cache, state_path)
 
@@ -487,14 +493,22 @@ def _persist_review_counter(cached, signature, target):
     """
     with state.StateLock(cached.path) as lock:
         if not lock.held:
-            # Another run holds it. Skipping costs one count, which only
-            # delays a full rescan; updating unlocked could lose both
-            # increments and leave the two runs fighting over the file.
-            print(
-                "[WARN] state file is locked by another run; "
-                "re-review counter unchanged",
-                file=sys.stderr,
-            )
+            # Another run holds it, or no lock is available. Skipping costs
+            # one count, which only delays a full rescan; updating unlocked
+            # could lose both increments and leave the two runs fighting
+            # over the file.
+            if lock.unavailable:
+                print(
+                    "[WARN] no lock is available for "
+                    + str(cached.path) + "; re-review counter unchanged",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "[WARN] state file is locked by another run; "
+                    "re-review counter unchanged",
+                    file=sys.stderr,
+                )
             return False
         return _credit_review(cached.path, signature, target)
 
@@ -624,23 +638,42 @@ def _warn_rejected(rejected):
 def cmd_synthesize(args):
     """Merge agent results into a report, enforcing the completion gate."""
     data = _manifest()
-    try:
-        cached = _cache_state(args.cache)
-    except (OSError, ValueError) as exc:
-        print(f"[ERROR] invalid state in {args.cache}: {exc}")
-        return 2
     # The roster and the results are read under the same lock record takes
     # while it archives the previous run's results. Without it a concurrent
     # record can move a result between the scan and the load, and the report
-    # goes out without the domain that file held.
+    # goes out without the domain that file held. The state is read inside
+    # the lock for the same reason: the roster it names is what the lock
+    # protects, and a roster read before it can be replaced by a concurrent
+    # record.
     state_path = Path(args.cache) / "ccr-state.json"
     with state.StateLock(state_path) as lock:
         if not lock.held:
-            print(
-                "[WARN] could not lock " + str(state_path)
-                + "; another run may be changing the cache",
-                file=sys.stderr,
-            )
+            if lock.unavailable:
+                # There is no lock to coordinate through: the lock file
+                # cannot be opened, or the build has no locking primitive.
+                # Record refuses to write the cache without one, so nothing
+                # can be moving the results underneath this run.
+                print(
+                    "[WARN] no lock is available for " + str(state_path)
+                    + "; continuing without one",
+                    file=sys.stderr,
+                )
+            else:
+                # Another run holds the lock, so the roster and the results
+                # are being changed underneath this run. A report built from
+                # a roster that no longer matches the cache would go out
+                # without a domain, so refuse instead of emitting it.
+                print(
+                    "[ERROR] another ccr run holds " + str(state_path)
+                    + "; refusing to read a roster that may be changing",
+                    file=sys.stderr,
+                )
+                return 2
+        try:
+            cached = _cache_state(args.cache)
+        except (OSError, ValueError) as exc:
+            print(f"[ERROR] invalid state in {args.cache}: {exc}")
+            return 2
         try:
             planned = _resolve_planned(
                 args, cached, manifest=data,

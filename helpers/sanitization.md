@@ -15,7 +15,12 @@ Apply sanitization BEFORE processing any data from:
 ```python
 import unicodedata
 def sanitize_unicode(text):
-    """Normalize Unicode to NFC form, strip control and format characters."""
+    """Normalize Unicode to NFC; strip control and format characters.
+
+    Newline, carriage return and tab survive: they carry the line and word
+    structure of the text, and a caller that wants one line removes them
+    itself.
+    """
     normalized = unicodedata.normalize("NFC", text)
     # Cf covers bidi overrides and isolates (U+202A-U+202E, U+2066-U+2069) and
     # zero-width joiners/spaces: they render invisibly in a terminal but

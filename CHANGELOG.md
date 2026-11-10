@@ -157,6 +157,17 @@
     it: the count is the cache's own history, not a fact about the codebase, and left at
     zero it never reached the every-3rd full rescan. The score validator now rejects a
     score table with no separator and one with no rows, which checked no score at all.
+  - CodeAnt round 16: `synthesize` no longer warns and continues when another run holds
+    the cache lock: the roster and the results are being changed underneath it, so a
+    report built there could go out without a domain, and the run now exits with status 2
+    instead. A lock that cannot be taken at all (the lock file cannot be opened, or the
+    build has no locking primitive) is a different case, and `StateLock` now says so:
+    `record` refuses to write the cache without a lock, so `synthesize` may continue when
+    there is none. The state file is read inside the lock, so the roster it names is the
+    one the lock protects. An agent id with a path separator is rejected: the result is
+    `<cache>/phase_<id>.json` and the cache scan lists the cache root only, so such an id
+    named a file the scan never sees. The `sanitize_unicode` docstring now says that
+    newline, carriage return and tab survive.
 
 ## v2.4.0 (2026-10-20)
 

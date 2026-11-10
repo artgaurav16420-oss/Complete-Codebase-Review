@@ -314,6 +314,9 @@ class TestStateLock(unittest.TestCase):
         with state.StateLock(self.path):
             with state.StateLock(self.path, wait=0.05) as second:
                 self.assertFalse(second.held)
+                # Another run holds it, which is not the same as there being
+                # no lock to take: the caller must refuse the section.
+                self.assertFalse(second.unavailable)
 
     def test_an_abandoned_lock_file_does_not_block(self):
         # A crashed holder leaves the file but no OS lock behind, so the next
@@ -329,6 +332,9 @@ class TestStateLock(unittest.TestCase):
         missing = Path(self.tmp.name) / "absent" / "ccr-state.json"
         with state.StateLock(missing, wait=0.05) as lock:
             self.assertFalse(lock.held)
+            # The lock file cannot be opened, so there is no lock to take:
+            # the caller decides whether it can work without one.
+            self.assertTrue(lock.unavailable)
 
     def test_no_locking_primitive_reports_the_lock_unheld(self):
         # Claiming a lock that was never taken would let record and the
@@ -339,6 +345,9 @@ class TestStateLock(unittest.TestCase):
              patch.object(state, "_fcntl", None):
             with state.StateLock(self.path) as lock:
                 self.assertFalse(lock.held)
+                # There is no locking primitive, so there is no lock to take:
+                # that is different from another run holding one.
+                self.assertTrue(lock.unavailable)
         self.assertLess(time.monotonic() - started, 1.0)
 
 

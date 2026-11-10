@@ -83,8 +83,17 @@ write error.
 cache: `record` holds it while it archives the previous run's results, and
 `synthesize` holds it while it reads the roster and loads the results, so a
 concurrent `record` cannot move a result out from under a report in flight.
-The lock is advisory and its wait is bounded: when it cannot be taken the
-run warns and continues.
+The wait is bounded, and the two commands report a lock they cannot take
+differently:
+
+- another run holds the lock: `synthesize` exits with status 2 rather than
+  read a roster that may be changing, and `record` exits with status 2
+  because it would write the cache over the other run's work;
+- no lock is available at all (the lock file cannot be opened, or the build
+  has no locking primitive): `synthesize` warns and continues, because
+  `record` refuses to write the cache without a lock and so nothing can be
+  moving the results underneath it, while `record` exits with status 2
+  because it would write the cache without the lock that protects it.
 
 ## Benchmarks
 
@@ -124,6 +133,11 @@ All return values are plain dicts/lists unless stated otherwise.
 | `env_var_names` | `env_var_names(manifest)` | List of env-var names |
 | `floor_for` | `floor_for(manifest, key)` | Float hours; defaults to `1.0` when no floor is defined |
 
+An agent id is also a file-name component: the result is
+`<cache>/phase_<id>.json`, and the cache scan lists the cache root only. An
+id with a path separator would name a file the scan never sees, so
+`validate` rejects one.
+
 ### `ccr.discovery`
 
 | Function | Signature | Returns |
@@ -153,7 +167,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `State.record_agent` | `state.record_agent(agent_id, status='completed')` | `None` |
 | `State.completion_ratio` | `state.completion_ratio()` | Float completed / planned |
 | `State.threshold_passed` | `state.threshold_passed(manifest)` | `bool`; enforces the 75%/66% completion gate |
-| `StateLock` | `StateLock(path)` | Context manager; exclusive OS lock (`fcntl`/`msvcrt`) around a state read-modify-write; the kernel drops it on exit, the lock file stays |
+| `StateLock` | `StateLock(path)` | Context manager; exclusive OS lock (`fcntl`/`msvcrt`) around a state read-modify-write; the kernel drops it on exit, the lock file stays. `lock.held` says the section is protected, `lock.unavailable` says there is no lock to take (no locking primitive, or the lock file cannot be opened); neither means another run holds it |
 
 ### `ccr.findings`
 

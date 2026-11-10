@@ -87,6 +87,15 @@ def _validate_agents(data):
                 "agent id must not start with the reserved prefix "
                 + prefix + ": " + agent["id"]
             )
+        # An id is also a path component: the result is <cache>/phase_<id>.json
+        # and the cache scan lists the cache root only. A separator would name
+        # a file in a subdirectory the scan never sees, so the agent's result
+        # could never be found, and a ".." in the id could name a file outside
+        # the cache. The id must be one file name.
+        if "/" in agent["id"] or "\\" in agent["id"]:
+            raise ValueError(
+                "agent id must not contain a path separator: " + agent["id"]
+            )
         agent_ids.append(agent["id"])
     if len(agent_ids) != len(set(agent_ids)):
         raise ValueError("duplicate agent id in manifest")

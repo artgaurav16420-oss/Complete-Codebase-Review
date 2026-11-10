@@ -125,6 +125,29 @@ class TestManifestValidation(unittest.TestCase):
             manifest_mod.validate(data)
         self.assertIn("must not be empty", str(ctx.exception))
 
+    def test_agent_id_may_not_contain_a_path_separator(self):
+        # A result is phase_<id>.json in the cache root, and the cache scan
+        # lists the root only. An id with a separator names a file in a
+        # subdirectory the scan never sees, so the agent's result could
+        # never be found, and a ".." could name a file outside the cache.
+        for agent_id in ("team/security", "team\\security", "../escape"):
+            data = self._broken()
+            old = data["agents"][0]["id"]
+            data["agents"][0]["id"] = agent_id
+            # Every other reference follows the renamed agent, so the id
+            # rule is the only thing left to fail.
+            data["base_agents"] = [
+                agent_id if item == old else item
+                for item in data["base_agents"]
+            ]
+            data["thresholds"]["quick_agents"] = [
+                agent_id if item == old else item
+                for item in data["thresholds"]["quick_agents"]
+            ]
+            with self.assertRaises(ValueError) as ctx:
+                manifest_mod.validate(data)
+            self.assertIn("path separator", str(ctx.exception))
+
     def test_explicit_null_security_agent_is_rejected(self):
         # A null id says "no agent", not "the default": it would point the
         # HIGH-finding check at an id the manifest may no longer declare.

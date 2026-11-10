@@ -486,6 +486,124 @@ class TestCliSynthesizeOptions(unittest.TestCase):
             encoding="utf-8"))
         self.assertEqual(len(report["findings"]), 1)
 
+    def test_synthesize_refuses_while_another_run_holds_the_lock(self):
+        # The roster and the results are read under the lock. While another
+        # run holds it, the cache is being changed underneath this one, so a
+        # report built here could go out without a domain. Refuse instead of
+        # emitting it.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        state_path = cache / "ccr-state.json"
+        original = cli.state.StateLock
+
+        class ShortWait(original):
+            """The same lock with a wait short enough for a test."""
+
+            def __init__(self, path):
+                original.__init__(self, path, wait=0.05)
+
+        with original(state_path):
+            with mock.patch.object(cli.state, "StateLock", ShortWait):
+                code, out, err = run([
+                    "synthesize", "--in", str(cache), "--agents", "security",
+                    "--format", "json", "--out", str(self.dir / "report"),
+                ])
+        self.assertEqual(code, 2, out)
+        self.assertIn("another ccr run holds", err)
+        self.assertFalse((self.dir / "report.json").exists())
+
+    def test_synthesize_continues_when_no_lock_is_available(self):
+        # An unwritable cache cannot be locked, and record refuses to write
+        # the cache without a lock, so nothing can be moving the results
+        # underneath this run: the report still goes out.
+        class Unavailable(object):
+            held = False
+            unavailable = True
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        with mock.patch.object(cli.state, "StateLock", lambda path: Unavailable()):
+            code, out, err = run([
+                "synthesize", "--in", str(cache), "--agents", "security",
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, out)
+        self.assertIn("no lock is available", err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(len(report["findings"]), 1)
+
+    def test_synthesize_reads_the_roster_inside_the_lock(self):
+        # A concurrent record replaces the roster while synthesis is between
+        # taking the lock and reading the state. The roster that is read
+        # must be the one the lock protects: the old one named an agent with
+        # no result, so the report went out without the domain that did.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        state_path = cache / "ccr-state.json"
+
+        def roster(agents):
+            return json.dumps({
+                "target_dir": str(TARGET),
+                "current_phase": 1,
+                "phase_gates": {},
+                "agents_planned": agents,
+            })
+
+        state_path.write_text(roster(["architecture"]), encoding="utf-8")
+
+        class Rewriting(object):
+            held = True
+            unavailable = False
+
+            def __init__(self, path):
+                self.path = Path(path)
+
+            def __enter__(self):
+                # A concurrent record writes the new roster.
+                self.path.write_text(roster(["security"]), encoding="utf-8")
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        with mock.patch.object(cli.state, "StateLock", Rewriting):
+            code, out, err = run([
+                "synthesize", "--in", str(cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, out + err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(len(report["findings"]), 1)
+
     def test_invalid_baseline_exits_two(self):
         bad = self.dir / "baseline.json"
         bad.write_text("[]", encoding="utf-8")
@@ -948,6 +1066,7 @@ class TestPersistReviewCounter(unittest.TestCase):
         # full rescan, while an unlocked update could lose both increments.
         class Unheld(object):
             held = False
+            unavailable = False
 
             def __enter__(self):
                 return self
@@ -962,6 +1081,28 @@ class TestPersistReviewCounter(unittest.TestCase):
                     self.cached, "sig-b", str(TARGET))
         self.assertFalse(saved)
         self.assertIn("locked by another run", err.getvalue())
+        self.assertEqual(self._count(), 2)
+
+    def test_no_lock_available_leaves_the_counter_unchanged(self):
+        # There is no lock to protect the update, so the count is skipped
+        # rather than written where two runs could overwrite each other.
+        class Unavailable(object):
+            held = False
+            unavailable = True
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        err = io.StringIO()
+        with mock.patch.object(cli.state, "StateLock", lambda path: Unavailable()):
+            with redirect_stderr(err):
+                saved = cli._persist_review_counter(
+                    self.cached, "sig-b", str(TARGET))
+        self.assertFalse(saved)
+        self.assertIn("no lock is available", err.getvalue())
         self.assertEqual(self._count(), 2)
 
     def test_missing_state_file_warns_and_returns_false(self):
