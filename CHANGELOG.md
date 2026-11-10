@@ -192,6 +192,10 @@
     land: a missing live install can mean a concurrent install parked the tree this
     run put in place, and restoring the older backup over that gap left the stale
     version installed. The backup stays a leftover for the next run's sweep instead.
+  - CodeAnt round 20: the installer copies each file in chunks and refreshes the staging
+    tree's mtime between them. Refreshing it only before and after a file was not enough:
+    one large file can take longer than the age the sweep uses, so the tree looked stale
+    while it was still being written and a concurrent install's sweep deleted it.
 
 ## v2.4.0 (2026-10-20)
 

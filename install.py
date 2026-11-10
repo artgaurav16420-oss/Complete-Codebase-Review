@@ -321,6 +321,11 @@ PREVIOUS_PREFIX = ".complete-codebase-review.old-"
 # process), so leftovers are told from a live install by age instead. A tree
 # younger than this may belong to a run that is still working.
 LEFTOVER_MAX_AGE_SEC = 3600
+# The copy is done in chunks so the staging tree's mtime can be refreshed
+# between them. The chunk has to be copied well inside the age the sweep
+# uses, so that a tree is never left looking stale while it is still
+# being written.
+COPY_CHUNK_BYTES = 64 * 1024
 
 
 def _leftovers(dest_dir, max_age=0):
@@ -373,6 +378,43 @@ def _refresh_mtime(path):
         ) from exc
 
 
+def _copy_file_with_heartbeat(src, dst, root):
+    """Copy one file, refreshing the staging tree's mtime as it goes.
+
+    The sweep that clears a crashed run's leftovers judges a tree by age,
+    so the tree has to stay fresh for as long as the copy runs. Refreshing
+    it only before and after a file is not enough: one large file can take
+    longer than the age the sweep uses, and the tree would look stale while
+    it was still being written, so a concurrent install's sweep would
+    delete it.
+
+    The file is copied in chunks and the mtime is refreshed between them,
+    so the tree never goes stale for longer than one chunk takes. What is
+    left is a run that is paused for longer than the sweep's age (a
+    hibernated machine, a suspended process): the copy then fails with the
+    error the sweep caused, and the install is retried.
+    """
+    try:
+        mode = os.stat(src).st_mode
+    except OSError:
+        mode = None
+    if mode is None or not stat.S_ISREG(mode):
+        # shutil.copyfile refuses a special file with a clear error, and
+        # reading one here could block on a fifo. Keep that behaviour.
+        shutil.copy2(src, dst)
+        return
+    with open(src, "rb") as source, open(dst, "wb") as target:
+        while True:
+            chunk = source.read(COPY_CHUNK_BYTES)
+            if not chunk:
+                break
+            target.write(chunk)
+            _refresh_mtime(root)
+    # The metadata is copied last, the way shutil.copy2 does it: the
+    # timestamps of the source belong to the finished file.
+    shutil.copystat(src, dst)
+
+
 def _copy_with_heartbeat(root):
     """Return a copy function that keeps the staging tree's mtime fresh.
 
@@ -382,16 +424,15 @@ def _copy_with_heartbeat(root):
     a concurrent install's sweep would delete it while it is still being
     written, so the copy fails on a file that was there a moment ago.
 
-    The mtime is refreshed before and after every file: a single large
-    file can take longer than the age the sweep uses, and the tree has to
-    stay fresh for the whole of it, not only between files.
+    The mtime is refreshed before and after every file, and between the
+    chunks of every file, so the tree stays fresh for the whole copy.
     """
 
     def copy(src, dst):
         _refresh_mtime(root)
-        result = shutil.copy2(src, dst)
+        _copy_file_with_heartbeat(src, dst, root)
         _refresh_mtime(root)
-        return result
+        return dst
 
     return copy
 

@@ -516,55 +516,88 @@ class TestCopySkill(_BaseInstallTest):
                 list(dest.glob(self.install.PREVIOUS_PREFIX + "*")), []
             )
 
-    def test_a_long_copy_keeps_its_staging_tree_alive(self):
+    def test_a_concurrent_sweep_during_a_long_copy_keeps_the_staging_tree(self):
         # The sweep that clears a crashed run's leftovers judges a tree by
         # age: anything older than an hour is assumed to belong to a dead
         # run. A copy that takes over an hour leaves the staging tree
         # looking stale, so a concurrent install's sweep deletes it while
         # the copy is still writing, and the copy fails on a file that was
-        # there a moment ago. The staging tree's mtime is refreshed as the
-        # copy goes, so the sweep sees a live run.
+        # there a moment ago. The tree's mtime is refreshed as the file is
+        # copied, so the sweep sees a live run and keeps the tree.
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
             dest = Path(tmpdir) / "dest"
             dest.mkdir()
-            real_copytree = self.install.shutil.copytree
-            real_copy2 = self.install.shutil.copy2
-            state = {"swept": False, "staging": None}
+            install = self.install
+            real_open = open
+            state = {"reads": 0, "swept": False, "sweeping": False,
+                     "tree": None}
+            removals = []
 
-            def aging_copy2(src_file, dst_file, **copy_kwargs):
-                result = real_copy2(src_file, dst_file, **copy_kwargs)
-                # The copy of this file took over an hour, so the staging
-                # tree looks stale by now.
-                old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
-                os.utime(str(state["staging"]), (old, old))
-                return result
+            class Reader(object):
+                """The source file, with the copy slowed down around it."""
 
-            def slow_copytree(source, target, **kwargs):
-                state["staging"] = Path(target)
-                inner = kwargs.pop(
-                    "copy_function", self.install.shutil.copy2
-                )
+                def __init__(self, handle):
+                    self.handle = handle
 
-                def copy_one(src_file, dst_file, **inner_kwargs):
-                    result = inner(src_file, dst_file, **inner_kwargs)
-                    # A concurrent install sweeps the leftovers while this
-                    # copy is still running.
-                    self.install._sweep_leftovers(dest)
-                    state["swept"] = True
-                    return result
+                def read(self, size=-1):
+                    state["reads"] += 1
+                    data = self.handle.read(size)
+                    if state["reads"] == 1:
+                        # The copy has been running for over an hour, so
+                        # the staging tree looks stale by now.
+                        old = time.time() - install.LEFTOVER_MAX_AGE_SEC - 60
+                        trees = list(dest.glob(install.STAGING_PREFIX + "*"))
+                        if not trees:
+                            raise AssertionError("no staging tree to age")
+                        state["tree"] = trees[0]
+                        os.utime(str(trees[0]), (old, old))
+                    elif state["reads"] == 2:
+                        # A concurrent install sweeps the leftovers while
+                        # this copy is still running.
+                        state["sweeping"] = True
+                        install._sweep_leftovers(dest)
+                        state["sweeping"] = False
+                        state["swept"] = True
+                    return data
 
-                kwargs["copy_function"] = copy_one
-                return real_copytree(source, target, **kwargs)
+                def close(self):
+                    self.handle.close()
 
-            with patch.object(self.install.shutil, "copytree", slow_copytree), \
-                 patch.object(self.install.shutil, "copy2", aging_copy2):
-                self.install.copy_skill(src, dest)
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc_info):
+                    self.close()
+                    return False
+
+            def patched_open(path, mode="r", *args, **kwargs):
+                handle = real_open(path, mode, *args, **kwargs)
+                if "b" in mode and str(path).startswith(str(src)):
+                    return Reader(handle)
+                return handle
+
+            def spy(path):
+                # The sweep's decision is what matters, so the removal is
+                # recorded instead of carried out: the copy has to survive
+                # it either way. The install's own cleanup of the staging
+                # tree is not the sweep's decision and is left out.
+                if state["sweeping"]:
+                    removals.append(Path(path))
+
+            with patch("builtins.open", patched_open), \
+                 patch.object(install, "_remove_tree", spy):
+                install.copy_skill(src, dest)
 
             # The sweep ran while the copy was in flight.
-            self.assertTrue(state["swept"])
-            # The install went in: the sweep did not delete the staging
-            # tree out from under the copy.
+            self.assertTrue(
+                state["swept"], "the sweep never ran during the copy"
+            )
+            self.assertIsNotNone(state["tree"])
+            # The sweep did not take the staging tree for a leftover: the
+            # tree was fresh, so the run that owns it is still alive.
+            self.assertNotIn(state["tree"], removals)
+            # The install went in.
             self.assertTrue(
                 (dest / "complete-codebase-review" / "SKILL.md").exists()
             )
