@@ -385,12 +385,14 @@ def _overall_health(md):
 
 
 def _check_scores(md, errors):
-    """Reject non-numeric domain scores in the scores table.
+    """Reject domain scores that are not a number on the 0-10 scale.
 
     The score is the second cell. The header ("Score (/10)") and the
     ``|---|`` separator are skipped by validating only the rows after the
     separator; every later row, including the **Overall** one, must parse as
-    a number.
+    a number in range. ``float`` also reads "nan" and "inf", and every
+    comparison against NaN is False, so the range check rejects those as
+    well as a score outside the scale the section declares.
     """
     in_body = False
     for line in _section_text(md, "## Per-Domain Scores").splitlines():
@@ -402,8 +404,14 @@ def _check_scores(md, errors):
                 in_body = True
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2 or _num(cells[1]) is None:
+        if len(cells) < 2:
             errors.append("non-numeric domain score: " + line.strip())
+            continue
+        score = _num(cells[1])
+        if score is None:
+            errors.append("non-numeric domain score: " + line.strip())
+        elif not 0.0 <= score <= 10.0:
+            errors.append("domain score out of range: " + line.strip())
 
 
 def _tech_debt_totals(md, errors):

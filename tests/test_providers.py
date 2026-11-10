@@ -289,6 +289,36 @@ class TestResultDiscovery(unittest.TestCase):
         self.assertIn("not valid JSON", str(ctx.exception))
         self.assertIn("phase_security.json", str(ctx.exception))
 
+    def test_malformed_bare_result_is_named_not_skipped(self):
+        # The bare layout carries the same contract as the canonical one: a
+        # file named for the agent is that agent's result, so a broken one
+        # reaches the loader and is named by path instead of leaving the
+        # agent out of the report.
+        self._write_raw("security.json", "not json")
+        path = providers.find_result(self.dir, "security")
+        self.assertIsNotNone(path)
+        self.assertEqual(path.name, "security.json")
+        with self.assertRaises(ValueError) as ctx:
+            providers.load_result(path, "security")
+        self.assertIn("not valid JSON", str(ctx.exception))
+        self.assertIn("security.json", str(ctx.exception))
+
+    def test_a_bare_result_without_a_findings_list_is_named(self):
+        # An empty object is a broken result, not another document: the
+        # loader says which file and what is wrong with it.
+        self._write("security.json", {})
+        path = providers.find_result(self.dir, "security")
+        self.assertIsNotNone(path)
+        with self.assertRaises(ValueError) as ctx:
+            providers.load_result(path, "security")
+        self.assertIn("missing findings list", str(ctx.exception))
+
+    def test_a_bare_document_that_is_not_a_result_is_skipped(self):
+        # A report or a baseline carries keys an agent result never has, so
+        # it is not read as the agent's result even under the agent's name.
+        self._write("security.json", {"report": {"findings": []}})
+        self.assertIsNone(providers.find_result(self.dir, "security"))
+
     def test_find_result_matches_a_case_varied_prefix(self):
         # Discovery matches phase_ case-insensitively; find_result must not
         # construct a lowercase name that misses the file it just found.

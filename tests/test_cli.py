@@ -572,6 +572,25 @@ class TestPlannedFromCache(unittest.TestCase):
                 json.dumps({"findings": []}), encoding="utf-8")
             self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
 
+    def test_plans_a_known_agent_whose_result_is_corrupt(self):
+        # The manifest knows the agent, so the name of the file decides: a
+        # corrupt result belongs to the roster and is reported by path. Left
+        # out of it, the report went out with the agent missing.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            (cache / "security.json").write_text("not json", encoding="utf-8")
+            self.assertEqual(
+                cli._planned_from_cache(str(cache), valid_ids={"security"}),
+                ["security"],
+            )
+
+    def test_a_corrupt_result_for_an_unknown_id_is_not_planned(self):
+        # Without the manifest's id set, a corrupt file names no agent.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            (cache / "security.json").write_text("not json", encoding="utf-8")
+            self.assertEqual(cli._planned_from_cache(str(cache)), [])
+
 
 class TestValidateResults(unittest.TestCase):
     def test_reports_malformed(self):
@@ -623,6 +642,17 @@ class TestValidateResults(unittest.TestCase):
             code, output = run_cli(["validate-results", "--in", tmp])
             self.assertEqual(code, 2)
             self.assertIn("no agent results", output)
+
+    def test_names_a_corrupt_result_file(self):
+        # A file named for a planned agent is that agent's result, so a
+        # broken one is named by path instead of passing unnoticed.
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "security.json").write_text(
+                "not json", encoding="utf-8")
+            code, output = run_cli(["validate-results", "--in", tmp])
+            self.assertEqual(code, 2)
+            self.assertIn("not valid JSON", output)
+            self.assertIn("security.json", output)
 
 
 class TestEvalExit(unittest.TestCase):

@@ -327,13 +327,14 @@ def _record_locked(args, data, plan, cache, state_path):
 def _planned_from_cache(cache, valid_ids=None):
     """Infer planned agent ids from result JSON files in the cache.
 
-    ``valid_ids`` filters out report JSON and other look-alike files when the
-    manifest is available.
+    ``valid_ids`` is the id set the manifest declares. With it the name of a
+    file decides: a file named for a planned agent is that agent's result,
+    whatever it holds, so a corrupt one reaches the loader and is reported by
+    path. Inferring the roster without that rule left the agent out of it,
+    and the report went out with the agent missing.
     """
     ids = []
-    for agent_id, _path in providers.discover_results(cache):
-        if valid_ids is not None and agent_id not in valid_ids:
-            continue
+    for agent_id, _path in providers.discover_results(cache, known=valid_ids):
         if agent_id not in ids:
             ids.append(agent_id)
     return ids

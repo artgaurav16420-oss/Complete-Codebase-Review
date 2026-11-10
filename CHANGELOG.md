@@ -121,6 +121,14 @@
     address in agent text is defanged like a URL, since GitHub autolinks it as a `mailto:`
     destination; and the install test that swaps the destination for a link now skips
     itself on a host that cannot create one, instead of failing the suite.
+  - CodeAnt round 12: the cache scan that infers the planned roster uses the manifest's
+    id set, so a result file named for a planned agent is that agent's result whatever it
+    holds; a corrupt one is now named by the loader instead of leaving the agent out of
+    the roster and the report incomplete. A file that parses as another document the
+    pipeline wrote (the synthesis report, a baseline) is still not read as an agent's
+    result. The score validator now rejects a score that is not a number on the 0-10
+    scale, which also rejects `nan` and `inf`: `float` reads them and every comparison
+    against `nan` is false.
 
 ## v2.4.0 (2026-10-20)
 

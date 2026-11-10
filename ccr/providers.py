@@ -238,21 +238,44 @@ def discover_results(out_dir, known=None):
     return found
 
 
+def _is_foreign_document(path):
+    """True when path holds a document this pipeline did not write.
+
+    The synthesis report and a baseline both carry keys an agent result never
+    has. A file named for an agent that parses as one of those is that
+    document, not a broken result, so the loader must not read it as the
+    agent's. A file that does not parse, or that parses as something else,
+    is a broken result: the loader names it instead of dropping it.
+    """
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    return bool(set(data) - RESULT_KEYS)
+
+
 def find_result(out_dir, agent_id):
     """Return an agent's result path, or None when it is absent.
 
     Both layouts are accepted, but the canonical one comes first so a
-    directory holding both reads the result the pipeline itself wrote. A file
-    that is not a result is skipped and the next layout is tried, so a stray
-    baseline named phase_<id>.json cannot shadow a real fixture. The match is
-    made on the directory entries rather than a constructed path because the
-    prefix is matched case-insensitively, and a case-sensitive filesystem
-    would otherwise hide the very file discovery found.
+    directory holding both reads the result the pipeline itself wrote. The
+    match is made on the directory entries rather than a constructed path
+    because the prefix is matched case-insensitively, and a case-sensitive
+    filesystem would otherwise hide the very file discovery found.
+
+    A file named for the agent is that agent's result, whatever it holds: a
+    broken one is named by the loader instead of disappearing with the stray
+    json. The exception is a file that parses as another document the
+    pipeline wrote, such as the synthesis report: reading that as an agent
+    would put the wrong findings in the report.
     """
     for path in _result_paths(out_dir):
         if agent_id_from_name(path) != agent_id:
             continue
-        if _is_result_candidate(path):
+        if is_canonical_name(path) or not _is_foreign_document(path):
             return path
     return None
 

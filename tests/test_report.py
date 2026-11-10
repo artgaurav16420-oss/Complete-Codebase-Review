@@ -261,6 +261,28 @@ class TestMarkdown(unittest.TestCase):
             errors,
         )
 
+    def test_internal_validator_rejects_a_non_finite_score(self):
+        # float() reads "nan" and "inf", and every comparison against NaN is
+        # False, so the range check is what rejects them.
+        for value in ("nan", "inf", "-inf"):
+            broken = self.md.replace("| Security |", "| Security | " + value + " |", 1)
+            errors = report_mod.validate_markdown(broken)
+            self.assertTrue(
+                any("domain score out of range" in error for error in errors),
+                (value, errors),
+            )
+
+    def test_internal_validator_rejects_a_score_out_of_range(self):
+        # The section declares a scale of 0 to 10; a score outside it is a
+        # malformed score table.
+        for value in ("42", "-1"):
+            broken = self.md.replace("| Security |", "| Security | " + value + " |", 1)
+            errors = report_mod.validate_markdown(broken)
+            self.assertTrue(
+                any("domain score out of range" in error for error in errors),
+                (value, errors),
+            )
+
     def test_na_in_finding_text_is_not_a_score(self):
         model = pipeline.synthesize(
             _manifest(),
