@@ -516,6 +516,112 @@ class TestCopySkill(_BaseInstallTest):
                 list(dest.glob(self.install.PREVIOUS_PREFIX + "*")), []
             )
 
+    def test_a_long_copy_keeps_its_staging_tree_alive(self):
+        # The sweep that clears a crashed run's leftovers judges a tree by
+        # age: anything older than an hour is assumed to belong to a dead
+        # run. A copy that takes over an hour leaves the staging tree
+        # looking stale, so a concurrent install's sweep deletes it while
+        # the copy is still writing, and the copy fails on a file that was
+        # there a moment ago. The staging tree's mtime is refreshed as the
+        # copy goes, so the sweep sees a live run.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            real_copytree = self.install.shutil.copytree
+            real_copy2 = self.install.shutil.copy2
+            state = {"swept": False, "staging": None}
+
+            def aging_copy2(src_file, dst_file, **copy_kwargs):
+                result = real_copy2(src_file, dst_file, **copy_kwargs)
+                # The copy of this file took over an hour, so the staging
+                # tree looks stale by now.
+                old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+                os.utime(str(state["staging"]), (old, old))
+                return result
+
+            def slow_copytree(source, target, **kwargs):
+                state["staging"] = Path(target)
+                inner = kwargs.pop(
+                    "copy_function", self.install.shutil.copy2
+                )
+
+                def copy_one(src_file, dst_file, **inner_kwargs):
+                    result = inner(src_file, dst_file, **inner_kwargs)
+                    # A concurrent install sweeps the leftovers while this
+                    # copy is still running.
+                    self.install._sweep_leftovers(dest)
+                    state["swept"] = True
+                    return result
+
+                kwargs["copy_function"] = copy_one
+                return real_copytree(source, target, **kwargs)
+
+            with patch.object(self.install.shutil, "copytree", slow_copytree), \
+                 patch.object(self.install.shutil, "copy2", aging_copy2):
+                self.install.copy_skill(src, dest)
+
+            # The sweep ran while the copy was in flight.
+            self.assertTrue(state["swept"])
+            # The install went in: the sweep did not delete the staging
+            # tree out from under the copy.
+            self.assertTrue(
+                (dest / "complete-codebase-review" / "SKILL.md").exists()
+            )
+
+    def test_a_concurrent_park_leaves_the_older_backup_alone(self):
+        # Two installs overlap. The second one parks the tree the first
+        # one just put in place, so the live install is briefly missing.
+        # The first run must not put its own older backup back in that
+        # gap: the backup predates the tree the second run parked, and
+        # restoring it leaves the stale version installed. The backup
+        # stays a leftover for the next run's sweep instead.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            skill_dest = dest / "complete-codebase-review"
+            skill_dest.mkdir()
+            (skill_dest / "SKILL.md").write_text(
+                "old install", encoding="utf-8"
+            )
+            real_replace = os.replace
+            state = {"parked": False}
+
+            def replacing(source, target):
+                if (
+                    Path(source).name.startswith(self.install.STAGING_PREFIX)
+                    and Path(target) == skill_dest
+                ):
+                    # This run's swap lands, and a second install parks the
+                    # live tree straight away: the live install is missing
+                    # and the second run is about to put its own tree
+                    # there.
+                    real_replace(source, target)
+                    real_replace(
+                        str(skill_dest),
+                        str(dest / (
+                            self.install.PREVIOUS_PREFIX + "second-run"
+                        )),
+                    )
+                    state["parked"] = True
+                    return
+                return real_replace(source, target)
+
+            with patch.object(self.install.os, "replace", replacing):
+                self.install.copy_skill(src, dest)
+
+            self.assertTrue(state["parked"])
+            # Nothing was put back over the gap the second install left.
+            self.assertFalse(os.path.lexists(skill_dest))
+            # The older backup is still there, as a leftover.
+            old_backups = [
+                path for path in dest.glob(self.install.PREVIOUS_PREFIX + "*")
+                if (path / "SKILL.md").read_text(encoding="utf-8")
+                == "old install"
+            ]
+            self.assertEqual(len(old_backups), 1)
+
     def test_calls_copytree_with_ignore_patterns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)

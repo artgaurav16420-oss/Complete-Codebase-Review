@@ -355,6 +355,47 @@ def _leftovers(dest_dir, max_age=0):
     return found
 
 
+def _refresh_mtime(path):
+    """Refresh a path's mtime so an age-based sweep leaves it alone.
+
+    The sweep tells a live run's tree from a crashed run's by age, so a
+    run that is still working has to say so. A tree whose mtime cannot be
+    refreshed is reported rather than left to be swept: the copy would
+    fail later, in the middle of writing, with an error that says
+    nothing about the cause.
+    """
+    try:
+        os.utime(str(path), None)
+    except (NotImplementedError, OSError) as exc:
+        raise OSError(
+            "cannot refresh the mtime of " + str(path)
+            + "; a concurrent install would treat it as a stale leftover"
+        ) from exc
+
+
+def _copy_with_heartbeat(root):
+    """Return a copy function that keeps the staging tree's mtime fresh.
+
+    The sweep that clears a crashed run's leftovers judges a tree by age:
+    anything older than an hour is assumed to belong to a dead run. A copy
+    that takes over an hour would leave the staging tree looking stale, and
+    a concurrent install's sweep would delete it while it is still being
+    written, so the copy fails on a file that was there a moment ago.
+
+    The mtime is refreshed before and after every file: a single large
+    file can take longer than the age the sweep uses, and the tree has to
+    stay fresh for the whole of it, not only between files.
+    """
+
+    def copy(src, dst):
+        _refresh_mtime(root)
+        result = shutil.copy2(src, dst)
+        _refresh_mtime(root)
+        return result
+
+    return copy
+
+
 def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC):
     """Remove the staging and backup trees a crashed run left behind.
 
@@ -438,8 +479,21 @@ def copy_skill(src_dir, dest_dir):
                 "Refusing to install through a link-like target: "
                 + str(dest_dir)
             )
+        # Whether this run's own swap landed. A concurrent install can park
+        # the tree this run installs, and the missing live install that
+        # leaves behind is not evidence that this run's swap failed.
+        swapped = False
         try:
-            shutil.copytree(src_dir, staging, ignore=_ignore_skill_files, symlinks=True)
+            shutil.copytree(
+                src_dir, staging, ignore=_ignore_skill_files, symlinks=True,
+                copy_function=_copy_with_heartbeat(staging),
+            )
+            # The copy ends by putting the source directory's own
+            # timestamps on the staging tree, and a source directory can
+            # be days old. The sweep would then read a freshly copied tree
+            # as a crashed run's leftover and delete it, so the mtime is
+            # refreshed once more before the tree is put in place.
+            _refresh_mtime(staging)
             _validate_no_escaped_symlinks(staging)
 
             if os.path.lexists(skill_dest):
@@ -497,10 +551,22 @@ def copy_skill(src_dir, dest_dir):
                     + str(dest_dir)
                 )
             os.replace(str(staging), str(skill_dest))
+            swapped = True
         finally:
             # Restore before any cleanup: a locked staging tree must not take
             # the only surviving copy of the previous install with it.
-            if os.path.lexists(previous) and not os.path.lexists(skill_dest):
+            #
+            # Only when this run's own swap did not happen. A missing live
+            # install does not prove that: a concurrent install may have
+            # parked the tree this run put in place, and restoring this
+            # run's older backup over that gap would put the stale version
+            # back. The backup stays a leftover for the next run's sweep
+            # instead.
+            if (
+                not swapped
+                and os.path.lexists(previous)
+                and not os.path.lexists(skill_dest)
+            ):
                 try:
                     os.replace(str(previous), str(skill_dest))
                 except OSError:

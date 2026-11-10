@@ -183,6 +183,15 @@
     zero-width space are still dropped. The installer test that covers a crashed run's
     backup carrying this run's pid now creates the install that has to be parked, so it
     exercises the backup-name collision instead of passing because nothing was parked.
+  - CodeAnt round 19: the installer keeps its staging tree alive while it copies. The
+    sweep that clears a crashed run's leftovers judges a tree by age, so a copy that
+    took over an hour left the staging tree looking stale and a concurrent install's
+    sweep deleted it mid-copy; the tree's mtime is now refreshed as the copy goes, and
+    again after the copy, which ends by copying the source directory's own timestamps
+    onto it. The installer also restores its backup only when its own swap did not
+    land: a missing live install can mean a concurrent install parked the tree this
+    run put in place, and restoring the older backup over that gap left the stale
+    version installed. The backup stays a leftover for the next run's sweep instead.
 
 ## v2.4.0 (2026-10-20)
 
