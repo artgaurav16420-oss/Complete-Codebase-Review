@@ -175,50 +175,39 @@ def _onerror(func, path, exc_info):
 
 _CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore", ".jks")
 _CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
-# The word a credential file is named after. A file that carries one of
+# The words a credential file is named after. A file that carries one of
 # them is a credential store whatever else the name says: the extension
-# (credentials.yaml), the local override suffix (.envrc.local) and the
-# leading dot are variations on the same thing, and a list of whole
-# names misses the variants that actually turn up in a checkout.
-_CREDENTIAL_STEMS = {
+# (credentials.yaml), the local override suffix (.envrc.local), the
+# leading dot and a qualifier in front (aws-credentials.json) are
+# variations on the same thing, and a list of whole names misses the
+# variants that actually turn up in a checkout.
+_CREDENTIAL_WORDS = {
     "env", "envrc", "direnv", "netrc", "npmrc", "pypirc", "htpasswd",
-    "credential", "credentials", "git-credentials", "secret", "secrets",
+    "credential", "credentials", "secret", "secrets",
 }
-# The environment-file extension. A deployment secrets file is named
-# after the environment it configures (prod.env, staging.env), and the
-# local override can follow it (prod.env.local). The stem rule above
-# catches the leading-dot forms (.env, .env.local); this catches the
-# ones with a prefix.
-_CREDENTIAL_ENV_WORDS = ("env", "envrc")
+# The name is split into words on these separators, so a word is matched
+# whole: "aws-credentials.json" carries the word "credentials", while
+# "environment.py" carries the word "environment" and is kept.
+_CREDENTIAL_WORD_SEPARATORS = re.compile(r"[._-]+")
 
 
 def _is_credential_name(name):
     """True for names that commonly hold private keys or credentials.
 
-    The rule is about the word the file is named after, not about the
+    The rule is about the words the file is named after, not about the
     whole name: exact-name matching alone misses the variants that
     actually exist in a checkout (.env.local, credentials.json,
-    .envrc.local, id_rsa_work, *.pem), and those files would otherwise be
-    copied into every agent skill directory.
+    .envrc.local, prod.env, aws-credentials.json, id_rsa_work, *.pem),
+    and those files would otherwise be copied into every agent skill
+    directory.
     """
     lowered = name.lower()
     if lowered.startswith(_CREDENTIAL_PREFIXES):
         return True
     if lowered.endswith(_CREDENTIAL_SUFFIXES):
         return True
-    # The word the file is named after: no leading dot, and nothing
-    # before the first dot ("credentials.json" -> "credentials").
-    stem = lowered.lstrip(".").split(".")[0]
-    if stem in _CREDENTIAL_STEMS:
-        return True
-    # An environment file is named after the environment it configures:
-    # prod.env, staging.env, prod.env.local. The extension is what
-    # marks it, so every dot-separated part is checked. A file called
-    # "env.example.py" is left out as well; shipping a secrets file
-    # costs more than skipping an example.
-    return any(
-        part in _CREDENTIAL_ENV_WORDS for part in lowered.split(".")[1:]
-    )
+    words = _CREDENTIAL_WORD_SEPARATORS.split(lowered.lstrip("."))
+    return any(word in _CREDENTIAL_WORDS for word in words)
 
 
 def _ignore_skill_files(path, names, dest=None):

@@ -603,19 +603,26 @@ class TestCopySkill(_BaseInstallTest):
             )
 
     def test_does_not_copy_a_credential_override_into_the_install(self):
-        # The credential rule is about the word the file is named after:
-        # .envrc.local is the local override of .envrc and holds the same
-        # secrets, so it must not be copied into the skill tree either.
+        # The credential rule is about the words the file is named
+        # after: .envrc.local is the local override of .envrc and holds
+        # the same secrets, and a qualifier in front of the word does
+        # not change what the file is (aws-credentials.json). None of
+        # them may be copied into the skill tree.
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir, {
                 ".envrc.local": "export SECRET=1\n",
                 "credentials.yaml": "password: hunter2\n",
                 "secrets.json": '{"token": "abc"}\n',
+                "aws-credentials.json": '{"secret": "abc"}\n',
+                "db-secrets.yaml": "password: hunter2\n",
             })
             dest = Path(tmpdir) / "dest"
             self.install.copy_skill(src, dest)
             installed = dest / "complete-codebase-review"
-            for name in (".envrc.local", "credentials.yaml", "secrets.json"):
+            for name in (
+                ".envrc.local", "credentials.yaml", "secrets.json",
+                "aws-credentials.json", "db-secrets.yaml",
+            ):
                 self.assertFalse((installed / name).exists())
             # The skill itself is there.
             self.assertTrue((installed / "SKILL.md").exists())
@@ -655,7 +662,8 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue((result / "README.md").exists())
             # The destination is not part of the copy.
             self.assertFalse((result / "out").exists())
-            # The source tree is untouched.
+            # The source tree keeps its own files, and the install lands
+            # in the destination inside it.
             self.assertTrue((src / "SKILL.md").exists())
             self.assertTrue((src / "out" / "complete-codebase-review").exists())
 
@@ -1583,12 +1591,15 @@ class TestCredentialName(_BaseInstallTest):
         "secret.yml", ".secrets", "netrc", ".env.production.local",
         # A deployment secrets file is named after its environment.
         "prod.env", "staging.env", "prod.env.local", "production.envrc",
+        # A qualifier in front of the word does not change what it is.
+        "aws-credentials.json", "db-secrets.yaml", "my_credentials.json",
+        "env-config.yaml",
     )
     NON_MATCHES = (
         ".gitignore", "notes.txt", "README.md",
         # Words that only start like a credential word.
         "environment.py", "secretary.md", "credentialing.md", "envelope.md",
-        "env-config.yaml", "myenv.txt",
+        "myenv.txt",
     )
 
     def test_credential_names_match(self):

@@ -210,6 +210,13 @@
     the destination, so the copy walked into the destination, found the staging tree it
     was building, and copied that too until the copy failed. Installing the skill into
     its own source directory is refused instead.
+  - CodeAnt round 23: the installer's credential filter matches the *words* a file is
+    named after rather than the first part of its name, so a qualifier in front of the
+    word no longer hides it: `aws-credentials.json`, `db-secrets.yaml` and
+    `my_credentials.json` are credential stores and are no longer copied into the
+    installed skill tree. The name is split on dots, dashes and underscores and each
+    word is matched whole, so `environment.py` and `secretary.md` are still kept while
+    `env-config.yaml` is now left out with the other environment files.
 
 ## v2.4.0 (2026-10-20)
 
