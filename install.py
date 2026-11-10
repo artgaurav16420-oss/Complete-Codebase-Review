@@ -335,6 +335,14 @@ def _leftovers(dest_dir, max_age=0):
     for prefix in (STAGING_PREFIX, PREVIOUS_PREFIX):
         for path in sorted(Path(dest_dir).glob(prefix + "*")):
             if max_age:
+                if _is_link_like(path):
+                    # A parked link keeps the age of the link the user
+                    # configured: a link's own timestamp cannot be refreshed
+                    # on every platform, so an age-based sweep would delete
+                    # a rollback copy while the install that parked it is
+                    # still running. Only an explicit uninstall (max_age=0)
+                    # removes these.
+                    continue
                 try:
                     # lstat: a parked link is judged by its own age, not by
                     # whatever directory it points at.

@@ -682,6 +682,39 @@ class TestSecurityAgentId(unittest.TestCase):
         self.assertEqual(f.SECURITY_AGENT_ID, f._DEFAULT_SECURITY_AGENT_ID)
 
 
+class TestSettingsArePerThread(unittest.TestCase):
+    """Two runs in one process must not see each other's settings."""
+
+    def test_a_thread_keeps_its_own_identity_and_calibration(self):
+        import threading
+
+        barrier = threading.Barrier(2)
+        seen = {}
+
+        def worker(key, agent_id, threshold):
+            f.set_security_agent_id(agent_id)
+            f.set_calibration({"overlap_threshold": threshold})
+            # Both threads have set their values before either reads, so a
+            # process-wide setting would hand both the same answer.
+            barrier.wait(timeout=5)
+            seen[key] = (f.SECURITY_AGENT_ID, f.OVERLAP_THRESHOLD)
+
+        threads = [
+            threading.Thread(target=worker, args=("a", "sec_a", 0.9)),
+            threading.Thread(target=worker, args=("b", "sec_b", 0.3)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        self.assertEqual(seen["a"], ("sec_a", 0.9))
+        self.assertEqual(seen["b"], ("sec_b", 0.3))
+        # The reading thread keeps its own settings.
+        self.assertEqual(
+            f.SECURITY_AGENT_ID, f._DEFAULT_SECURITY_AGENT_ID
+        )
+
+
 class TestCalibration(unittest.TestCase):
     """The tunables come from the manifest (ADR-007)."""
 

@@ -72,6 +72,11 @@ def _validate_agents(data):
                         agent["id"], field
                     )
                 )
+        # An id is also a file-name stem (phase_<id>.json), so an empty id
+        # would name the file phase_.json and discovery would strip the prefix
+        # back to nothing: the planned result could never be found.
+        if not agent["id"].strip():
+            raise ValueError("agent id must not be empty")
         # An id is also a file-name stem (phase_<id>.json). Reserving the
         # prefix keeps the canonical layout unambiguous: without it, a bare
         # fixture for an agent called phase_security is indistinguishable from

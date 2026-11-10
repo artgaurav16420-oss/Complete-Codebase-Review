@@ -135,7 +135,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | Function | Signature | Returns |
 |----------|-----------|---------|
 | `new_state` | `new_state(target_dir, skill_dir='', effort='max')` | Fresh state dict |
-| `merge_resume` | `merge_resume(state, cache_dir)` | Planned agent ids whose canonical `phase_<id>.json` is present but not recorded as completed |
+| `merge_resume` | `merge_resume(state, cache_dir)` | Canonical `phase_<id>.json` ids present on disk but not recorded as completed, limited to `agents_planned` when that roster is set; an empty roster is treated as unknown, so every canonical id on disk is returned |
 | `State.load` | `State.load(path)` | `State` or `None` when absent |
 | `State.create` | `State.create(path, target_dir, skill_dir, effort)` | New `State`, persisted |
 | `State.save` | `state.save()` | `None`; atomic write via temp file + `os.replace` |

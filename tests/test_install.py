@@ -314,6 +314,31 @@ class TestCopySkill(_BaseInstallTest):
 
             self.assertTrue((crashed / "SKILL.md").exists())
 
+    def test_keeps_a_link_like_leftover_the_age_rule_would_delete(self):
+        # A parked link keeps the age of the link the user configured: a
+        # link's own timestamp cannot be refreshed on every platform, so the
+        # age rule would delete a rollback copy while the install that parked
+        # it is still running.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            outside = Path(tmpdir) / "outside"
+            outside.mkdir()
+            parked = dest / (self.install.PREVIOUS_PREFIX + "123-abc")
+            create_directory_link(parked, outside)
+            real_time = self.install.time.time
+            # Push the clock past the liveness window so the age rule would
+            # select the parked link.
+            with patch.object(
+                    self.install.time, "time",
+                    lambda: real_time() + self.install.LEFTOVER_MAX_AGE_SEC + 60):
+                self.install._sweep_leftovers(dest)
+
+            self.assertTrue(parked.exists())
+            # An explicit uninstall still removes it.
+            self.install._sweep_leftovers(dest, max_age=0)
+            self.assertFalse(parked.exists())
+
     def test_update_leaves_no_previous_tree_behind(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)

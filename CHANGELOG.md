@@ -107,6 +107,14 @@
     so a target swapped for a link during the leftover sweep cannot receive the staging
     tree; and the section checks compare the whole heading title, so a heading that merely
     contains the name (`## No Environment Variables`) no longer passes.
+  - CodeAnt round 10: the engine's security-agent identity and calibration belong to the
+    calling thread, so two syntheses running at once cannot overwrite each other's
+    settings and report the wrong identity; a manifest agent id may not be empty, because
+    it would name the result file `phase_.json` and discovery would strip the prefix back
+    to nothing; the age-based leftover sweep no longer deletes a link-like entry, whose
+    own timestamp cannot be refreshed on every platform, so a rollback copy parked by a
+    running install can no longer be swept away from under it; and the `merge_resume`
+    entry in `docs/api/ccr.md` now states what an empty planned roster means.
 
 ## v2.4.0 (2026-10-20)
 

@@ -115,6 +115,16 @@ class TestManifestValidation(unittest.TestCase):
             manifest_mod.validate(data)
         self.assertIn("reserved prefix", str(ctx.exception))
 
+    def test_agent_id_may_not_be_empty(self):
+        # A result is phase_<id>.json, so an empty id names phase_.json and
+        # discovery strips the prefix back to nothing: the planned result
+        # could never be found.
+        data = self._broken()
+        data["agents"][0]["id"] = ""
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("must not be empty", str(ctx.exception))
+
     def test_duplicate_env_var(self):
         data = self._broken()
         data["env_vars"].append(dict(data["env_vars"][0]))
