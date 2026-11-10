@@ -196,6 +196,12 @@
     tree's mtime between them. Refreshing it only before and after a file was not enough:
     one large file can take longer than the age the sweep uses, so the tree looked stale
     while it was still being written and a concurrent install's sweep deleted it.
+  - CodeAnt round 21: the installer's credential filter now works on the word a file is
+    named after rather than on whole names, so the local-override and extension variants
+    are covered too: `.envrc.local`, `.direnv.local`, `credentials.yaml` and
+    `secrets.json` are credential stores and are no longer copied into the installed
+    skill tree. Words that merely start like one (`environment.py`, `secretary.md`) are
+    still kept.
 
 ## v2.4.0 (2026-10-20)
 

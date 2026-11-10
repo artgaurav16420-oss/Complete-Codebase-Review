@@ -174,27 +174,35 @@ def _onerror(func, path, exc_info):
 
 _CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore", ".jks")
 _CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
-_CREDENTIAL_NAMES = {
-    "credentials", "credentials.json", ".netrc",
-    ".git-credentials", ".npmrc", ".pypirc", ".htpasswd",
-    ".envrc", ".direnv",
+# The word a credential file is named after. A file that carries one of
+# them is a credential store whatever else the name says: the extension
+# (credentials.yaml), the local override suffix (.envrc.local) and the
+# leading dot are variations on the same thing, and a list of whole
+# names misses the variants that actually turn up in a checkout.
+_CREDENTIAL_STEMS = {
+    "env", "envrc", "direnv", "netrc", "npmrc", "pypirc", "htpasswd",
+    "credential", "credentials", "git-credentials", "secret", "secrets",
 }
 
 
 def _is_credential_name(name):
     """True for names that commonly hold private keys or credentials.
 
-    Exact-name matching alone misses the variants that actually exist in a
-    checkout (.env.local, credentials.json, id_rsa_work, *.pem), and those
-    files would otherwise be copied into every agent skill directory.
+    The rule is about the word the file is named after, not about the
+    whole name: exact-name matching alone misses the variants that
+    actually exist in a checkout (.env.local, credentials.json,
+    .envrc.local, id_rsa_work, *.pem), and those files would otherwise be
+    copied into every agent skill directory.
     """
     lowered = name.lower()
-    return (
-        lowered in _CREDENTIAL_NAMES
-        or lowered.startswith(".env.")
-        or lowered.startswith(_CREDENTIAL_PREFIXES)
-        or lowered.endswith(_CREDENTIAL_SUFFIXES)
-    )
+    if lowered.startswith(_CREDENTIAL_PREFIXES):
+        return True
+    if lowered.endswith(_CREDENTIAL_SUFFIXES):
+        return True
+    # The word the file is named after: no leading dot, and nothing
+    # before the first dot ("credentials.json" -> "credentials").
+    stem = lowered.lstrip(".").split(".")[0]
+    return stem in _CREDENTIAL_STEMS
 
 
 def _ignore_skill_files(path, names):

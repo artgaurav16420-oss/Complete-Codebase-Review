@@ -602,6 +602,24 @@ class TestCopySkill(_BaseInstallTest):
                 (dest / "complete-codebase-review" / "SKILL.md").exists()
             )
 
+    def test_does_not_copy_a_credential_override_into_the_install(self):
+        # The credential rule is about the word the file is named after:
+        # .envrc.local is the local override of .envrc and holds the same
+        # secrets, so it must not be copied into the skill tree either.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {
+                ".envrc.local": "export SECRET=1\n",
+                "credentials.yaml": "password: hunter2\n",
+                "secrets.json": '{"token": "abc"}\n',
+            })
+            dest = Path(tmpdir) / "dest"
+            self.install.copy_skill(src, dest)
+            installed = dest / "complete-codebase-review"
+            for name in (".envrc.local", "credentials.yaml", "secrets.json"):
+                self.assertFalse((installed / name).exists())
+            # The skill itself is there.
+            self.assertTrue((installed / "SKILL.md").exists())
+
     def test_a_concurrent_park_leaves_the_older_backup_alone(self):
         # Two installs overlap. The second one parks the tree the first
         # one just put in place, so the live install is briefly missing.
@@ -1492,8 +1510,15 @@ class TestCredentialName(_BaseInstallTest):
     MATCHES = (
         ".git-credentials", ".npmrc", ".pypirc", ".htpasswd",
         "foo.keystore", "bar.jks", "id_rsa", ".env.local", "server.pem",
+        # The extension and local-override variants of the same word.
+        ".envrc.local", ".direnv.local", "credentials.yaml", "secrets.json",
+        "secret.yml", ".secrets", "netrc", ".env.production.local",
     )
-    NON_MATCHES = (".gitignore", "notes.txt", "README.md")
+    NON_MATCHES = (
+        ".gitignore", "notes.txt", "README.md",
+        # Words that only start like a credential word.
+        "environment.py", "secretary.md", "credentialing.md", "envelope.md",
+    )
 
     def test_credential_names_match(self):
         for name in self.MATCHES:
