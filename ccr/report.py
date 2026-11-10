@@ -9,14 +9,22 @@ import re
 import unicodedata
 
 
+# The joiners are format characters too, but they carry meaning: ZWJ holds
+# an emoji sequence together and ZWNJ keeps a word apart in the scripts that
+# use them. Dropping them changes the text a reviewer reads, so they stay.
+_KEPT_FORMAT = frozenset("\u200c\u200d")
+
+
 def _strip_format(text):
-    """Drop Unicode format characters (bidi overrides, isolates, joiners).
+    """Drop Unicode format characters (bidi overrides, isolates, spaces).
 
     They render as nothing, so a finding lifted from an untrusted result can
-    reorder the rest of the line it sits in without looking different.
+    reorder the rest of the line it sits in without looking different. The
+    two joiners are the exception: they carry meaning, so they stay.
     """
     return "".join(
-        char for char in text if unicodedata.category(char) != "Cf"
+        char for char in text
+        if unicodedata.category(char) != "Cf" or char in _KEPT_FORMAT
     )
 
 

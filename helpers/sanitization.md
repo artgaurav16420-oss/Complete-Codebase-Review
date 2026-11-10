@@ -19,15 +19,19 @@ def sanitize_unicode(text):
 
     Newline, carriage return and tab survive: they carry the line and word
     structure of the text, and a caller that wants one line removes them
-    itself.
+    itself. The two joiners (ZWJ, ZWNJ) survive too: they hold an emoji
+    sequence together and keep a word apart in the scripts that use them.
     """
     normalized = unicodedata.normalize("NFC", text)
     # Cf covers bidi overrides and isolates (U+202A-U+202E, U+2066-U+2069) and
     # zero-width joiners/spaces: they render invisibly in a terminal but
-    # reorder or hide the text a reviewer is reading.
+    # reorder or hide the text a reviewer is reading. The joiners are the
+    # exception: they carry meaning, so they stay. The zero-width space is
+    # not one of them: it can hide a word boundary.
     return "".join(
         c for c in normalized
-        if unicodedata.category(c) not in ("Cc", "Cf") or c in "\n\r\t"
+        if unicodedata.category(c) not in ("Cc", "Cf")
+        or c in "\n\r\t\u200c\u200d"
     )
 ```
 

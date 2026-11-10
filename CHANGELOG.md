@@ -37,7 +37,8 @@
   - Completion ratio divides by the planned roster, so a stale `total_agents` cannot
     report 0% for a finished run.
   - Report cells neutralise HTML and Markdown links from agent text; sanitization drops
-    Unicode `Cf` characters (bidi overrides, isolates, zero-width space).
+    Unicode `Cf` characters (bidi overrides, isolates, zero-width space) and keeps the
+    two joiners, which carry meaning.
   - The installer stages the copy, moves the previous tree aside instead of deleting it
     and puts it back when the swap fails; leftovers from a crashed run are swept by age,
     so a concurrent run's staging tree is left alone. The credential filter covers
@@ -160,11 +161,10 @@
   - CodeAnt round 16: `synthesize` no longer warns and continues when another run holds
     the cache lock: the roster and the results are being changed underneath it, so a
     report built there could go out without a domain, and the run now exits with status 2
-    instead. A lock that cannot be taken at all (the lock file cannot be opened, or the
-    build has no locking primitive) is a different case, and `StateLock` now says so:
-    `record` refuses to write the cache without a lock, so `synthesize` may continue when
-    there is none. The state file is read inside the lock, so the roster it names is the
-    one the lock protects. An agent id with a path separator is rejected: the result is
+    instead. `StateLock` now tells "no run can hold a lock here" apart from "another run
+    holds it", so a caller can decide whether it may continue. The state file is read
+    inside the lock, so the roster it names is the one the lock protects. An agent id
+    with a path separator is rejected: the result is
     `<cache>/phase_<id>.json` and the cache scan lists the cache root only, so such an id
     named a file the scan never sees. The `sanitize_unicode` docstring now says that
     newline, carriage return and tab survive.
@@ -177,6 +177,12 @@
     hold a lock — lets a reader continue. `record` no longer archives a pipeline
     document saved under the canonical name: the rule that decides what is a result now
     applies to every name, as it already did for discovery and the loader.
+  - CodeAnt round 18: report cells and the sanitization helper keep the two Unicode
+    joiners (ZWJ, ZWNJ), which carry meaning — they hold an emoji sequence together and
+    keep a word apart in the scripts that use them — while the bidi controls and the
+    zero-width space are still dropped. The installer test that covers a crashed run's
+    backup carrying this run's pid now creates the install that has to be parked, so it
+    exercises the backup-name collision instead of passing because nothing was parked.
 
 ## v2.4.0 (2026-10-20)
 

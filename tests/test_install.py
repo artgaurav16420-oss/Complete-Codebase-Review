@@ -310,17 +310,29 @@ class TestCopySkill(_BaseInstallTest):
         # Pids are reused: a crashed run's backup can carry the pid this run
         # would use. Deleting it before the copy can destroy the only copy of
         # the previous install, so the backup name must be this run's alone.
+        # The install has to be there for this run to park it: without one
+        # nothing writes the name the leftover carries, and the leftover
+        # survives for a reason that has nothing to do with the collision.
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)
             dest = Path(tmpdir) / "dest"
             dest.mkdir()
+            skill_dest = dest / "complete-codebase-review"
+            skill_dest.mkdir()
+            (skill_dest / "SKILL.md").write_text("installed")
             crashed = dest / (self.install.PREVIOUS_PREFIX + str(os.getpid()))
             crashed.mkdir()
             (crashed / "SKILL.md").write_text("survivor")
 
             self.install.copy_skill(src, dest)
 
-            self.assertTrue((crashed / "SKILL.md").exists())
+            # The install went in, so this run did park the old tree under a
+            # name of its own and never touched the crashed one.
+            self.assertTrue((skill_dest / "SKILL.md").exists())
+            self.assertEqual(
+                (crashed / "SKILL.md").read_text(encoding="utf-8"),
+                "survivor",
+            )
 
     def test_keeps_a_link_like_leftover_the_age_rule_would_delete(self):
         # A parked link keeps the age of the link the user configured: a

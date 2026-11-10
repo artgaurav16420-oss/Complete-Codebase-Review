@@ -258,6 +258,22 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("&#64;", row)
         self.assertIn("example.invalid", row)
 
+    def test_report_cells_keep_the_joiners_and_drop_the_bidi_controls(self):
+        # ZWJ and ZWNJ carry meaning: they hold an emoji sequence together
+        # and keep a word apart in the scripts that use them, so stripping
+        # them changes the text a reviewer reads.
+        self.assertEqual(
+            report_mod._strip_format("a\u200db\u200cc"), "a\u200db\u200cc"
+        )
+        # The bidi controls reorder a line without looking different, and
+        # the zero-width space hides a word boundary. None of them carry
+        # meaning, so they go.
+        for hidden in ("\u202e", "\u2066", "\u200b"):
+            self.assertEqual(
+                report_mod._strip_format("safe" + hidden + "text"),
+                "safetext",
+            )
+
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")
         self.assertTrue(report_mod.validate_markdown(broken))
