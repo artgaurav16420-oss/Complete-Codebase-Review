@@ -324,8 +324,13 @@ class TestResultDiscovery(unittest.TestCase):
 
     def test_a_symlinked_result_is_not_discovered(self):
         # Following a link would read a file outside the cache and ingest it
-        # as an agent result. The pipeline writes regular files only.
-        outside = Path(self.tmp.name) / "outside.json"
+        # as an agent result. The pipeline writes regular files only. The
+        # target lives in a subdirectory so discovery cannot see it directly:
+        # a bare outside.json in the scanned directory would be found on its
+        # own and make the assertion pass for the wrong reason.
+        outside_dir = self.dir / "external"
+        outside_dir.mkdir()
+        outside = outside_dir / "outside.json"
         outside.write_text(
             '{"agent": "security", "findings": []}', encoding="utf-8"
         )
