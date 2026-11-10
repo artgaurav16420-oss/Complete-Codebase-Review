@@ -197,6 +197,14 @@ class TestCopySkill(_BaseInstallTest):
             dest.mkdir()
             elsewhere = Path(tmpdir) / "elsewhere"
             elsewhere.mkdir()
+            # The swap needs a link. A host that cannot create one skips the
+            # test instead of failing it.
+            probe = Path(tmpdir) / "probe"
+            try:
+                create_directory_link(probe, elsewhere)
+            except OSError as exc:
+                self.skipTest("cannot create a directory link: " + str(exc))
+            self.install._remove_link_like(probe)
             real_sweep = self.install._sweep_leftovers
 
             def sweep_then_swap(target, *args, **kwargs):
@@ -325,7 +333,10 @@ class TestCopySkill(_BaseInstallTest):
             outside = Path(tmpdir) / "outside"
             outside.mkdir()
             parked = dest / (self.install.PREVIOUS_PREFIX + "123-abc")
-            create_directory_link(parked, outside)
+            try:
+                create_directory_link(parked, outside)
+            except OSError as exc:
+                self.skipTest("cannot create a directory link: " + str(exc))
             real_time = self.install.time.time
             # Push the clock past the liveness window so the age rule would
             # select the parked link.

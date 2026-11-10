@@ -115,6 +115,12 @@
     own timestamp cannot be refreshed on every platform, so a rollback copy parked by a
     running install can no longer be swept away from under it; and the `merge_resume`
     entry in `docs/api/ccr.md` now states what an empty planned roster means.
+  - CodeAnt round 11: an explicit `"security_agent_id": null` is rejected at load instead
+    of being read as an omitted field, because it would point the HIGH-finding check at an
+    id the manifest may no longer declare and silently demote those findings; a bare email
+    address in agent text is defanged like a URL, since GitHub autolinks it as a `mailto:`
+    destination; and the install test that swaps the destination for a link now skips
+    itself on a host that cannot create one, instead of failing the suite.
 
 ## v2.4.0 (2026-10-20)
 

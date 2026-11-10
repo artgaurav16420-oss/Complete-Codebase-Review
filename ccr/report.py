@@ -5,6 +5,7 @@ section names and table headers exactly as written here.
 """
 
 import math
+import re
 import unicodedata
 
 
@@ -45,15 +46,23 @@ def fmt_hours_long(value):
     return _fmt_number(value) + " hours"
 
 
+# A plain address, as GitHub's autolinker sees it: a local part, an @, and a
+# dotted domain.
+_EMAIL_RE = re.compile(r"(?<=[\w.+-])@(?=[\w-]+(?:\.[\w-]+)+)")
+
+
 def _defang_urls(text):
     """Break GitHub's plain-text autolinks without changing what is read.
 
     GitHub links ``https://...`` and ``www....`` even when ``<`` is escaped.
     A backslash before the colon (and the host dot) is dropped by the
     renderer, so the words still read as a URL while no live destination is
-    left for a finding to smuggle into the report.
+    left for a finding to smuggle into the report. A bare address is linked
+    the same way, as a ``mailto:`` destination, so its ``@`` becomes an
+    entity: the renderer shows the sign and the autolinker does not see one.
     """
-    return text.replace("://", "\\://").replace("www.", "www\\.")
+    defanged = text.replace("://", "\\://").replace("www.", "www\\.")
+    return _EMAIL_RE.sub("&#64;", defanged)
 
 
 def _cell(text):
