@@ -190,6 +190,33 @@ class TestCopySkill(_BaseInstallTest):
             self.assertTrue(result.exists())
             self.assertTrue((result / "SKILL.md").exists())
 
+    def test_refuses_a_target_swapped_for_a_link_after_the_sweep(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            elsewhere = Path(tmpdir) / "elsewhere"
+            elsewhere.mkdir()
+            real_sweep = self.install._sweep_leftovers
+
+            def sweep_then_swap(target, *args, **kwargs):
+                result = real_sweep(target, *args, **kwargs)
+                # Another writer swaps the directory for a link between the
+                # guard and the copy.
+                target.rmdir()
+                create_directory_link(target, elsewhere)
+                return result
+
+            with patch.object(
+                    self.install, "_sweep_leftovers", sweep_then_swap):
+                with patch.object(self.install.shutil, "copytree") as copytree:
+                    with self.assertRaises(ValueError):
+                        self.install.copy_skill(src, dest)
+            # The copy must not have run through the link: the staging tree
+            # would land inside the link's target.
+            copytree.assert_not_called()
+            self.assertEqual(list(elsewhere.iterdir()), [])
+
     def test_removes_existing_skill_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)

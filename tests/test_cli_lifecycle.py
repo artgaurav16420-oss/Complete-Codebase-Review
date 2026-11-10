@@ -244,6 +244,23 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(len(dirs), 1)
         self.assertTrue(dirs[0].name.endswith("-1"))
 
+    def test_a_linked_result_is_not_archived(self):
+        # Discovery skips a link, so archiving one would remove a cache entry
+        # this run never writes and synthesis would never read. The move
+        # would also relocate a link whose target belongs to someone else.
+        link = self.cache / "phase_security.json"
+        link.write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        real_is_symlink = Path.is_symlink
+
+        def pretend_link(self):
+            return self == link or real_is_symlink(self)
+
+        with mock.patch.object(Path, "is_symlink", pretend_link):
+            stale = cli._stale_results(self.cache, {"security"})
+        self.assertEqual(stale, [])
+
     def test_archive_rolls_back_on_partial_move(self):
         for name in ("security", "architecture"):
             (self.cache / f"phase_{name}.json").write_text(
@@ -684,6 +701,22 @@ class TestCliReReviewBaseline(unittest.TestCase):
         # A null cached target must not become the baseline target: the cache
         # directory is where the run wrote, so that is what the baseline names.
         self.assertEqual(report["baseline"]["target"], str(self.cache))
+
+    def test_legacy_state_without_a_target_drops_its_facts(self):
+        # The state does not say which codebase it measured, so its size
+        # numbers cannot be attributed to the target this run names.
+        self._write_state(
+            target_dir=None, facts={"files": 42, "languages": {"py": 1}}
+        )
+        code, _, err = run([
+            "synthesize", "--in", str(self.cache), "--target", str(ROOT),
+            "--format", "json", "--out", str(self.dir / "report"),
+        ])
+        self.assertEqual(code, 0, err)
+        self.assertIn("records no target", err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(report["report"]["codebase_size"]["files"], 0)
 
     def test_counter_save_failure_still_emits_the_report(self):
         self._write_state(re_review_count=2)

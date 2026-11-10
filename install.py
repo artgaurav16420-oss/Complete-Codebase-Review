@@ -420,6 +420,16 @@ def copy_skill(src_dir, dest_dir):
         # rather than deleted for the same reason: if the swap fails it is
         # moved back, so the previous install survives every failure path.
         _sweep_leftovers(dest_dir)
+        # The guard above runs before the sweep, and a sweep can take long
+        # enough for the target to become a link. This is the last check
+        # before the write: copying through a link would put the staging tree
+        # inside whatever it points at, which is the traversal the guards
+        # exist to stop.
+        if _is_link_like(dest_dir):
+            raise ValueError(
+                "Refusing to install through a link-like target: "
+                + str(dest_dir)
+            )
         try:
             shutil.copytree(src_dir, staging, ignore=_ignore_skill_files, symlinks=True)
             _validate_no_escaped_symlinks(staging)

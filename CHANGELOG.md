@@ -100,6 +100,13 @@
     entries must be strings, so a hand-edited `[{}]` is rejected at load rather than raising
     `TypeError` in `completion_ratio`; and `test.sh` plus `Test-Windows.ps1` match the
     section headings instead of a substring that also occurs in body prose.
+  - CodeAnt round 9: a legacy state that records no target no longer lends its `facts` to
+    the target a later run names; `record` leaves a linked result in place, because
+    discovery skips links and archiving one would move an entry this run never wrote;
+    an install re-checks the destination for link-likeness immediately before the copy,
+    so a target swapped for a link during the leftover sweep cannot receive the staging
+    tree; and the section checks compare the whole heading title, so a heading that merely
+    contains the name (`## No Environment Variables`) no longer passes.
 
 ## v2.4.0 (2026-10-20)
 

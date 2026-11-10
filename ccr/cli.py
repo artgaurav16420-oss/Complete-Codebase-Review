@@ -139,7 +139,12 @@ def _stale_results(root, agent_ids):
     planned = set(agent_ids)
     stale = []
     for path in entries:
-        if path.suffix.lower() != providers.RESULT_SUFFIX or not path.is_file():
+        if path.suffix.lower() != providers.RESULT_SUFFIX:
+            continue
+        # Discovery skips a link, so archiving one would remove a cache entry
+        # this run never writes and synthesis would never read. The move would
+        # also relocate a link whose target belongs to someone else.
+        if _is_link_like(path) or not path.is_file():
             continue
         if providers.is_canonical_name(path) or path.stem in planned:
             stale.append(path)
@@ -510,9 +515,11 @@ def _credit_review(state_path, signature, target):
 def _same_target(target, stored):
     """True when two target spellings name the same directory.
 
-    An empty ``stored`` means the state predates target recording, so it is
-    accepted. resolve() raises on a symlink loop; a target we cannot resolve
-    is not the cached one.
+    resolve() raises on a symlink loop; a target we cannot resolve is not the
+    cached one. An empty ``stored`` means the state predates target recording:
+    a caller whose data belongs to the cache (the re-review counter) accepts
+    that, while a caller attributing codebase facts must not, and checks for
+    the empty case before asking.
     """
     if not stored:
         return True
@@ -543,6 +550,15 @@ def _synthesis_context(args, cached):
     if cached is None:
         return effort, target, None, 0, None
     stored = cached.data.get("target_dir") or ""
+    if not stored:
+        # A state that predates target recording cannot say which codebase its
+        # facts describe, so attributing them to the target this run names
+        # would put another codebase's size in the report.
+        print(
+            "[WARN] cached state records no target; codebase size omitted",
+            file=sys.stderr,
+        )
+        return effort, target, None, 0, None
     if not _same_target(target, stored):
         print(
             "[WARN] cached facts belong to " + stored

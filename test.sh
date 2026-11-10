@@ -50,9 +50,13 @@ if ! grep -q "effort: \${CODE_REVIEW_EFFORT:-max}" "$SKILL_FILE"; then
 fi
 
 for section in "Environment Variables" "Checkpointing" "Quick Mode"; do
-    # Anchor on a heading: each name also appears in body prose, so a plain
-    # substring match still passes after the section itself is deleted.
-    if ! grep -qE "^#+ .*$section" "$SKILL_FILE"; then
+    # Compare the whole heading title. Each name also appears in body prose,
+    # so a substring match passes with the section deleted, and a wildcard
+    # passes on a heading that merely contains it ("## No Environment
+    # Variables"). Headings carry an emoji prefix, so strip the markers and
+    # any leading decoration before comparing.
+    if ! sed -nE 's/^#{1,6}[[:space:]]+//p' "$SKILL_FILE" |
+            sed -E 's/^[^A-Za-z]+//' | grep -qxF "$section"; then
         echo "[ERROR] '$section' section missing from $SKILL_FILE"
         FAIL=1
     fi
