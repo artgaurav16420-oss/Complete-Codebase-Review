@@ -125,6 +125,21 @@ class TestManifestValidation(unittest.TestCase):
             manifest_mod.validate(data)
         self.assertIn("must not be empty", str(ctx.exception))
 
+    def test_explicit_null_security_agent_is_rejected(self):
+        # A null id says "no agent", not "the default": it would point the
+        # HIGH-finding check at an id the manifest may no longer declare.
+        data = self._broken()
+        data["security_agent_id"] = None
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("not null", str(ctx.exception))
+
+    def test_absent_security_agent_is_accepted(self):
+        # Older manifests have no field at all; that keeps the default.
+        data = self._broken()
+        del data["security_agent_id"]
+        manifest_mod.validate(data)
+
     def test_duplicate_env_var(self):
         data = self._broken()
         data["env_vars"].append(dict(data["env_vars"][0]))

@@ -154,12 +154,20 @@ def _validate_security_agent(data, agent_ids):
     """Check the security agent id names a declared agent.
 
     The findings engine promotes HIGH findings from this agent to Phase 1, so
-    an id that names nothing would silently demote them. Absent means the
-    historical default, which keeps older manifests loadable.
+    an id that names nothing would silently demote them. An absent field means
+    the historical default, which keeps older manifests loadable. An explicit
+    null is not an absent field: it says "no agent", which would point the
+    check at the default id and demote the HIGH findings of a renamed agent,
+    so it is rejected rather than read as an omission.
     """
-    agent_id = data.get("security_agent_id")
-    if agent_id is None:
+    if "security_agent_id" not in data:
         return
+    agent_id = data["security_agent_id"]
+    if agent_id is None:
+        raise ValueError(
+            "security_agent_id must name a declared agent, not null; "
+            "omit the field to use the default"
+        )
     if not isinstance(agent_id, str) or agent_id not in agent_ids:
         raise ValueError("security_agent_id is not a declared agent: " + repr(agent_id))
 
