@@ -50,7 +50,9 @@ if ! grep -q "effort: \${CODE_REVIEW_EFFORT:-max}" "$SKILL_FILE"; then
 fi
 
 for section in "Environment Variables" "Checkpointing" "Quick Mode"; do
-    if ! grep -qF "$section" "$SKILL_FILE"; then
+    # Anchor on a heading: each name also appears in body prose, so a plain
+    # substring match still passes after the section itself is deleted.
+    if ! grep -qE "^#+ .*$section" "$SKILL_FILE"; then
         echo "[ERROR] '$section' section missing from $SKILL_FILE"
         FAIL=1
     fi

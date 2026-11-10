@@ -1,6 +1,7 @@
 """Tests for ccr.providers: prompts, ingestion, fixture replay."""
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -320,6 +321,23 @@ class TestResultDiscovery(unittest.TestCase):
             ),
             [],
         )
+
+    def test_a_symlinked_result_is_not_discovered(self):
+        # Following a link would read a file outside the cache and ingest it
+        # as an agent result. The pipeline writes regular files only.
+        outside = Path(self.tmp.name) / "outside.json"
+        outside.write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        try:
+            os.symlink(outside, self.dir / "phase_security.json")
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlink creation unavailable: " + str(exc))
+        self.assertEqual(providers.discover_results(self.dir), [])
+        self.assertEqual(
+            providers.discover_results(self.dir, {"security"}), []
+        )
+        self.assertIsNone(providers.find_result(self.dir, "security"))
 
     def test_discovery_accepts_an_uppercase_suffix(self):
         # A glob is case-sensitive on POSIX while find_result compared the

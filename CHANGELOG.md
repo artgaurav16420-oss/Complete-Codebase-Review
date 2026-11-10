@@ -94,6 +94,12 @@
     and leaving the previous run's results for `synthesize` to ingest; and a manifest agent
     id may not start with the reserved `phase_` prefix, which would make a bare fixture
     indistinguishable from another agent's canonical result.
+  - CodeAnt round 8: discovery skips a link, so a `phase_<id>.json` symlink cannot pull a
+    file from outside the cache into a report; a legacy state with `target_dir: null` falls
+    back to the cache directory instead of naming the baseline target `null`; state roster
+    entries must be strings, so a hand-edited `[{}]` is rejected at load rather than raising
+    `TypeError` in `completion_ratio`; and `test.sh` plus `Test-Windows.ps1` match the
+    section headings instead of a substring that also occurs in body prose.
 
 ## v2.4.0 (2026-10-20)
 

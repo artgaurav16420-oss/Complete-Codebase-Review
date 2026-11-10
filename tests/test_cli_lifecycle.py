@@ -681,6 +681,9 @@ class TestCliReReviewBaseline(unittest.TestCase):
         # The state carries no facts, so the size block stays empty instead
         # of crashing on a null target.
         self.assertEqual(report["report"]["codebase_size"]["files"], 0)
+        # A null cached target must not become the baseline target: the cache
+        # directory is where the run wrote, so that is what the baseline names.
+        self.assertEqual(report["baseline"]["target"], str(self.cache))
 
     def test_counter_save_failure_still_emits_the_report(self):
         self._write_state(re_review_count=2)

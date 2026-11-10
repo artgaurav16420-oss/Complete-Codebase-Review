@@ -81,6 +81,35 @@ class TestStateLifecycle(unittest.TestCase):
             state.State.load(self.path)
         self.assertIn("target_dir must be a string", str(caught.exception))
 
+    def test_non_string_roster_entries_rejected(self):
+        # dict.fromkeys runs on these in completion_ratio, so an object entry
+        # raised TypeError after load() had already reported success.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": [{}],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.State.load(self.path)
+        self.assertIn("agents_planned entries must be strings",
+                      str(caught.exception))
+
+    def test_non_string_completed_entries_rejected(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": ["security"],
+            "agents_completed": [None],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.State.load(self.path)
+        self.assertIn("agents_completed entries must be strings",
+                      str(caught.exception))
+
     def test_minimal_state_gets_defaults(self):
         self.path.parent.mkdir(parents=True)
         self.path.write_text(json.dumps({

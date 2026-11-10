@@ -532,7 +532,14 @@ def _synthesis_context(args, cached):
     effort = args.effort
     if effort is None:
         effort = cached.data.get("effort", "max") if cached is not None else "max"
-    target = args.target or (cached.data["target_dir"] if cached else args.cache)
+    # A legacy state can carry target_dir: null, so the cached spelling is only
+    # a fallback when it is a real path; otherwise the cache directory, which
+    # is where the run wrote, is the best name for the target.
+    target = args.target
+    if not target and cached is not None:
+        target = cached.data.get("target_dir")
+    if not target:
+        target = args.cache
     if cached is None:
         return effort, target, None, 0, None
     stored = cached.data.get("target_dir") or ""

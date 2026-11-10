@@ -146,8 +146,20 @@ class State:
             raise ValueError("state target_dir must be a string")
         if not isinstance(data["phase_gates"], dict):
             raise ValueError("state phase_gates must be a JSON object")
-        if not isinstance(data["agents_planned"], list):
-            raise ValueError("state agents_planned must be a JSON array")
+        # Roster entries are ids. Anything else (a hand-edited object, a null)
+        # reaches dict.fromkeys in completion_ratio, which raises TypeError on
+        # an unhashable entry after load() has already reported success.
+        for key in ("agents_planned", "agents_completed", "agents_failed"):
+            if key not in data:
+                continue
+            entries = data[key]
+            if not isinstance(entries, list):
+                raise ValueError("state " + key + " must be a JSON array")
+            for entry in entries:
+                if not isinstance(entry, str):
+                    raise ValueError(
+                        "state " + key + " entries must be strings"
+                    )
         if data["current_phase"] not in PHASES:
             raise ValueError("invalid phase: " + str(data["current_phase"]))
         for gate in data["phase_gates"]:

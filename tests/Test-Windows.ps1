@@ -27,22 +27,22 @@ if (-not (Test-Path $SkillFile)) {
 }
 
 if ($SkillOk) {
-    # --- Check 2a: 'Environment Variables' section (ASCII match) ---
-    if (Select-String -Path $SkillFile -Pattern 'Environment Variables' -SimpleMatch -Quiet) {
+    # --- Check 2a: section headings (each name also appears in body prose) ---
+    if (Select-String -Path $SkillFile -Pattern '^#{1,6} .*Environment Variables' -Quiet) {
         Write-Host "[SUCCESS] 'Environment Variables' section found"
     } else {
         Write-Host "[ERROR] 'Environment Variables' section missing from SKILL.md"
         $Fail = 1
     }
 
-    if (Select-String -Path $SkillFile -Pattern 'Checkpointing' -SimpleMatch -Quiet) {
+    if (Select-String -Path $SkillFile -Pattern '^#{1,6} .*Checkpointing' -Quiet) {
         Write-Host "[SUCCESS] 'Checkpointing' section found"
     } else {
         Write-Host "[ERROR] 'Checkpointing' section missing from SKILL.md"
         $Fail = 1
     }
 
-    if (Select-String -Path $SkillFile -Pattern 'Quick Mode' -SimpleMatch -Quiet) {
+    if (Select-String -Path $SkillFile -Pattern '^#{1,6} .*Quick Mode' -Quiet) {
         Write-Host "[SUCCESS] 'Quick Mode' section found"
     } else {
         Write-Host "[ERROR] 'Quick Mode' section missing from SKILL.md"

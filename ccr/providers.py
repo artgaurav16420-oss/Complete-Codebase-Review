@@ -183,7 +183,10 @@ def _result_paths(root):
     Only regular files are returned. The suffix alone is not enough: a
     directory can be named ``security.json``, and discovery with a known id
     set trusts the name without opening the entry, so it would hand back
-    something no loader can read.
+    something no loader can read. Links are skipped for the same reason a
+    link-like cache or install is refused elsewhere: a result is a file this
+    pipeline wrote, and following a link would read whatever sits outside the
+    cache.
     """
     try:
         entries = sorted(Path(root).iterdir())
@@ -194,7 +197,9 @@ def _result_paths(root):
     canonical = []
     bare = []
     for path in entries:
-        if path.suffix.lower() != RESULT_SUFFIX or not path.is_file():
+        if path.suffix.lower() != RESULT_SUFFIX:
+            continue
+        if path.is_symlink() or not path.is_file():
             continue
         if is_canonical_name(path):
             canonical.append(path)
