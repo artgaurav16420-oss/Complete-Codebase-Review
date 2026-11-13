@@ -63,6 +63,25 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(self.facts["containers"], [])
         self.assertEqual(self.facts["dependency_manifests"], [])
 
+    def test_dependency_manifests_and_containers_are_recorded(self):
+        # Without this fixture neither the dependency-manifest nor the
+        # container branch in discovery.discover runs, so a regression that
+        # stopped recording them would only show up as two agents silently
+        # vanishing from the next review.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+            (root / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+            (root / "app.py").write_text("print(1)\n", encoding="utf-8")
+            facts = discovery.discover(str(root))
+            self.assertEqual(facts["dependency_manifests"], ["pyproject.toml"])
+            self.assertEqual(facts["containers"], ["Dockerfile"])
+            selected = discovery.active_agents(
+                manifest_mod.load(), facts
+            )
+            self.assertIn("dependencies", selected)
+            self.assertIn("devops", selected)
+
     def test_ci_directory_named_like_a_workflow_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -242,6 +261,20 @@ class TestDiscover(unittest.TestCase):
                 (root / ignored / "b.py").write_text("y = 2\n", encoding="utf-8")
             facts = discovery.discover(root)
             self.assertEqual(facts["files"], 1)
+
+    def test_ignores_coverage_report_dirs_but_not_first_party_names(self):
+        # htmlcov is a generated report; a first-party package may legitimately
+        # be named coverage, so that name must not be excluded.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "coverage").mkdir()
+            (root / "coverage" / "report.py").write_text("x = 1\n", encoding="utf-8")
+            (root / "htmlcov").mkdir()
+            (root / "htmlcov" / "index.html").write_text("<html></html>", encoding="utf-8")
+            (root / "htmlcov" / "static.py").write_text("y = 2\n", encoding="utf-8")
+            facts = discovery.discover(root)
+            self.assertEqual(facts["files"], 1)
+            self.assertEqual(facts["code_files"], 1)
 
 
 class TestActiveAgents(unittest.TestCase):

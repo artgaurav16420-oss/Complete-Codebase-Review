@@ -27,26 +27,20 @@ if (-not (Test-Path $SkillFile)) {
 }
 
 if ($SkillOk) {
-    # --- Check 2a: 'Environment Variables' section (ASCII match) ---
-    if (Select-String -Path $SkillFile -Pattern 'Environment Variables' -SimpleMatch -Quiet) {
-        Write-Host "[SUCCESS] 'Environment Variables' section found"
-    } else {
-        Write-Host "[ERROR] 'Environment Variables' section missing from SKILL.md"
-        $Fail = 1
-    }
-
-    if (Select-String -Path $SkillFile -Pattern 'Checkpointing' -SimpleMatch -Quiet) {
-        Write-Host "[SUCCESS] 'Checkpointing' section found"
-    } else {
-        Write-Host "[ERROR] 'Checkpointing' section missing from SKILL.md"
-        $Fail = 1
-    }
-
-    if (Select-String -Path $SkillFile -Pattern 'Quick Mode' -SimpleMatch -Quiet) {
-        Write-Host "[SUCCESS] 'Quick Mode' section found"
-    } else {
-        Write-Host "[ERROR] 'Quick Mode' section missing from SKILL.md"
-        $Fail = 1
+    # --- Check 2a: section headings, compared whole ---
+    # Each title also occurs in body prose, and a wildcard would pass on a
+    # heading that merely contains it, so strip the markers and decoration and
+    # compare the full title.
+    $Headings = Get-Content $SkillFile |
+        Where-Object { $_ -match '^#{1,6}\s+' } |
+        ForEach-Object { ($_ -replace '^#{1,6}\s+', '') -replace '^[^A-Za-z]+', '' }
+    foreach ($Section in @('Environment Variables', 'Checkpointing', 'Quick Mode')) {
+        if ($Headings -contains $Section) {
+            Write-Host "[SUCCESS] '$Section' section found"
+        } else {
+            Write-Host "[ERROR] '$Section' section missing from SKILL.md"
+            $Fail = 1
+        }
     }
 
     # --- Check 3: No hardcoded 'model: ' in frontmatter ---

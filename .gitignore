@@ -12,3 +12,7 @@ ccr-baseline.json
 .skills-index.json
 .coverage
 coverage.json
+
+# The lock the engine takes beside the cache state file. A cache directory
+# inside the repository would otherwise leave an untracked file behind.
+ccr-state.json.lock

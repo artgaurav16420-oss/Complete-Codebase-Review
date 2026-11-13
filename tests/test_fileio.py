@@ -244,6 +244,30 @@ class TestFileioWriteText(unittest.TestCase):
     def test_windows_final_path_reports_unavailable(self):
         self.assertEqual(self._final_path(None), "")
 
+    def test_leaf_symlink_refused_without_symlink_privilege(self):
+        """The leaf check runs where os.symlink cannot be called.
+
+        Windows without developer mode cannot create a symlink, so the
+        privilege-dependent tests above skip. The guard itself is a plain
+        islink() call and is exercised here on every platform.
+        """
+        with mock.patch("ccr.fileio.os.path.islink", return_value=True):
+            with self.assertRaises(OSError) as caught:
+                write_text(self.dir / "note.txt", "x")
+        self.assertIn("through symlink", str(caught.exception))
+
+    def test_symlinked_root_refused_without_symlink_privilege(self):
+        calls = {"count": 0}
+
+        def fake_islink(path):
+            calls["count"] += 1
+            return calls["count"] > 1  # leaf is fine, the root is the link
+
+        with mock.patch("ccr.fileio.os.path.islink", side_effect=fake_islink):
+            with self.assertRaises(OSError) as caught:
+                write_text(self.dir / "note.txt", "x", root=self.dir)
+        self.assertIn("symlinked root", str(caught.exception))
+
     def test_parent_that_is_a_symlink_after_open_is_refused(self):
         with mock.patch(
                 "ccr.fileio.os.path.islink",

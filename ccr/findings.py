@@ -8,6 +8,7 @@ per-domain scoring.
 
 import math
 import re
+import threading
 
 SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
 VERDICTS = (
@@ -250,7 +251,9 @@ def roadmap_eligible(finding):
     return finding.get("da_verdict") in ROADMAP_VERDICTS
 
 
-OVERLAP_THRESHOLD = 0.6
+# Calibration defaults (ADR-007). manifest.load() overrides them from
+# pipeline.json via set_calibration, which keeps tuning out of the engine.
+_DEFAULT_OVERLAP_THRESHOLD = 0.6
 OVERLAP_STOPWORDS = frozenset({
     "the", "and", "for", "with", "that", "this", "from", "into", "when",
     "then", "than", "are", "was", "were", "has", "have", "its",
@@ -310,7 +313,7 @@ def find_overlaps(findings):
                     continue
                 inter = len(tokens & group["tokens"])
                 union = len(tokens | group["tokens"])
-                if union and inter / union >= OVERLAP_THRESHOLD:
+                if union and inter / union >= _overlap_threshold():
                     group["members"].append(item)
                     added = tokens - group["tokens"]
                     group["tokens"] = group["tokens"] | tokens
@@ -365,15 +368,18 @@ def _overlap_representative(members, security_domains=frozenset()):
     )[0]
 
 
-LARGE_FIX_HOURS = 8.0
+_DEFAULT_LARGE_FIX_HOURS = 8.0
 
 
-def find_large_file_clusters(findings, min_hours=LARGE_FIX_HOURS):
+def find_large_file_clusters(findings, min_hours=None):
     """Flag files where several expensive findings may be one root cause.
 
     Advisory only: same file, at least two eligible findings at or above
-    ``min_hours``. The DA adjudicates; nothing is removed from tech debt.
+    ``min_hours``. The DA adjudicates; nothing is removed from tech debt. The
+    default is resolved at call time so a manifest override applies.
     """
+    if min_hours is None:
+        min_hours = _large_fix_hours()
     by_file = {}
     for item in findings:
         parts = anchor_parts(item.get("finding", ""))
@@ -388,10 +394,132 @@ def find_large_file_clusters(findings, min_hours=LARGE_FIX_HOURS):
     ]
 
 
-QUICK_WIN_CAP_HOURS = 40.0
+_DEFAULT_QUICK_WIN_CAP_HOURS = 40.0
 
 
-SECURITY_AGENT_ID = "security"
+_DEFAULT_SECURITY_AGENT_ID = "security"
+
+
+# The engine's identity and calibration belong to a run, not to the process.
+# Two syntheses that run at the same time must not see each other's values,
+# so the overrides live on the calling thread: a thread that sets them gets
+# its own copy, and the next thread starts from the defaults. Module-level
+# reads stay available through __getattr__ below, which reports the calling
+# thread's value.
+_SETTINGS = threading.local()
+
+_ENGINE_DEFAULTS = {
+    "SECURITY_AGENT_ID": _DEFAULT_SECURITY_AGENT_ID,
+    "OVERLAP_THRESHOLD": _DEFAULT_OVERLAP_THRESHOLD,
+    "LARGE_FIX_HOURS": _DEFAULT_LARGE_FIX_HOURS,
+    "QUICK_WIN_CAP_HOURS": _DEFAULT_QUICK_WIN_CAP_HOURS,
+}
+
+
+def _setting(name):
+    """Return this thread's override for a setting, or its default."""
+    return getattr(_SETTINGS, name, _ENGINE_DEFAULTS[name])
+
+
+def __getattr__(name):
+    """Expose the thread's settings as module attributes.
+
+    Callers that read ``findings.SECURITY_AGENT_ID`` see the value their own
+    thread set. A module global cannot do that: the last writer would win for
+    every reader.
+    """
+    if name in _ENGINE_DEFAULTS:
+        return _setting(name)
+    raise AttributeError(
+        "module 'ccr.findings' has no attribute " + repr(name)
+    )
+
+
+def _security_agent_id():
+    return _setting("SECURITY_AGENT_ID")
+
+
+def _overlap_threshold():
+    return _setting("OVERLAP_THRESHOLD")
+
+
+def _large_fix_hours():
+    return _setting("LARGE_FIX_HOURS")
+
+
+def _quick_win_cap_hours():
+    return _setting("QUICK_WIN_CAP_HOURS")
+
+
+def set_security_agent_id(agent_id):
+    """Point the security-agent check at the manifest's id.
+
+    ADR-005 makes pipeline.json the source of truth for agent identity, so the
+    loader overrides this default. Direct callers of this module keep the
+    default, which also keeps unit tests independent of the manifest. The
+    override belongs to the calling thread, so a second run in another thread
+    cannot change what this one sees.
+    """
+    _SETTINGS.SECURITY_AGENT_ID = (
+        agent_id if isinstance(agent_id, str) and agent_id
+        else _DEFAULT_SECURITY_AGENT_ID
+    )
+
+
+# Calibration key -> (exclusive lower bound, inclusive upper bound or None).
+# The manifest schema enforces the same ranges; the engine repeats them so a
+# direct caller of set_calibration cannot install a value that merges every
+# pair, detects no cluster, or caps every quick win.
+CALIBRATION_RANGES = {
+    "overlap_threshold": (0.0, 1.0),
+    "large_fix_hours": (0.0, None),
+    "quick_win_cap_hours": (0.0, None),
+}
+
+
+def _calibration_value(settings, key, default):
+    """Return a usable override for key, or the default.
+
+    NaN and infinity are refused here as well as by the manifest schema: NaN
+    compares false against everything, so it would silently empty every
+    cluster, and an enormous int would overflow the float conversion. An
+    out-of-range number is ignored for the same reason.
+    """
+    low, high = CALIBRATION_RANGES[key]
+    value = settings.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    try:
+        if not math.isfinite(value):
+            return default
+    except OverflowError:
+        return default
+    if value <= low or (high is not None and value > high):
+        return default
+    return float(value)
+
+
+def set_calibration(calibration):
+    """Point the calibration constants at the manifest's values.
+
+    ADR-005 makes pipeline.json the source of truth for the numbers that
+    decide report output (ADR-007 records the policy), so the loader overrides
+    these defaults. A key the manifest omits restores the engine default, so
+    loading one manifest cannot leave a previous manifest's numbers live.
+    Direct callers of this module keep the defaults, which also keeps unit
+    tests independent of the manifest. The overrides belong to the calling
+    thread, so a concurrent run in another thread cannot change them.
+    """
+    settings = calibration if isinstance(calibration, dict) else {}
+    _SETTINGS.OVERLAP_THRESHOLD = _calibration_value(
+        settings, "overlap_threshold", _DEFAULT_OVERLAP_THRESHOLD
+    )
+    _SETTINGS.LARGE_FIX_HOURS = _calibration_value(
+        settings, "large_fix_hours", _DEFAULT_LARGE_FIX_HOURS
+    )
+    _SETTINGS.QUICK_WIN_CAP_HOURS = _calibration_value(
+        settings, "quick_win_cap_hours", _DEFAULT_QUICK_WIN_CAP_HOURS
+    )
 
 
 def _domain_agent_ids(findings):
@@ -416,7 +544,7 @@ def _is_security(item, security_domains=frozenset()):
     to that id, so a rename cannot silently demote a HIGH finding.
     """
     if item.get("agent"):
-        return item.get("agent") == SECURITY_AGENT_ID
+        return item.get("agent") == _security_agent_id()
     return item.get("domain") in security_domains
 
 
@@ -439,7 +567,7 @@ def place_roadmap(findings, security_domains=None):
         roster = _domain_agent_ids(findings)
         security_domains = {
             display for display, agent_id in roster.items()
-            if agent_id == SECURITY_AGENT_ID
+            if agent_id == _security_agent_id()
         }
     # Always keep the manifest default: a renamed label must not drop findings
     # that carry only the literal "Security" domain and no agent key.
@@ -469,7 +597,7 @@ def place_roadmap(findings, security_domains=None):
     used = 0.0
     for item in quick_wins:
         hours = _as_hours(item.get("est_hours"))
-        if used + hours <= QUICK_WIN_CAP_HOURS:
+        if used + hours <= _quick_win_cap_hours():
             phases[1].append(item)
             used += hours
         else:
@@ -671,7 +799,12 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
         ``findings`` already passed through ``review_findings``, ``dedup``,
         and ``assign_ids``. Calling this on raw agent output will include
         mechanically rejected items in the roadmap hours.
+
+    The caller's dicts are copied on entry: ``overlap_of`` is annotated below,
+    and building a report must not mutate the results it was given.
     """
+    findings = [dict(item) for item in findings]
+    rejected = [dict(item) for item in rejected]
     all_findings = list(findings) + list(rejected)
     open_findings = [f for f in findings if f.get("da_verdict") != "REJECTED"]
     domain_agents = _domain_agent_ids(all_findings)
@@ -681,7 +814,7 @@ def aggregate(findings, rejected, agents_planned, agents_completed,
     # Same set place_roadmap applies (it always adds the literal "Security").
     security_domains = {
         display for display, agent_id in domain_agents.items()
-        if agent_id == SECURITY_AGENT_ID
+        if agent_id == _security_agent_id()
     } | {"Security"}
 
     overlap_candidates = []

@@ -175,6 +175,105 @@ class TestMarkdown(unittest.TestCase):
                 self.assertIn("click", heading)
                 self.assertIn("example.com", heading)
 
+    def test_finding_html_and_links_are_neutralised(self):
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] — <img src=x onerror=alert(1)> and "
+                "[click](https://example.invalid) → live payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        self.assertNotIn("<img", row)
+        self.assertIn("&lt;img", row)
+        self.assertNotIn("](https://example.invalid)", row)
+        # The anchor keeps its literal brackets so findings stay greppable.
+        self.assertIn("[src/app.py:1]", row)
+
+    def test_finding_format_characters_are_dropped(self):
+        # Bidi overrides and isolates are invisible but reorder the text
+        # around them, so agent text carrying them must not reach the cell.
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] ‮⁦wrong order⁩ "
+                "​‬ → payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        for char in ("‪", "‬", "‮", "⁦", "⁩",
+                     "​"):
+            self.assertNotIn(char, row)
+        self.assertIn("wrong order", row)
+
+    def test_bare_urls_are_not_autolinked(self):
+        # GitHub links a bare scheme or www host in plain text even when "<"
+        # is escaped, so the cell must carry an escape of its own.
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] — see https://example.invalid/fix and "
+                "www.example.invalid → payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        self.assertNotIn("https://", row)
+        self.assertNotIn("www.example", row)
+        self.assertIn("example.invalid", row)
+
+    def test_bare_hosts_are_not_autolinked_in_any_case(self):
+        # GitHub's autolinker matches the www prefix case-insensitively, so
+        # "WWW.example" is a live link too and must be defanged the same way.
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] — see WWW.example.invalid now → payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        self.assertNotIn("WWW.example", row)
+        self.assertIn("example.invalid", row)
+
+    def test_bare_addresses_are_not_autolinked(self):
+        # GitHub links a plain address in plain text too, as a mailto:
+        # destination, so the cell must defang the sign as well.
+        model = dict(self.model)
+        model["findings"] = [dict(
+            self.model["findings"][0],
+            finding=(
+                "[src/app.py:1] — mail attacker@example.invalid now → payload"
+            ),
+        )]
+        md = report_mod.render_markdown(model)
+        row = [line for line in md.splitlines() if "src/app.py:1" in line][0]
+        self.assertNotIn("attacker@example.invalid", row)
+        self.assertIn("&#64;", row)
+        self.assertIn("example.invalid", row)
+
+    def test_report_cells_keep_the_joiners_and_drop_the_bidi_controls(self):
+        # ZWJ and ZWNJ carry meaning: they hold an emoji sequence together
+        # and keep a word apart in the scripts that use them, so stripping
+        # them changes the text a reviewer reads.
+        self.assertEqual(
+            report_mod._strip_format("a\u200db\u200cc"), "a\u200db\u200cc"
+        )
+        # The bidi controls reorder a line without looking different, and
+        # the zero-width space hides a word boundary. None of them carry
+        # meaning, so they go.
+        for hidden in ("\u202e", "\u2066", "\u200b"):
+            self.assertEqual(
+                report_mod._strip_format("safe" + hidden + "text"),
+                "safetext",
+            )
+
     def test_internal_validator_rejects_missing_section(self):
         broken = self.md.replace("## Agent Status", "")
         self.assertTrue(report_mod.validate_markdown(broken))
@@ -182,6 +281,71 @@ class TestMarkdown(unittest.TestCase):
     def test_internal_validator_rejects_non_numeric_score(self):
         broken = self.md.replace("| Security |", "| Security | N/A |", 1)
         self.assertTrue(report_mod.validate_markdown(broken))
+
+    def test_internal_validator_rejects_any_non_numeric_score(self):
+        # The docstring promises non-numeric, not just the N/A spelling.
+        bad = copy.deepcopy(self.model)
+        bad["per_domain_scores"][0]["score"] = "five"
+        errors = report_mod.validate_markdown(report_mod.render_markdown(bad))
+        self.assertTrue(
+            any("non-numeric domain score" in error for error in errors),
+            errors,
+        )
+
+    def test_internal_validator_rejects_a_non_finite_score(self):
+        # float() reads "nan" and "inf", and every comparison against NaN is
+        # False, so the range check is what rejects them.
+        for value in ("nan", "inf", "-inf"):
+            broken = self.md.replace("| Security |", "| Security | " + value + " |", 1)
+            errors = report_mod.validate_markdown(broken)
+            self.assertTrue(
+                any("domain score out of range" in error for error in errors),
+                (value, errors),
+            )
+
+    def test_internal_validator_rejects_a_score_out_of_range(self):
+        # The section declares a scale of 0 to 10; a score outside it is a
+        # malformed score table.
+        for value in ("42", "-1"):
+            broken = self.md.replace("| Security |", "| Security | " + value + " |", 1)
+            errors = report_mod.validate_markdown(broken)
+            self.assertTrue(
+                any("domain score out of range" in error for error in errors),
+                (value, errors),
+            )
+
+    def test_internal_validator_rejects_a_score_table_without_a_separator(self):
+        # The separator is what starts the body, so a table without it has
+        # no row to check: the scores would go unchecked and the report
+        # would pass validation.
+        broken = self.md.replace(
+            "|--------|-------------|----------|------|--------|-----|",
+            "| Domain | Score (/10) | Critical | High | Medium | Low |",
+        )
+        self.assertNotEqual(broken, self.md)
+        errors = report_mod.validate_markdown(broken)
+        self.assertTrue(
+            any("score table separator missing" in error for error in errors),
+            errors,
+        )
+
+    def test_internal_validator_rejects_a_score_table_without_rows(self):
+        # A separator with no row after it checks nothing either.
+        lines = self.md.splitlines()
+        start = lines.index("## Per-Domain Scores")
+        end = lines.index("## Detailed Findings")
+        body = lines[start:end]
+        separator = next(
+            index for index, line in enumerate(body)
+            if line.startswith("|")
+            and set(line.replace("|", "").replace(" ", "")) <= set("-:")
+        )
+        broken = "\n".join(lines[:start] + body[:separator + 1] + lines[end:])
+        errors = report_mod.validate_markdown(broken)
+        self.assertTrue(
+            any("score table has no rows" in error for error in errors),
+            errors,
+        )
 
     def test_na_in_finding_text_is_not_a_score(self):
         model = pipeline.synthesize(

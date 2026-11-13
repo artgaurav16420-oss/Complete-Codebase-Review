@@ -166,6 +166,33 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("could not archive stale results", out)
 
+    def test_missing_cache_has_nothing_to_archive(self):
+        self.assertEqual(cli._archive_results(self.cache / "absent"), 0)
+
+    def test_unlistable_cache_fails_instead_of_skipping_the_archive(self):
+        # An unreadable cache is not an empty one: record must not succeed
+        # with the previous run's results still in place for synthesize.
+        stale = self.cache / "phase_security.json"
+        stale.write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        real_iterdir = Path.iterdir
+
+        def denied_iterdir(path):
+            if path == self.cache:
+                raise PermissionError("simulated listing failure")
+            return real_iterdir(path)
+
+        with mock.patch.object(Path, "iterdir", denied_iterdir):
+            code, out, _ = run([
+                "record", str(TARGET), "--out", str(self.cache),
+                "--agents", "security",
+            ])
+        self.assertEqual(code, 2)
+        self.assertIn("[ERROR] could not archive stale results", out)
+        self.assertIn("could not list", out)
+        self.assertTrue(stale.exists())
+
     def test_archive_refuses_file_blocking_previous_results(self):
         (self.cache / "phase_security.json").write_text(
             '{"agent": "security", "findings": []}', encoding="utf-8"
@@ -216,6 +243,23 @@ class TestCliRecordLifecycle(unittest.TestCase):
         dirs = list((self.cache / "previous-results").iterdir())
         self.assertEqual(len(dirs), 1)
         self.assertTrue(dirs[0].name.endswith("-1"))
+
+    def test_a_linked_result_is_not_archived(self):
+        # Discovery skips a link, so archiving one would remove a cache entry
+        # this run never writes and synthesis would never read. The move
+        # would also relocate a link whose target belongs to someone else.
+        link = self.cache / "phase_security.json"
+        link.write_text(
+            '{"agent": "security", "findings": []}', encoding="utf-8"
+        )
+        real_is_symlink = Path.is_symlink
+
+        def pretend_link(self):
+            return self == link or real_is_symlink(self)
+
+        with mock.patch.object(Path, "is_symlink", pretend_link):
+            stale = cli._stale_results(self.cache, {"security"})
+        self.assertEqual(stale, [])
 
     def test_archive_rolls_back_on_partial_move(self):
         for name in ("security", "architecture"):
@@ -300,6 +344,23 @@ class TestCliRecordLifecycle(unittest.TestCase):
         self.assertEqual(list(outside.rglob("*.json")), [])
         self.assertTrue((self.cache / "phase_security.json").exists())
 
+    def test_a_report_named_after_a_canonical_result_is_not_archived(self):
+        # The report written under the canonical name is the pipeline's own
+        # document, not that agent's result: find_result refuses it and
+        # synthesis never reads it, so record must leave it in the cache.
+        document = self.cache / "phase_security.json"
+        document.write_text(json.dumps({
+            "report": {"overall_health": "FAIR"},
+            "findings": [],
+        }), encoding="utf-8")
+        code, out, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0, out)
+        self.assertTrue(document.exists())
+        self.assertFalse((self.cache / "previous-results").exists())
+
     def test_bare_agent_result_is_archived(self):
         result = self.cache / "security.json"
         result.write_text('{"agent": "security", "findings": []}',
@@ -313,6 +374,24 @@ class TestCliRecordLifecycle(unittest.TestCase):
         archived = list((self.cache / "previous-results").glob(
             "*/security.json"))
         self.assertEqual(len(archived), 1)
+
+    def test_a_document_named_after_an_agent_is_not_archived(self):
+        # The report written under an agent's name is the pipeline's own
+        # document, not that agent's result: find_result refuses it and
+        # synthesis never reads it, so record must leave it in the cache.
+        document = self.cache / "security.json"
+        document.write_text(
+            json.dumps({"report": {"overall_health": "FAIR"},
+                        "findings": []}),
+            encoding="utf-8",
+        )
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        self.assertTrue(document.exists())
+        self.assertFalse((self.cache / "previous-results").exists())
 
     def test_prompt_write_failure_keeps_stale_results(self):
         stale = self.cache / "phase_security.json"
@@ -385,6 +464,184 @@ class TestCliSynthesizeOptions(unittest.TestCase):
         report = json.loads((self.dir / "report.json").read_text(
             encoding="utf-8"))
         self.assertEqual(report["report"]["codebase_size"]["files"], 0)
+
+    def test_a_concurrent_record_cannot_archive_a_result_mid_synthesis(self):
+        # Record holds the state lock while it archives the previous run's
+        # results. Synthesis must hold the same lock while it reads the
+        # roster and loads the results, or a record that starts in between
+        # moves the file away and the report goes out without the domain
+        # that file held.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        result = cache / "phase_security.json"
+        result.write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        state_path = cache / "ccr-state.json"
+        original = cli._resolve_planned
+
+        def racing_resolve(*args, **kwargs):
+            planned = original(*args, **kwargs)
+            # A concurrent record: it takes the lock, then archives.
+            with cli.state.StateLock(state_path) as lock:
+                if lock.held:
+                    cli._archive_results(str(cache), ["security"])
+            return planned
+
+        with mock.patch.object(cli, "_resolve_planned", racing_resolve):
+            code, out, _ = run([
+                "synthesize", "--in", str(cache), "--agents", "security",
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, out)
+        self.assertTrue(result.exists())
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(len(report["findings"]), 1)
+
+    def test_synthesize_refuses_while_another_run_holds_the_lock(self):
+        # The roster and the results are read under the lock. While another
+        # run holds it, the cache is being changed underneath this one, so a
+        # report built here could go out without a domain. Refuse instead of
+        # emitting it.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        state_path = cache / "ccr-state.json"
+        original = cli.state.StateLock
+
+        class ShortWait(original):
+            """The same lock with a wait short enough for a test."""
+
+            def __init__(self, path):
+                original.__init__(self, path, wait=0.05)
+
+        with original(state_path):
+            with mock.patch.object(cli.state, "StateLock", ShortWait):
+                code, out, err = run([
+                    "synthesize", "--in", str(cache), "--agents", "security",
+                    "--format", "json", "--out", str(self.dir / "report"),
+                ])
+        self.assertEqual(code, 2, out)
+        self.assertIn("could not take the lock", err)
+        self.assertFalse((self.dir / "report.json").exists())
+
+    def test_synthesize_refuses_when_the_lock_file_cannot_be_opened(self):
+        # A lock file that cannot be opened may still be held by another
+        # run, so a reader must not proceed on the assumption that nobody
+        # holds it: the results could be archived underneath it.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        with mock.patch.object(cli.state.StateLock, "_open", return_value=None):
+            code, out, err = run([
+                "synthesize", "--in", str(cache), "--agents", "security",
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 2, out)
+        self.assertIn("could not take the lock", err)
+        self.assertFalse((self.dir / "report.json").exists())
+
+    def test_synthesize_continues_when_no_lock_is_available(self):
+        # An unwritable cache cannot be locked, and record refuses to write
+        # the cache without a lock, so nothing can be moving the results
+        # underneath this run: the report still goes out.
+        class Unavailable(object):
+            held = False
+            unavailable = True
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        with mock.patch.object(cli.state, "StateLock", lambda path: Unavailable()):
+            code, out, err = run([
+                "synthesize", "--in", str(cache), "--agents", "security",
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, out)
+        self.assertIn("no lock is available", err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(len(report["findings"]), 1)
+
+    def test_synthesize_reads_the_roster_inside_the_lock(self):
+        # A concurrent record replaces the roster while synthesis is between
+        # taking the lock and reading the state. The roster that is read
+        # must be the one the lock protects: the old one named an agent with
+        # no result, so the report went out without the domain that did.
+        cache = self.dir / "cache"
+        cache.mkdir()
+        (cache / "phase_security.json").write_text(json.dumps({
+            "agent": "security",
+            "findings": [{
+                "finding": "[a.py:1] — flaw → bad", "severity": "LOW",
+                "est_hours": 1, "da_verdict": "CONFIRMED",
+            }],
+        }), encoding="utf-8")
+        state_path = cache / "ccr-state.json"
+
+        def roster(agents):
+            return json.dumps({
+                "target_dir": str(TARGET),
+                "current_phase": 1,
+                "phase_gates": {},
+                "agents_planned": agents,
+            })
+
+        state_path.write_text(roster(["architecture"]), encoding="utf-8")
+
+        class Rewriting(object):
+            held = True
+            unavailable = False
+
+            def __init__(self, path):
+                self.path = Path(path)
+
+            def __enter__(self):
+                # A concurrent record writes the new roster.
+                self.path.write_text(roster(["security"]), encoding="utf-8")
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        with mock.patch.object(cli.state, "StateLock", Rewriting):
+            code, out, err = run([
+                "synthesize", "--in", str(cache),
+                "--format", "json", "--out", str(self.dir / "report"),
+            ])
+        self.assertEqual(code, 0, out + err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(len(report["findings"]), 1)
 
     def test_invalid_baseline_exits_two(self):
         bad = self.dir / "baseline.json"
@@ -654,6 +911,25 @@ class TestCliReReviewBaseline(unittest.TestCase):
         # The state carries no facts, so the size block stays empty instead
         # of crashing on a null target.
         self.assertEqual(report["report"]["codebase_size"]["files"], 0)
+        # A null cached target must not become the baseline target: the cache
+        # directory is where the run wrote, so that is what the baseline names.
+        self.assertEqual(report["baseline"]["target"], str(self.cache))
+
+    def test_legacy_state_without_a_target_drops_its_facts(self):
+        # The state does not say which codebase it measured, so its size
+        # numbers cannot be attributed to the target this run names.
+        self._write_state(
+            target_dir=None, facts={"files": 42, "languages": {"py": 1}}
+        )
+        code, _, err = run([
+            "synthesize", "--in", str(self.cache), "--target", str(ROOT),
+            "--format", "json", "--out", str(self.dir / "report"),
+        ])
+        self.assertEqual(code, 0, err)
+        self.assertIn("records no target", err)
+        report = json.loads((self.dir / "report.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(report["report"]["codebase_size"]["files"], 0)
 
     def test_counter_save_failure_still_emits_the_report(self):
         self._write_state(re_review_count=2)
@@ -786,6 +1062,87 @@ class TestPersistReviewCounter(unittest.TestCase):
         self.assertEqual(self._count(), 2)
         data = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.assertNotIn("last_synth_signature", data)
+
+    def test_a_concurrent_record_does_not_count_the_same_review_twice(self):
+        # A `record` for the same target creates a new state. The signature
+        # names the payload of the last synthesis for that target, so it
+        # moves with the count: a synthesis already in flight is the same
+        # review, and the every-3rd full rescan must not fire early.
+        data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        data["last_synth_signature"] = "sig-a"
+        self.state_path.write_text(json.dumps(data), encoding="utf-8")
+        cached = cli.state.State.load(self.state_path)
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.dir),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        saved = cli._persist_review_counter(cached, "sig-a", str(TARGET))
+        self.assertTrue(saved)
+        self.assertEqual(self._count(), 2)
+
+    def test_a_state_without_a_target_still_counts_the_review(self):
+        # A state that predates target recording names no codebase, so its
+        # count cannot belong to another one: it is the cache's own history.
+        # Left at zero it never reaches the every-3rd full rescan.
+        data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        data["target_dir"] = None
+        data["re_review_count"] = 0
+        self.state_path.write_text(json.dumps(data), encoding="utf-8")
+        (self.dir / "phase_security.json").write_text(
+            json.dumps({"agent": "security", "findings": []}),
+            encoding="utf-8")
+        code, out, err = run([
+            "synthesize", "--in", str(self.dir), "--agents", "security",
+            "--format", "json", "--out", str(self.dir / "report"),
+        ])
+        self.assertEqual(code, 0, out)
+        self.assertIn("records no target", err)
+        self.assertEqual(self._count(), 1)
+
+    def test_lock_held_elsewhere_leaves_the_counter_unchanged(self):
+        # A second run in the same cache: skipping one count only delays a
+        # full rescan, while an unlocked update could lose both increments.
+        class Unheld(object):
+            held = False
+            unavailable = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        err = io.StringIO()
+        with mock.patch.object(cli.state, "StateLock", lambda path: Unheld()):
+            with redirect_stderr(err):
+                saved = cli._persist_review_counter(
+                    self.cached, "sig-b", str(TARGET))
+        self.assertFalse(saved)
+        self.assertIn("locked by another run", err.getvalue())
+        self.assertEqual(self._count(), 2)
+
+    def test_no_lock_available_leaves_the_counter_unchanged(self):
+        # There is no lock to protect the update, so the count is skipped
+        # rather than written where two runs could overwrite each other.
+        class Unavailable(object):
+            held = False
+            unavailable = True
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        err = io.StringIO()
+        with mock.patch.object(cli.state, "StateLock", lambda path: Unavailable()):
+            with redirect_stderr(err):
+                saved = cli._persist_review_counter(
+                    self.cached, "sig-b", str(TARGET))
+        self.assertFalse(saved)
+        self.assertIn("no lock is available", err.getvalue())
+        self.assertEqual(self._count(), 2)
 
     def test_missing_state_file_warns_and_returns_false(self):
         self.state_path.unlink()

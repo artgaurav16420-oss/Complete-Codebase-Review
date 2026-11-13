@@ -76,8 +76,26 @@ to the state file), and `--allow-partial` to emit a report below the gate.
 Exit codes: `0` success; `1` completion gate, a `validate-results`
 malformed-findings threshold breach, or eval miss; `2` usage, manifest,
 invalid state, unreadable or missing results, malformed agent JSON, a
-`synthesize` malformed-findings threshold breach, baseline, or cache/report
-write error.
+`synthesize` malformed-findings threshold breach, baseline, cache/report
+write error, or a cache lock the run cannot take.
+
+`record` and `synthesize` coordinate through `ccr-state.json.lock` in the
+cache: `record` holds it while it archives the previous run's results, and
+`synthesize` holds it while it reads the roster and loads the results, so a
+concurrent `record` cannot move a result out from under a report in flight.
+The wait is bounded, and a run that cannot take the lock says why:
+
+| The lock | `record` | `synthesize` |
+|----------|----------|--------------|
+| taken | writes the cache | reads the cache |
+| held by another run | exit 2 | exit 2 |
+| the lock file cannot be opened | exit 2 | exit 2 |
+| no locking primitive on this build | exit 2 | warns and continues |
+
+The last row is safe for a reader because no run on such a build can hold a
+lock, so nothing can be moving the results underneath it. A writer refuses
+in every case it cannot hold the lock, because it would write the cache
+over a run it cannot see.
 
 ## Benchmarks
 
@@ -117,6 +135,12 @@ All return values are plain dicts/lists unless stated otherwise.
 | `env_var_names` | `env_var_names(manifest)` | List of env-var names |
 | `floor_for` | `floor_for(manifest, key)` | Float hours; defaults to `1.0` when no floor is defined |
 
+An agent id is also a file name: the prompt is `phase_<id>.prompt.md` and
+the result is `phase_<id>.json`, both in the cache root the scan lists. An
+id with a path separator would name a file the scan never sees, and an id
+with a character the platform rejects in a file name would fail when the
+run writes the prompt, so `validate` rejects both.
+
 ### `ccr.discovery`
 
 | Function | Signature | Returns |
@@ -135,7 +159,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | Function | Signature | Returns |
 |----------|-----------|---------|
 | `new_state` | `new_state(target_dir, skill_dir='', effort='max')` | Fresh state dict |
-| `merge_resume` | `merge_resume(state, cache_dir)` | Agent ids present on disk but not recorded as completed |
+| `merge_resume` | `merge_resume(state, cache_dir)` | Canonical `phase_<id>.json` ids present on disk but not recorded as completed, limited to `agents_planned` when that roster is set; an empty roster is treated as unknown, so every canonical id on disk is returned |
 | `State.load` | `State.load(path)` | `State` or `None` when absent |
 | `State.create` | `State.create(path, target_dir, skill_dir, effort)` | New `State`, persisted |
 | `State.save` | `state.save()` | `None`; atomic write via temp file + `os.replace` |
@@ -146,6 +170,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | `State.record_agent` | `state.record_agent(agent_id, status='completed')` | `None` |
 | `State.completion_ratio` | `state.completion_ratio()` | Float completed / planned |
 | `State.threshold_passed` | `state.threshold_passed(manifest)` | `bool`; enforces the 75%/66% completion gate |
+| `StateLock` | `StateLock(path)` | Context manager; exclusive OS lock (`fcntl`/`msvcrt`) around a state read-modify-write; the kernel drops it on exit, the lock file stays. `lock.held` says the section is protected; `lock.unavailable` says no run on this build can hold a lock (no locking primitive); neither means the lock could not be taken and the caller must refuse |
 
 ### `ccr.findings`
 
@@ -153,6 +178,7 @@ All return values are plain dicts/lists unless stated otherwise.
 |----------|-----------|---------|
 | `normalize_severity` | `normalize_severity(value)` | One of `CRITICAL/HIGH/MEDIUM/LOW/INFO`; unknown -> `LOW` |
 | `normalize_verdict` | `normalize_verdict(value)` | One of `CONFIRMED/PLAUSIBLE/QUESTIONABLE/REJECTED/DA-ESCALATION`; unknown -> `QUESTIONABLE` |
+| `normalize_anchor` | `normalize_anchor(finding_text)` | Rewrites ASCII separators to the canonical em dash and arrow; idempotent, unchanged when no `[file:line]` anchor or arrow |
 | `anchor_parts` | `anchor_parts(finding_text)` | `(file, line, flaw, failure_mode)` or `None` |
 | `weasel_hits` | `weasel_hits(text)` | Matched weasel phrases |
 | `malformed_rejections` | `malformed_rejections(rejected)` | Filtered rejection records for the eval path |
@@ -160,9 +186,11 @@ All return values are plain dicts/lists unless stated otherwise.
 | `dedup` | `dedup(findings)` | Deduplicated list |
 | `assign_ids` | `assign_ids(findings)` | Same list with `F-001` style ids |
 | `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED`, `QUESTIONABLE` and `INFO` are never eligible |
-| `place_roadmap` | `place_roadmap(findings, security_domains=None)` | `{1, 2, 3}` phases; quick wins capped at 40h, HIGH never quick-win |
+| `place_roadmap` | `place_roadmap(findings, security_domains=None)` | `{1, 2, 3}` phases; quick wins capped at the manifest's `quick_win_cap_hours` (40h default), HIGH never quick-win |
 | `find_overlaps` | `find_overlaps(findings)` | Near-identical same-file clusters (auto-merged once) |
-| `find_large_file_clusters` | `find_large_file_clusters(findings, min_hours=8.0)` | Advisory same-file clusters of expensive findings |
+| `find_large_file_clusters` | `find_large_file_clusters(findings, min_hours=None)` | Advisory same-file clusters of expensive findings; defaults to the manifest's `large_fix_hours` (8h) |
+| `set_security_agent_id` | `set_security_agent_id(agent_id)` | Overrides which agent's HIGH findings are promoted to Phase 1; `None` restores the `security` default |
+| `set_calibration` | `set_calibration(calibration)` | Overrides the overlap, large-fix and quick-win constants from a manifest `calibration` object; a missing or out-of-range value restores the engine default |
 | `aggregate` | `aggregate(findings, rejected, agents_planned, agents_completed, target='', baseline=None, re_review_count=0)` | Report model consumed by the renderers |
 
 ### `ccr.report`
@@ -182,11 +210,17 @@ All return values are plain dicts/lists unless stated otherwise.
 | `build_prompt` | `build_prompt(agent, target, skill_dir, manifest_version='')` | Prompt text |
 | `prompt_path` | `prompt_path(out_dir, agent_id)` | `Path` to `phase_<id>.prompt.md` |
 | `result_path` | `result_path(out_dir, agent_id)` | `Path` to `phase_<id>.json` |
+| `is_canonical_name` | `is_canonical_name(filename)` | `bool`; the name carries the `phase_` prefix, matched case-insensitively |
+| `agent_id_from_name` | `agent_id_from_name(filename)` | Agent id encoded in a result file name, or `None` |
+| `discover_results` | `discover_results(out_dir, known=None)` | `(agent_id, Path)` pairs; one definition of "a result file", shared by fixture replay, synthesis and state resume; the suffix is matched case-insensitively; with `known` (the manifest's id set) the name decides, so a corrupt result is reported by path instead of being skipped; the pipeline's own documents are never results, whatever their name |
+| `find_result` | `find_result(out_dir, agent_id)` | `Path` or `None`; canonical name wins over the bare fixture layout; a file named for the agent is its result whatever it holds, unless it is one of the pipeline's own documents (the report or the model a baseline is read from), whatever its name |
+| `is_pipeline_document` | `is_pipeline_document(path)` | `bool`; the file is one of the pipeline's own documents, so it is not an agent's result |
+| `DOCUMENT_KEYS` | `frozenset({'report', 'per_domain_scores', 'overall_health', 'agent_status'})` | Top-level keys the pipeline's own documents carry and an agent result never has |
 | `write_prompts` | `write_prompts(manifest, plan, out_dir, skill_dir='')` | Written paths |
 | `load_result` | `load_result(path, agent_id)` | Validated result dict; raises `ValueError` |
 | `load_results` | `load_results(out_dir, agent_ids, required=True)` | `{agent_id: result}`; `phase_<id>.json` wins over `<id>.json` |
 | `RecordedProvider` | `RecordedProvider(fixtures_dir)` | Class holding the fixture dir; `agent_ids()` lists ids for `ccr eval` |
-| `RecordedProvider.get` | `provider.get(agent_id)` | Validated result dict; `phase_<id>.json` wins over `<id>.json`, raises `ValueError` when malformed |
+| `RecordedProvider.get` | `provider.get(agent_id)` | Validated result dict; `phase_<id>.json` wins over `<id>.json`, raises `ValueError` when the file is malformed or is one of the pipeline's own documents |
 
 ### `ccr.pipeline`
 

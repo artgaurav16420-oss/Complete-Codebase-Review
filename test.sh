@@ -49,6 +49,19 @@ if ! grep -q "effort: \${CODE_REVIEW_EFFORT:-max}" "$SKILL_FILE"; then
     FAIL=1
 fi
 
+for section in "Environment Variables" "Checkpointing" "Quick Mode"; do
+    # Compare the whole heading title. Each name also appears in body prose,
+    # so a substring match passes with the section deleted, and a wildcard
+    # passes on a heading that merely contains it ("## No Environment
+    # Variables"). Headings carry an emoji prefix, so strip the markers and
+    # any leading decoration before comparing.
+    if ! sed -nE 's/^#{1,6}[[:space:]]+//p' "$SKILL_FILE" |
+            sed -E 's/^[^A-Za-z]+//' | grep -qxF "$section"; then
+        echo "[ERROR] '$section' section missing from $SKILL_FILE"
+        FAIL=1
+    fi
+done
+
 if [ ! -f "karpathy-guidelines.md" ]; then
     echo "[ERROR] karpathy-guidelines.md missing — Process Quality agent will fail"
     FAIL=1

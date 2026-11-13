@@ -1,6 +1,7 @@
 """End-to-end eval: recorded fixtures scored against expected issues."""
 
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -101,6 +102,35 @@ class TestEvalCliExit(unittest.TestCase):
                 manifest_mod.load(), ROOT / "tests" / "fixtures" / "empty",
                 EXPECTED,
             )
+
+    def test_stray_findings_only_file_is_not_an_agent(self):
+        # A findings-only object beside the fixtures looks like a result, but
+        # it is not one of the manifest's agents; replay must ignore it rather
+        # than abort on an id the run never planned.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copy(FIXTURES / "security.json", root / "security.json")
+            (root / "scratch.json").write_text(
+                '{"findings": []}', encoding="utf-8"
+            )
+            model, _score = pipeline.run_eval(
+                manifest_mod.load(), root, EXPECTED
+            )
+        self.assertEqual(
+            {item["agent"] for item in model["findings"]}, {"security"}
+        )
+
+    def test_corrupt_bare_fixture_is_reported_by_path(self):
+        # Skipping a broken fixture as "not a result" would score a replay
+        # that is missing an agent without naming the file that broke it.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "security.json").write_text(
+                "not json", encoding="utf-8"
+            )
+            with self.assertRaises(ValueError) as caught:
+                pipeline.run_eval(manifest_mod.load(), root, EXPECTED)
+            self.assertIn("security.json", str(caught.exception))
 
     def test_duplicate_expected_raises(self):
         with tempfile.TemporaryDirectory() as tmp:

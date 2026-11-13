@@ -21,7 +21,9 @@ import re
 import shutil
 import stat
 import sys
+import time
 import platform
+from functools import partial
 from pathlib import Path
 
 
@@ -50,13 +52,15 @@ def _is_link_like(path):
 def _remove_link_like(path):
     """Remove a symlink or junction without touching its target."""
     path = Path(path)
-    if os.path.islink(str(path)):
+    try:
+        # Works for a file symlink and for a symlink to a directory on POSIX.
         path.unlink()
         return
-    try:
-        os.rmdir(str(path))
     except OSError:
-        path.unlink()
+        pass
+    # Windows refuses unlink on a directory symlink and on a junction; both
+    # are removed by rmdir, which deletes the reparse point, not its target.
+    os.rmdir(str(path))
 
 
 def _containment_root(path):
@@ -171,36 +175,55 @@ def _onerror(func, path, exc_info):
 
 _CREDENTIAL_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore", ".jks")
 _CREDENTIAL_PREFIXES = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
-_CREDENTIAL_NAMES = {
-    "credentials", "credentials.json", ".netrc",
-    ".git-credentials", ".npmrc", ".pypirc", ".htpasswd",
+# The words a credential file is named after. A file that carries one of
+# them is a credential store whatever else the name says: the extension
+# (credentials.yaml), the local override suffix (.envrc.local), the
+# leading dot and a qualifier in front (aws-credentials.json) are
+# variations on the same thing, and a list of whole names misses the
+# variants that actually turn up in a checkout.
+_CREDENTIAL_WORDS = {
+    "env", "envrc", "direnv", "netrc", "npmrc", "pypirc", "htpasswd",
+    "credential", "credentials", "secret", "secrets",
 }
+# The name is split into words on these separators, so a word is matched
+# whole: "aws-credentials.json" carries the word "credentials", while
+# "environment.py" carries the word "environment" and is kept.
+_CREDENTIAL_WORD_SEPARATORS = re.compile(r"[._-]+")
 
 
 def _is_credential_name(name):
     """True for names that commonly hold private keys or credentials.
 
-    Exact-name matching alone misses the variants that actually exist in a
-    checkout (.env.local, credentials.json, id_rsa_work, *.pem), and those
-    files would otherwise be copied into every agent skill directory.
+    The rule is about the words the file is named after, not about the
+    whole name: exact-name matching alone misses the variants that
+    actually exist in a checkout (.env.local, credentials.json,
+    .envrc.local, prod.env, aws-credentials.json, id_rsa_work, *.pem),
+    and those files would otherwise be copied into every agent skill
+    directory.
     """
     lowered = name.lower()
-    return (
-        lowered in _CREDENTIAL_NAMES
-        or lowered.startswith(".env.")
-        or lowered.startswith(_CREDENTIAL_PREFIXES)
-        or lowered.endswith(_CREDENTIAL_SUFFIXES)
-    )
+    if lowered.startswith(_CREDENTIAL_PREFIXES):
+        return True
+    if lowered.endswith(_CREDENTIAL_SUFFIXES):
+        return True
+    words = _CREDENTIAL_WORD_SEPARATORS.split(lowered.lstrip("."))
+    return any(word in _CREDENTIAL_WORDS for word in words)
 
 
-def _ignore_skill_files(path, names):
+def _ignore_skill_files(path, names, dest=None):
     """Filter files to exclude from skill copy based on _SKILL_EXCLUDED.
 
     Links are skipped outright: a copy either dangles (its target was filtered)
     or resolves outside the checkout (a junction on Windows is not a symlink,
     so ``copytree`` follows it). The skill tree needs neither.
+
+    ``dest`` is the directory the copy installs into, and it is left out of
+    the copy. The staging tree is created inside it, so a destination inside
+    the source tree is copied into itself: the copy walks into the
+    destination, finds the staging tree it is building, and copies that too,
+    until the copy fails.
     """
-    return [
+    skipped = [
         n for n in names
         if n in _SKILL_EXCLUDED
         or _is_credential_name(n)
@@ -209,6 +232,26 @@ def _ignore_skill_files(path, names):
         or n.endswith(".egg-info")
         or n == ".coverage"
     ]
+    if dest is None:
+        return skipped
+    try:
+        here = Path(path).resolve(strict=False)
+    except (OSError, RuntimeError):
+        here = None
+    if here is not None and (here == dest or dest in here.parents):
+        # The directory being scanned is the destination, or lives inside
+        # it: nothing in there belongs in the copy.
+        return list(names)
+    for n in names:
+        if n in skipped or n != dest.name:
+            continue
+        try:
+            child = (Path(path) / n).resolve(strict=False)
+        except (OSError, RuntimeError):
+            continue
+        if child == dest:
+            skipped.append(n)
+    return skipped
 
 
 def _read_version():
@@ -311,6 +354,160 @@ def get_target_dirs():
     return dirs
 
 
+STAGING_PREFIX = ".complete-codebase-review.staging-"
+PREVIOUS_PREFIX = ".complete-codebase-review.old-"
+# A pid cannot be probed for liveness on Windows (os.kill would terminate the
+# process), so leftovers are told from a live install by age instead. A tree
+# younger than this may belong to a run that is still working.
+LEFTOVER_MAX_AGE_SEC = 3600
+# The copy is done in chunks so the staging tree's mtime can be refreshed
+# between them. The chunk has to be copied well inside the age the sweep
+# uses, so that a tree is never left looking stale while it is still
+# being written.
+COPY_CHUNK_BYTES = 64 * 1024
+
+
+def _leftovers(dest_dir, max_age=0):
+    """Return the staging and backup trees in dest_dir older than max_age.
+
+    Both names carry the pid of the run that made them, so a tree left behind
+    belongs to a run that died before its cleanup. Left alone they accumulate
+    one copy of the skill per crash.
+    """
+    found = []
+    now = time.time()
+    for prefix in (STAGING_PREFIX, PREVIOUS_PREFIX):
+        for path in sorted(Path(dest_dir).glob(prefix + "*")):
+            if max_age:
+                if _is_link_like(path):
+                    # A parked link keeps the age of the link the user
+                    # configured: a link's own timestamp cannot be refreshed
+                    # on every platform, so an age-based sweep would delete
+                    # a rollback copy while the install that parked it is
+                    # still running. Only an explicit uninstall (max_age=0)
+                    # removes these.
+                    continue
+                try:
+                    # lstat: a parked link is judged by its own age, not by
+                    # whatever directory it points at.
+                    age = now - path.lstat().st_mtime
+                except OSError:
+                    age = max_age
+                if age < max_age:
+                    continue
+            found.append(path)
+    return found
+
+
+def _refresh_mtime(path):
+    """Refresh a path's mtime so an age-based sweep leaves it alone.
+
+    The sweep tells a live run's tree from a crashed run's by age, so a
+    run that is still working has to say so. A tree whose mtime cannot be
+    refreshed is reported rather than left to be swept: the copy would
+    fail later, in the middle of writing, with an error that says
+    nothing about the cause.
+    """
+    try:
+        os.utime(str(path), None)
+    except (NotImplementedError, OSError) as exc:
+        raise OSError(
+            "cannot refresh the mtime of " + str(path)
+            + "; a concurrent install would treat it as a stale leftover"
+        ) from exc
+
+
+def _copy_file_with_heartbeat(src, dst, root):
+    """Copy one file, refreshing the staging tree's mtime as it goes.
+
+    The sweep that clears a crashed run's leftovers judges a tree by age,
+    so the tree has to stay fresh for as long as the copy runs. Refreshing
+    it only before and after a file is not enough: one large file can take
+    longer than the age the sweep uses, and the tree would look stale while
+    it was still being written, so a concurrent install's sweep would
+    delete it.
+
+    The file is copied in chunks and the mtime is refreshed between them,
+    so the tree never goes stale for longer than one chunk takes. What is
+    left is a run that is paused for longer than the sweep's age (a
+    hibernated machine, a suspended process): the copy then fails with the
+    error the sweep caused, and the install is retried.
+    """
+    try:
+        mode = os.stat(src).st_mode
+    except OSError:
+        mode = None
+    if mode is None or not stat.S_ISREG(mode):
+        # shutil.copyfile refuses a special file with a clear error, and
+        # reading one here could block on a fifo. Keep that behaviour.
+        shutil.copy2(src, dst)
+        return
+    with open(src, "rb") as source, open(dst, "wb") as target:
+        while True:
+            chunk = source.read(COPY_CHUNK_BYTES)
+            if not chunk:
+                break
+            target.write(chunk)
+            _refresh_mtime(root)
+    # The metadata is copied last, the way shutil.copy2 does it: the
+    # timestamps of the source belong to the finished file.
+    shutil.copystat(src, dst)
+
+
+def _copy_with_heartbeat(root):
+    """Return a copy function that keeps the staging tree's mtime fresh.
+
+    The sweep that clears a crashed run's leftovers judges a tree by age:
+    anything older than an hour is assumed to belong to a dead run. A copy
+    that takes over an hour would leave the staging tree looking stale, and
+    a concurrent install's sweep would delete it while it is still being
+    written, so the copy fails on a file that was there a moment ago.
+
+    The mtime is refreshed before and after every file, and between the
+    chunks of every file, so the tree stays fresh for the whole copy.
+    """
+
+    def copy(src, dst):
+        _refresh_mtime(root)
+        _copy_file_with_heartbeat(src, dst, root)
+        _refresh_mtime(root)
+        return dst
+
+    return copy
+
+
+def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC):
+    """Remove the staging and backup trees a crashed run left behind.
+
+    A leftover that cannot be removed is reported and skipped: it is unrelated
+    to the copy that follows, so it must not abort the install. Returns True
+    when every leftover was removed, so callers that only sweep (uninstall)
+    can report the failure.
+
+    A target that has become a link is refused rather than swept: the glob
+    would run through it and delete same-named trees inside whatever it points
+    at, which is the traversal the containment checks exist to stop. The
+    window between this check and the glob is accepted: it takes a writer with
+    control of the parent directory acting between two statements.
+    """
+    if _is_link_like(dest_dir):
+        print_info(
+            f"[WARN] refusing to sweep a link-like target: {dest_dir}"
+        )
+        return False
+    removed_all = True
+    for path in _leftovers(dest_dir, max_age):
+        try:
+            if _is_link_like(path):
+                _remove_link_like(path)
+            else:
+                _remove_tree(path)
+        except OSError as exc:
+            print_info(f"[WARN] Could not remove leftover {path}: {exc}")
+            removed_all = False
+    return removed_all
+
+
 def copy_skill(src_dir, dest_dir):
     """Copy the skill files from the source directory to the destination directory.
 
@@ -324,6 +521,8 @@ def copy_skill(src_dir, dest_dir):
     Raises:
         PermissionError: If the destination is not writable.
         OSError: If the copy operation fails.
+        ValueError: If the destination is a link-like target, or is the
+            source directory itself.
     """
     try:
         if _is_link_like(dest_dir):
@@ -333,44 +532,154 @@ def copy_skill(src_dir, dest_dir):
                 "Refusing to install through a link-like target: "
                 + str(dest_dir)
             )
+        # The staging tree is created inside the destination. A destination
+        # inside the source tree is therefore copied into itself: the copy
+        # walks into the destination, finds the staging tree it is building,
+        # and copies that too, until the copy fails. The destination is left
+        # out of the copy instead, so the install still succeeds.
+        resolved_src = Path(src_dir).resolve(strict=False)
+        resolved_dest = Path(dest_dir).resolve(strict=False)
+        if resolved_dest == resolved_src:
+            raise ValueError(
+                "Refusing to install the skill into its own source directory: "
+                + str(dest_dir)
+            )
+        ignore = None
+        if resolved_dest.is_relative_to(resolved_src):
+            ignore = partial(_ignore_skill_files, dest=resolved_dest)
         if not dest_dir.exists():
             dest_dir.mkdir(parents=True, exist_ok=True)
 
         skill_dest = dest_dir / "complete-codebase-review"
+        # The pid alone is not unique over time: after a crash the OS can hand
+        # the same pid to a later run. Clearing a name this run would reuse
+        # would then delete that dead run's backup, which can be the only copy
+        # of the previous install when the crash landed between the park and
+        # the swap. A random suffix makes the name belong to this run alone.
+        token = str(os.getpid()) + "-" + os.urandom(4).hex()
+        staging = dest_dir / (STAGING_PREFIX + token)
+        previous = dest_dir / (PREVIOUS_PREFIX + token)
 
-        if os.path.lexists(skill_dest):
-            print_info(f"Updating existing installation in {skill_dest}")
-            if _is_link_like(skill_dest):
-                _remove_link_like(skill_dest)
-            else:
-                resolved = skill_dest.resolve(strict=False)
-                root = _containment_root(dest_dir)
-                if resolved == root:
-                    raise ValueError(
-                        f"Refusing to replace target root {root}"
-                    )
-                if not resolved.is_relative_to(root):
-                    raise ValueError(
-                        f"Resolved path {resolved} is outside target {root}"
-                    )
-                if resolved.is_dir():
-                    if sys.version_info >= (3, 12):
-                        shutil.rmtree(str(resolved), onexc=_onerror)
-                    else:
-                        shutil.rmtree(str(resolved), onerror=_onerror)
-                else:
-                    resolved.unlink()
-
-        # Re-assert at the last moment: these guards run before the previous
-        # install is removed, and a swap in between would send copytree into
-        # the link's target instead of the named directory.
+        # Build the new tree beside the old one and swap it in at the end.
+        # Deleting the working install first means a failure mid-copy leaves
+        # the user with no usable skill at all. The old tree is moved aside
+        # rather than deleted for the same reason: if the swap fails it is
+        # moved back, so the previous install survives every failure path.
+        _sweep_leftovers(dest_dir)
+        # The guard above runs before the sweep, and a sweep can take long
+        # enough for the target to become a link. This is the last check
+        # before the write: copying through a link would put the staging tree
+        # inside whatever it points at, which is the traversal the guards
+        # exist to stop.
         if _is_link_like(dest_dir):
             raise ValueError(
                 "Refusing to install through a link-like target: "
                 + str(dest_dir)
             )
-        shutil.copytree(src_dir, skill_dest, ignore=_ignore_skill_files, symlinks=True)
-        _validate_no_escaped_symlinks(skill_dest)
+        # Whether this run's own swap landed. A concurrent install can park
+        # the tree this run installs, and the missing live install that
+        # leaves behind is not evidence that this run's swap failed.
+        swapped = False
+        try:
+            shutil.copytree(
+                src_dir, staging, ignore=ignore or _ignore_skill_files,
+                symlinks=True,
+                copy_function=_copy_with_heartbeat(staging),
+            )
+            # The copy ends by putting the source directory's own
+            # timestamps on the staging tree, and a source directory can
+            # be days old. The sweep would then read a freshly copied tree
+            # as a crashed run's leftover and delete it, so the mtime is
+            # refreshed once more before the tree is put in place.
+            _refresh_mtime(staging)
+            _validate_no_escaped_symlinks(staging)
+
+            if os.path.lexists(skill_dest):
+                print_info(f"Updating existing installation in {skill_dest}")
+                if _is_link_like(skill_dest):
+                    # Park the link itself instead of deleting it: renaming
+                    # the entry leaves the link's target untouched, and if
+                    # the swap below fails the finally block puts the link
+                    # back where the user configured it.
+                    parked = skill_dest
+                else:
+                    parked = skill_dest.resolve(strict=False)
+                    root = _containment_root(dest_dir)
+                    if parked == root:
+                        raise ValueError(
+                            f"Refusing to replace target root {root}"
+                        )
+                    if not parked.is_relative_to(root):
+                        raise ValueError(
+                            f"Resolved path {parked} is outside target {root}"
+                        )
+                # A rename keeps the entry's old mtime, which would make this
+                # live backup look like a crashed run's leftover to a
+                # concurrent install's age-based sweep. Stamp the entry that
+                # is about to be renamed, never the target a link points at,
+                # and stamp it before the rename: refreshing the mtime after
+                # the park leaves a window in which the backup already has its
+                # old name and the sweep would delete it.
+                link_like = _is_link_like(parked)
+                try:
+                    if link_like:
+                        os.utime(str(parked), None, follow_symlinks=False)
+                    else:
+                        os.utime(str(parked), None)
+                except (NotImplementedError, OSError) as exc:
+                    # A directory whose mtime cannot be refreshed would be
+                    # parked with its old age, so a concurrent sweep could
+                    # delete the only rollback copy. Refuse before touching
+                    # the live install instead. A link is parked anyway:
+                    # stamping one is not supported everywhere, and losing
+                    # it costs the entry, never what it points at.
+                    if not link_like:
+                        raise OSError(
+                            "cannot refresh the mtime of the existing install "
+                            "before parking it: " + str(parked)
+                        ) from exc
+                os.replace(str(parked), str(previous))
+
+            # Re-assert at the last moment: dest_dir was checked before the
+            # copy, and a swap in between would send the final rename into the
+            # link's target instead of the named directory.
+            if _is_link_like(dest_dir):
+                raise ValueError(
+                    "Refusing to install through a link-like target: "
+                    + str(dest_dir)
+                )
+            os.replace(str(staging), str(skill_dest))
+            swapped = True
+        finally:
+            # Restore before any cleanup: a locked staging tree must not take
+            # the only surviving copy of the previous install with it.
+            #
+            # Only when this run's own swap did not happen. A missing live
+            # install does not prove that: a concurrent install may have
+            # parked the tree this run put in place, and restoring this
+            # run's older backup over that gap would put the stale version
+            # back. The backup stays a leftover for the next run's sweep
+            # instead.
+            if (
+                not swapped
+                and os.path.lexists(previous)
+                and not os.path.lexists(skill_dest)
+            ):
+                try:
+                    os.replace(str(previous), str(skill_dest))
+                except OSError:
+                    pass  # previous remains as a leftover for the next run
+            try:
+                _remove_tree(staging)
+            except OSError:
+                pass  # a leftover; the next run sweeps it
+            # Once the new tree is in place the old one is redundant; if the
+            # restore above failed it is the only copy and must stay.
+            if os.path.lexists(skill_dest) and os.path.lexists(previous):
+                try:
+                    _remove_tree(previous)
+                except OSError:
+                    pass
 
         copied = sum(len(files) for _, _, files in os.walk(skill_dest))
         print_info(f"Copied {copied} file(s) to {skill_dest}")
@@ -384,6 +693,28 @@ def copy_skill(src_dir, dest_dir):
     except ValueError as e:
         print_error(str(e))
         raise
+
+
+def _remove_tree(path):
+    """Remove a file or directory tree, whichever ``path`` names.
+
+    ``onexc`` is 3.12+, ``onerror`` was removed in 3.14, so the call is split
+    on the version the same way the rest of this module does it.
+    """
+    if not os.path.lexists(path):
+        return
+    if _is_link_like(path):
+        # Windows refuses to unlink a directory symlink or junction; only
+        # rmdir removes the reparse point itself without entering the target.
+        _remove_link_like(path)
+        return
+    if os.path.isdir(path):
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(str(path), onexc=_onerror)
+        else:
+            shutil.rmtree(str(path), onerror=_onerror)
+    else:
+        os.unlink(str(path))
 
 
 def _validate_no_escaped_symlinks(skill_dest):
@@ -558,11 +889,20 @@ def remove_skill(dest_dir, dry_run):
             "Refusing to remove from a link-like target: " + str(dest_dir)
         )
     skill_dest = Path(dest_dir) / "complete-codebase-review"
-    if not os.path.lexists(str(skill_dest)):
+    installed = os.path.lexists(str(skill_dest))
+    # A crashed install can leave the old tree aside with no live skill at all
+    # (the swap never ran). Those leftovers are still this tool's files, and
+    # the live-skill early return would otherwise make them permanent.
+    target = Path(dest_dir)
+    leftovers = _leftovers(target) if target.is_dir() else []
+    if not installed and not leftovers:
         print_info("Not installed: " + str(skill_dest))
         return False
     if dry_run:
-        print_info("[DRY-RUN] Would remove " + str(skill_dest))
+        if installed:
+            print_info("[DRY-RUN] Would remove " + str(skill_dest))
+        for path in leftovers:
+            print_info("[DRY-RUN] Would remove leftover " + str(path))
         return True
     root = _containment_root(dest_dir)
     # Re-assert as late as possible. The caller validated dest_dir before this
@@ -572,6 +912,17 @@ def remove_skill(dest_dir, dry_run):
         raise ValueError(
             "Refusing to remove from a link-like target: " + str(dest_dir)
         )
+    # An explicit uninstall clears every leftover, whatever its age: it is a
+    # destructive request to remove this tool from the tree.
+    if not _sweep_leftovers(target, max_age=0):
+        # Nothing else is removed: a caller that treats "removed nothing" as
+        # "nothing to do" would report success while these trees survive.
+        raise OSError(
+            "could not remove the leftover files in " + str(dest_dir)
+        )
+    if not installed:
+        print_success("Removed leftover files from " + str(dest_dir))
+        return True
     if _is_link_like(skill_dest):
         _remove_link_like(skill_dest)
     else:

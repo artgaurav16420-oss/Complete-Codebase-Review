@@ -77,19 +77,25 @@ that need no model:
 | Command | Purpose |
 |---------|---------|
 | `python -m ccr plan .` | Discovery facts and the agent list that would run |
-| `python -m ccr record . --out .code-review-cache` | Writes one hardened prompt per agent plus `ccr-state.json` |
+| `python -m ccr record . --out .code-review-cache --skill-dir "$SKILL_DIR"` | Writes one hardened prompt per agent plus `ccr-state.json` |
 | `python -m ccr synthesize --in .code-review-cache --out report` | Dedup, mechanical DA checks, roadmap, Markdown/JSON |
 | `python -m ccr validate-results --in .code-review-cache` | Malformed-result check over cached agent results |
 | `python -m ccr eval` | Scores recorded fixtures against `tests/expected_issues.json` |
 
 Flags are scoped per command, not global. `plan` and `record` accept
 `--effort max|min`, `--agents a,b`, and `--max-files N`; `plan` also accepts
-`--json`. `synthesize` accepts `--agents` and `--format markdown|json|both`
-(default `markdown`) but not `--max-files`; its `--effort` defaults to the value
-recorded in `ccr-state.json`. `validate-results` accepts `--agents` and
-`--json`, and `eval` accepts `--json`.
-`synthesize` refuses to emit a report when too few planned agents returned; pass
-`--allow-partial` only when you accept the missing domains.
+`--json`. `record` also accepts `--skill-dir DIR`, the absolute installed skill
+directory substituted into every prompt; without it the prompts keep the literal
+`<SKILL_DIR>` placeholder. `synthesize` accepts `--agents` and
+`--format markdown|json|both` (default `markdown`) but not `--max-files`; its
+`--effort` defaults to the value recorded in `ccr-state.json`.
+`validate-results` accepts `--agents` and `--json`. `eval` accepts `--json`,
+`--fixtures DIR` (default `tests/fixtures/agents`), and `--expected FILE`
+(default `tests/expected_issues.json`); both defaults require a source checkout.
+`synthesize` refuses to emit a report when too few planned agents returned, but
+the gate needs a known planned set from `--agents` or `ccr-state.json`; without
+either it warns and skips the gate. Pass `--allow-partial` only when you accept
+the missing domains.
 
 ## 🚦 Exit Codes
 

@@ -5,9 +5,11 @@ env vars, enums, thresholds, and tech-debt floors.
 """
 
 import json
+import math
 from pathlib import Path
 
 from . import findings as findings_mod
+from . import providers as providers_mod
 from . import report as report_mod
 
 MANIFEST_PATH = Path(__file__).resolve().parent / "pipeline.json"
@@ -16,6 +18,27 @@ REQUIRED_KEYS = [
     "version", "env_vars", "agents", "severities", "da_verdicts",
     "health", "thresholds", "tech_debt_floors",
 ]
+
+# The characters Windows rejects in a file name. An agent id becomes one
+# (phase_<id>.json), so an id carrying one of them passes validation on
+# Linux and fails when the run writes the prompt on Windows. The id must
+# be a file name everywhere the tool runs.
+INVALID_ID_CHARS = '<>:"/\\|?*'
+
+
+def apply_settings(data):
+    """Point the engine's process-wide settings at one manifest.
+
+    The findings engine keeps agent identity and calibration at module level
+    so direct callers work without a manifest. ``load`` applies them for the
+    manifest it just read, which means a second load overwrites the first.
+    ``pipeline.synthesize`` re-applies the manifest it was handed, so a report
+    depends on that manifest and not on whichever one was loaded last.
+    """
+    # ADR-005: agent identity lives in the manifest, not in a literal here.
+    findings_mod.set_security_agent_id(data.get("security_agent_id"))
+    # ADR-007: so do the calibration numbers that decide report output.
+    findings_mod.set_calibration(data.get("calibration"))
 
 
 def load(path=None):
@@ -37,6 +60,7 @@ def load(path=None):
     with open(manifest_path, encoding="utf-8") as f:
         data = json.load(f)
     validate(data)
+    apply_settings(data)
     return data
 
 
@@ -54,6 +78,38 @@ def _validate_agents(data):
                         agent["id"], field
                     )
                 )
+        # An id is also a file-name stem (phase_<id>.json), so an empty id
+        # would name the file phase_.json and discovery would strip the prefix
+        # back to nothing: the planned result could never be found.
+        if not agent["id"].strip():
+            raise ValueError("agent id must not be empty")
+        # An id is also a file-name stem (phase_<id>.json). Reserving the
+        # prefix keeps the canonical layout unambiguous: without it, a bare
+        # fixture for an agent called phase_security is indistinguishable from
+        # the canonical result of an agent called security.
+        prefix = providers_mod.PHASE_PREFIX
+        if agent["id"][:len(prefix)].lower() == prefix:
+            raise ValueError(
+                "agent id must not start with the reserved prefix "
+                + prefix + ": " + agent["id"]
+            )
+        # An id is also a file name: the prompt is phase_<id>.prompt.md and
+        # the result is phase_<id>.json, both in the cache root the scan
+        # lists. A separator would name a file in a subdirectory the scan
+        # never sees, and a character the platform rejects in a file name
+        # would pass here and fail when record writes the prompt. The id
+        # must be a file name on every platform the tool runs on, so the
+        # invalid set is the union of what they reject.
+        invalid = [
+            char for char in agent["id"]
+            if char in INVALID_ID_CHARS or ord(char) < 32
+        ]
+        if invalid:
+            raise ValueError(
+                "agent id must be a valid file name, without "
+                + INVALID_ID_CHARS + " or control characters: "
+                + agent["id"]
+            )
         agent_ids.append(agent["id"])
     if len(agent_ids) != len(set(agent_ids)):
         raise ValueError("duplicate agent id in manifest")
@@ -117,6 +173,28 @@ ENUM_SOURCES = (
 )
 
 
+def _validate_security_agent(data, agent_ids):
+    """Check the security agent id names a declared agent.
+
+    The findings engine promotes HIGH findings from this agent to Phase 1, so
+    an id that names nothing would silently demote them. An absent field means
+    the historical default, which keeps older manifests loadable. An explicit
+    null is not an absent field: it says "no agent", which would point the
+    check at the default id and demote the HIGH findings of a renamed agent,
+    so it is rejected rather than read as an omission.
+    """
+    if "security_agent_id" not in data:
+        return
+    agent_id = data["security_agent_id"]
+    if agent_id is None:
+        raise ValueError(
+            "security_agent_id must name a declared agent, not null; "
+            "omit the field to use the default"
+        )
+    if not isinstance(agent_id, str) or agent_id not in agent_ids:
+        raise ValueError("security_agent_id is not a declared agent: " + repr(agent_id))
+
+
 def _validate_enums(data):
     """Check manifest enum lists match the constants the code enforces.
 
@@ -135,6 +213,65 @@ def _validate_enums(data):
             )
 
 
+# Calibration key -> (exclusive lower bound, inclusive upper bound or None).
+# The ranges live in the engine so a direct caller of set_calibration is held
+# to the same bounds the schema enforces here.
+CALIBRATION_RANGES = findings_mod.CALIBRATION_RANGES
+
+
+def _validate_calibration(data):
+    """Calibration values are finite numbers in the range the engine expects.
+
+    The block is optional so a manifest written before ADR-007 still loads and
+    keeps the engine defaults.
+    """
+    calibration = data.get("calibration")
+    if calibration is None:
+        return
+    if not isinstance(calibration, dict):
+        raise ValueError("manifest calibration must be an object")
+    for key in calibration:
+        if key not in CALIBRATION_RANGES:
+            raise ValueError("manifest calibration unknown key: " + key)
+    for key, (low, high) in CALIBRATION_RANGES.items():
+        if key not in calibration:
+            continue
+        value = calibration[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("manifest calibration " + key + " must be a number")
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            # An int too large for a float: out of range, not a crash.
+            finite = False
+        if not finite or value <= low:
+            raise ValueError("manifest calibration " + key + " out of range")
+        if high is not None and value > high:
+            raise ValueError("manifest calibration " + key + " out of range")
+
+
+def _validate_tech_debt_labels(data):
+    """Every floor key carries the label the generated SKILL.md table shows.
+
+    The table is generated from these labels, so a missing one would drop a
+    row silently. Absent labels are allowed for older manifests; the generator
+    then falls back to the key itself.
+    """
+    labels = data.get("tech_debt_labels")
+    if labels is None:
+        return
+    if not isinstance(labels, dict):
+        raise ValueError("manifest tech_debt_labels must be an object")
+    floors = data["tech_debt_floors"]
+    for key in floors:
+        label = labels.get(key)
+        if not isinstance(label, str) or not label:
+            raise ValueError("manifest tech_debt_labels missing: " + key)
+    for key in labels:
+        if key not in floors:
+            raise ValueError("manifest tech_debt_labels unknown floor: " + key)
+
+
 def validate(data):
     """Validate manifest structure. Raises ValueError on the first problem."""
     if not isinstance(data, dict):
@@ -147,6 +284,9 @@ def validate(data):
     _validate_base_agents(data, agent_ids)
     _validate_env_vars(data)
     _validate_thresholds(data, agent_ids)
+    _validate_calibration(data)
+    _validate_tech_debt_labels(data)
+    _validate_security_agent(data, agent_ids)
     _validate_enums(data)
 
 

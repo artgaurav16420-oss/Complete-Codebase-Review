@@ -1,9 +1,12 @@
 """Tests for ccr.state: persistence, gates, and resume."""
 
 import json
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from ccr import manifest as manifest_mod
 from ccr import state
@@ -51,9 +54,61 @@ class TestStateLifecycle(unittest.TestCase):
 
     def test_corrupt_state_rejected(self):
         self.path.parent.mkdir(parents=True)
-        self.path.write_text('{"current_phase": 9}', encoding="utf-8")
-        with self.assertRaises(ValueError):
+        # Every required key present, so the only thing wrong is the phase:
+        # otherwise load() raises on the missing key and never reaches the
+        # check this test is named for.
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 9,
+            "phase_gates": {},
+            "agents_planned": [],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
             state.State.load(self.path)
+        self.assertIn("invalid phase", str(caught.exception))
+
+    def test_numeric_target_dir_rejected(self):
+        # A hand-edited state with a number here loads as valid and then
+        # raises TypeError in the first caller that builds a Path from it.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": 5,
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": [],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.State.load(self.path)
+        self.assertIn("target_dir must be a string", str(caught.exception))
+
+    def test_non_string_roster_entries_rejected(self):
+        # dict.fromkeys runs on these in completion_ratio, so an object entry
+        # raised TypeError after load() had already reported success.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": [{}],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.State.load(self.path)
+        self.assertIn("agents_planned entries must be strings",
+                      str(caught.exception))
+
+    def test_non_string_completed_entries_rejected(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 1,
+            "phase_gates": {},
+            "agents_planned": ["security"],
+            "agents_completed": [None],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.State.load(self.path)
+        self.assertIn("agents_completed entries must be strings",
+                      str(caught.exception))
 
     def test_minimal_state_gets_defaults(self):
         self.path.parent.mkdir(parents=True)
@@ -184,14 +239,117 @@ class TestAgents(unittest.TestCase):
     def test_merge_resume_finds_disk_results(self):
         cache = Path(self.tmp.name) / "cache"
         cache.mkdir()
-        (cache / "phase_security.json").write_text("{}", encoding="utf-8")
+        (cache / "phase_security.json").write_text(
+            '{"agent": "security", "score": 5, "findings": []}', encoding="utf-8"
+        )
         drift = state.merge_resume(self.state, cache)
         self.assertEqual(drift, ["security"])
+
+    def test_merge_resume_ignores_non_result_files(self):
+        cache = Path(self.tmp.name) / "cache"
+        cache.mkdir()
+        (cache / "phase_notes.json").write_text("{}", encoding="utf-8")
+        (cache / "phase_ghost.json").write_text(
+            '{"agent": "ghost", "score": 5, "findings": []}', encoding="utf-8"
+        )
+        # A bare-layout file is a fixture, not this cache's result.
+        (cache / "architecture.json").write_text(
+            '{"agent": "architecture", "findings": []}', encoding="utf-8"
+        )
+        self.assertEqual(state.merge_resume(self.state, cache), [])
+
+    def test_merge_resume_reports_unreadable_canonical_result(self):
+        # A phase_<id>.json that will not parse is a result to redo, not a
+        # missing one: the agent did run and its output is unusable.
+        cache = Path(self.tmp.name) / "cache"
+        cache.mkdir()
+        (cache / "phase_architecture.json").write_text("not json", encoding="utf-8")
+        self.assertEqual(state.merge_resume(self.state, cache), ["architecture"])
 
     def test_merge_resume_missing_dir(self):
         self.assertEqual(
             state.merge_resume(self.state, Path(self.tmp.name) / "nope"), []
         )
+
+    def test_duplicate_completed_ids_do_not_inflate_the_ratio(self):
+        # A hand-edited or merged state file can repeat an id; counting it
+        # twice would report more than the roster and pass the gate early.
+        for agent_id in ("security", "security", "architecture",
+                         "architecture", "documentation", "documentation"):
+            self.state.data["agents_completed"].append(agent_id)
+        self.assertAlmostEqual(self.state.completion_ratio(), 1.0)
+        self.state.data["agents_completed"].extend(["security", "architecture"])
+        self.assertEqual(self.state.completion_ratio(), 1.0)
+
+    def test_duplicate_planned_ids_do_not_lower_the_ratio(self):
+        # check_completion deduplicates the roster before dividing, so the
+        # same repeat must not inflate the denominator here and block the gate
+        # after every distinct agent finished.
+        self.state.data["agents_planned"] = [
+            "security", "security", "architecture", "architecture",
+        ]
+        self.state.data["agents_completed"] = ["security", "architecture"]
+        self.assertEqual(self.state.completion_ratio(), 1.0)
+
+
+class TestStateLock(unittest.TestCase):
+    """The advisory lock around a state read-modify-write."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "ccr-state.json"
+
+    def test_held_lock_is_released(self):
+        with state.StateLock(self.path) as lock:
+            self.assertTrue(lock.held)
+            self.assertTrue(lock.path.exists())
+        # The file stays: deleting a lock file is what lets two contenders
+        # take the same claim. Its release is the kernel dropping the lock.
+        self.assertTrue(lock.path.exists())
+        with state.StateLock(self.path, wait=0.05) as again:
+            self.assertTrue(again.held)
+
+    def test_a_second_holder_does_not_wait_forever(self):
+        with state.StateLock(self.path):
+            with state.StateLock(self.path, wait=0.05) as second:
+                self.assertFalse(second.held)
+                # Another run holds it, which is not the same as there being
+                # no lock to take: the caller must refuse the section.
+                self.assertFalse(second.unavailable)
+
+    def test_an_abandoned_lock_file_does_not_block(self):
+        # A crashed holder leaves the file but no OS lock behind, so the next
+        # run takes it over without any staleness rule of its own.
+        lock_path = Path(str(self.path) + state.LOCK_SUFFIX)
+        lock_path.write_text("", encoding="utf-8")
+        old = time.time() - 120
+        os.utime(str(lock_path), (old, old))
+        with state.StateLock(self.path, wait=0.05) as lock:
+            self.assertTrue(lock.held)
+
+    def test_unsupported_or_unwritable_lock_path_still_runs(self):
+        missing = Path(self.tmp.name) / "absent" / "ccr-state.json"
+        with state.StateLock(missing, wait=0.05) as lock:
+            self.assertFalse(lock.held)
+            # The lock file cannot be opened, so no lock was claimed. That is
+            # not the same as "no run can hold a lock": another run may be
+            # holding one, so the caller must refuse the section.
+            self.assertFalse(lock.unavailable)
+
+    def test_no_locking_primitive_reports_the_lock_unheld(self):
+        # Claiming a lock that was never taken would let record and the
+        # re-review counter race on a build without fcntl/msvcrt. Report it
+        # unheld instead, and do not sit out the full wait either.
+        started = time.monotonic()
+        with patch.object(state, "_msvcrt", None), \
+             patch.object(state, "_fcntl", None):
+            with state.StateLock(self.path) as lock:
+                self.assertFalse(lock.held)
+                # There is no locking primitive, so there is no lock to take:
+                # that is different from another run holding one.
+                self.assertTrue(lock.unavailable)
+        self.assertLess(time.monotonic() - started, 1.0)
 
 
 if __name__ == "__main__":

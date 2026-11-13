@@ -669,5 +669,147 @@ class TestRoadmapEligible(unittest.TestCase):
         self.assertTrue(f.roadmap_eligible({"da_verdict": "CONFIRMED"}))
 
 
+class TestSecurityAgentId(unittest.TestCase):
+    """The security-agent id follows the same reset rule as calibration."""
+
+    def tearDown(self):
+        f.set_security_agent_id(None)
+
+    def test_none_restores_the_default(self):
+        f.set_security_agent_id("sec_team")
+        self.assertEqual(f.SECURITY_AGENT_ID, "sec_team")
+        f.set_security_agent_id(None)
+        self.assertEqual(f.SECURITY_AGENT_ID, f._DEFAULT_SECURITY_AGENT_ID)
+
+
+class TestSettingsArePerThread(unittest.TestCase):
+    """Two runs in one process must not see each other's settings."""
+
+    def test_a_thread_keeps_its_own_identity_and_calibration(self):
+        import threading
+
+        barrier = threading.Barrier(2)
+        seen = {}
+
+        def worker(key, agent_id, threshold):
+            f.set_security_agent_id(agent_id)
+            f.set_calibration({"overlap_threshold": threshold})
+            # Both threads have set their values before either reads, so a
+            # process-wide setting would hand both the same answer.
+            barrier.wait(timeout=5)
+            seen[key] = (f.SECURITY_AGENT_ID, f.OVERLAP_THRESHOLD)
+
+        threads = [
+            threading.Thread(target=worker, args=("a", "sec_a", 0.9)),
+            threading.Thread(target=worker, args=("b", "sec_b", 0.3)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        self.assertEqual(seen["a"], ("sec_a", 0.9))
+        self.assertEqual(seen["b"], ("sec_b", 0.3))
+        # The reading thread keeps its own settings.
+        self.assertEqual(
+            f.SECURITY_AGENT_ID, f._DEFAULT_SECURITY_AGENT_ID
+        )
+
+
+class TestCalibration(unittest.TestCase):
+    """The tunables come from the manifest (ADR-007)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.defaults = {
+            "overlap_threshold": f.OVERLAP_THRESHOLD,
+            "large_fix_hours": f.LARGE_FIX_HOURS,
+            "quick_win_cap_hours": f.QUICK_WIN_CAP_HOURS,
+        }
+
+    def tearDown(self):
+        f.set_calibration(self.defaults)
+
+    def test_sets_all_three(self):
+        f.set_calibration({
+            "overlap_threshold": 0.9,
+            "large_fix_hours": 2.0,
+            "quick_win_cap_hours": 10.0,
+        })
+        self.assertEqual(
+            (f.OVERLAP_THRESHOLD, f.LARGE_FIX_HOURS, f.QUICK_WIN_CAP_HOURS),
+            (0.9, 2.0, 10.0),
+        )
+
+    def test_non_object_resets_to_engine_defaults(self):
+        # The engine defaults, not the manifest's: ccr imports the manifest,
+        # so cls.defaults may themselves have been tuned (ADR-007).
+        f.set_calibration(None)
+        self.assertEqual(
+            (f.OVERLAP_THRESHOLD, f.LARGE_FIX_HOURS, f.QUICK_WIN_CAP_HOURS),
+            (f._DEFAULT_OVERLAP_THRESHOLD, f._DEFAULT_LARGE_FIX_HOURS,
+             f._DEFAULT_QUICK_WIN_CAP_HOURS),
+        )
+
+    def test_invalid_values_fall_back_to_defaults(self):
+        f.set_calibration({
+            "overlap_threshold": True,
+            "large_fix_hours": float("nan"),
+            "quick_win_cap_hours": float("inf"),
+        })
+        self.assertEqual(
+            (f.OVERLAP_THRESHOLD, f.LARGE_FIX_HOURS, f.QUICK_WIN_CAP_HOURS),
+            (f._DEFAULT_OVERLAP_THRESHOLD, f._DEFAULT_LARGE_FIX_HOURS,
+             f._DEFAULT_QUICK_WIN_CAP_HOURS),
+        )
+
+    def test_out_of_range_values_fall_back_to_defaults(self):
+        f.set_calibration({"overlap_threshold": 0})
+        self.assertEqual(f.OVERLAP_THRESHOLD, f._DEFAULT_OVERLAP_THRESHOLD)
+        f.set_calibration({"large_fix_hours": -1, "quick_win_cap_hours": 0})
+        self.assertEqual(
+            (f.LARGE_FIX_HOURS, f.QUICK_WIN_CAP_HOURS),
+            (f._DEFAULT_LARGE_FIX_HOURS, f._DEFAULT_QUICK_WIN_CAP_HOURS),
+        )
+
+    def test_huge_int_falls_back_to_default(self):
+        f.set_calibration({"large_fix_hours": 10 ** 400})
+        self.assertEqual(f.LARGE_FIX_HOURS, f._DEFAULT_LARGE_FIX_HOURS)
+
+    def test_omitted_key_restores_default(self):
+        f.set_calibration({"quick_win_cap_hours": 5.0})
+        f.set_calibration({"overlap_threshold": 0.5})
+        self.assertEqual(
+            (f.QUICK_WIN_CAP_HOURS, f.OVERLAP_THRESHOLD),
+            (f._DEFAULT_QUICK_WIN_CAP_HOURS, 0.5),
+        )
+
+    def test_overlap_threshold_controls_merging(self):
+        near = [
+            make("[app.py:1] — a → alpha beta gamma delta"),
+            make("[app.py:2] — b → alpha beta gamma delta epsilon"),
+        ]
+        f.set_calibration({"overlap_threshold": 0.7})
+        self.assertEqual(len(f.find_overlaps(near)), 1)
+        f.set_calibration({"overlap_threshold": 0.9})
+        self.assertEqual(f.find_overlaps(near), [])
+
+    def test_large_fix_default_follows_calibration(self):
+        items = [
+            make("[app.py:1] — a → x", hours=3),
+            make("[app.py:2] — b → y", hours=3),
+        ]
+        f.set_calibration({"large_fix_hours": 2.0})
+        self.assertEqual(len(f.find_large_file_clusters(items)), 1)
+        f.set_calibration({"large_fix_hours": 8.0})
+        self.assertEqual(f.find_large_file_clusters(items), [])
+
+    def test_quick_win_cap_follows_calibration(self):
+        items = [make(GOOD, severity="LOW", hours=2)]
+        f.set_calibration({"quick_win_cap_hours": 1.0})
+        self.assertEqual(len(f.place_roadmap(items)[2]), 1)
+        f.set_calibration({"quick_win_cap_hours": 40.0})
+        self.assertEqual(len(f.place_roadmap(items)[1]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

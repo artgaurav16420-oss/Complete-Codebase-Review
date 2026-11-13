@@ -96,6 +96,52 @@ class TestRecordCommand(unittest.TestCase):
             self.assertTrue(data["phase_gates"]["p1_discovery"])
             self.assertEqual(data["agents_planned"], ["architecture", "security"])
 
+    def test_record_refuses_a_state_file_another_run_holds(self):
+        # record rewrites the whole document from a snapshot. Proceeding while
+        # a synthesize holds the lock would overwrite anything it crediting.
+        class Unheld(object):
+            held = False
+            unavailable = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(cli.state, "StateLock", lambda path: Unheld()):
+                code, output = run_cli([
+                    "record", "--target", str(DUMMY), "--out", tmp,
+                    "--agents", "security",
+                ])
+            self.assertEqual(code, 2)
+            self.assertIn("could not take the lock", output)
+            self.assertFalse((Path(tmp) / "ccr-state.json").exists())
+
+    def test_record_refuses_a_cache_it_cannot_lock(self):
+        # There is no lock to take, so there is no lock protecting the state
+        # file the run is about to rewrite. Refuse rather than write it.
+        class Unavailable(object):
+            held = False
+            unavailable = True
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(cli.state, "StateLock", lambda path: Unavailable()):
+                code, output = run_cli([
+                    "record", "--target", str(DUMMY), "--out", tmp,
+                    "--agents", "security",
+                ])
+            self.assertEqual(code, 2)
+            self.assertIn("no lock is available", output)
+            self.assertFalse((Path(tmp) / "ccr-state.json").exists())
+
     def test_record_reuses_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli([
@@ -127,6 +173,21 @@ class TestRecordCommand(unittest.TestCase):
             )
             self.assertEqual(len(archived), 1)
             self.assertIn("archived 1", output)
+
+    def test_record_leaves_a_directory_named_like_a_result(self):
+        # Only files are results; archiving a directory that happens to carry
+        # the name would relocate contents ccr never wrote.
+        with tempfile.TemporaryDirectory() as tmp:
+            decoy = Path(tmp) / "phase_security.json"
+            decoy.mkdir()
+            (decoy / "keep.txt").write_text("unrelated", encoding="utf-8")
+            code, output = run_cli([
+                "record", "--target", str(DUMMY), "--out", tmp,
+                "--agents", "security",
+            ])
+            self.assertEqual(code, 0)
+            self.assertTrue((decoy / "keep.txt").exists())
+            self.assertNotIn("archived", output)
 
     def test_record_updates_effort(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -535,6 +596,25 @@ class TestPlannedFromCache(unittest.TestCase):
                 json.dumps({"findings": []}), encoding="utf-8")
             self.assertEqual(cli._planned_from_cache(str(cache)), ["security"])
 
+    def test_plans_a_known_agent_whose_result_is_corrupt(self):
+        # The manifest knows the agent, so the name of the file decides: a
+        # corrupt result belongs to the roster and is reported by path. Left
+        # out of it, the report went out with the agent missing.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            (cache / "security.json").write_text("not json", encoding="utf-8")
+            self.assertEqual(
+                cli._planned_from_cache(str(cache), valid_ids={"security"}),
+                ["security"],
+            )
+
+    def test_a_corrupt_result_for_an_unknown_id_is_not_planned(self):
+        # Without the manifest's id set, a corrupt file names no agent.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            (cache / "security.json").write_text("not json", encoding="utf-8")
+            self.assertEqual(cli._planned_from_cache(str(cache)), [])
+
 
 class TestValidateResults(unittest.TestCase):
     def test_reports_malformed(self):
@@ -586,6 +666,17 @@ class TestValidateResults(unittest.TestCase):
             code, output = run_cli(["validate-results", "--in", tmp])
             self.assertEqual(code, 2)
             self.assertIn("no agent results", output)
+
+    def test_names_a_corrupt_result_file(self):
+        # A file named for a planned agent is that agent's result, so a
+        # broken one is named by path instead of passing unnoticed.
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "security.json").write_text(
+                "not json", encoding="utf-8")
+            code, output = run_cli(["validate-results", "--in", tmp])
+            self.assertEqual(code, 2)
+            self.assertIn("not valid JSON", output)
+            self.assertIn("security.json", output)
 
 
 class TestEvalExit(unittest.TestCase):

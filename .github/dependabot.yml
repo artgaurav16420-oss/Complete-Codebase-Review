@@ -10,6 +10,7 @@ updates:
     reviewers:
       - "artgaurav16420-oss"
   - package-ecosystem: "pip"
+    # Tracks the pyproject.toml optional-dependencies groups (test, build).
     directory: "/"
     schedule:
       interval: "weekly"

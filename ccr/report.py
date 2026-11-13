@@ -5,6 +5,27 @@ section names and table headers exactly as written here.
 """
 
 import math
+import re
+import unicodedata
+
+
+# The joiners are format characters too, but they carry meaning: ZWJ holds
+# an emoji sequence together and ZWNJ keeps a word apart in the scripts that
+# use them. Dropping them changes the text a reviewer reads, so they stay.
+_KEPT_FORMAT = frozenset("\u200c\u200d")
+
+
+def _strip_format(text):
+    """Drop Unicode format characters (bidi overrides, isolates, spaces).
+
+    They render as nothing, so a finding lifted from an untrusted result can
+    reorder the rest of the line it sits in without looking different. The
+    two joiners are the exception: they carry meaning, so they stay.
+    """
+    return "".join(
+        char for char in text
+        if unicodedata.category(char) != "Cf" or char in _KEPT_FORMAT
+    )
 
 
 def _fmt_number(value):
@@ -33,14 +54,65 @@ def fmt_hours_long(value):
     return _fmt_number(value) + " hours"
 
 
+# A plain address, as GitHub's autolinker sees it: a local part, an @, and a
+# dotted domain.
+_EMAIL_RE = re.compile(r"(?<=[\w.+-])@(?=[\w-]+(?:\.[\w-]+)+)")
+
+# A bare host. The autolinker matches the prefix case-insensitively, so
+# "WWW.example" is a link too.
+_WWW_RE = re.compile(r"www\.", re.IGNORECASE)
+
+
+def _defang_urls(text):
+    """Break GitHub's plain-text autolinks without changing what is read.
+
+    GitHub links ``https://...`` and ``www....`` even when ``<`` is escaped.
+    A backslash before the colon (and the host dot) is dropped by the
+    renderer, so the words still read as a URL while no live destination is
+    left for a finding to smuggle into the report. A bare address is linked
+    the same way, as a ``mailto:`` destination, so its ``@`` becomes an
+    entity: the renderer shows the sign and the autolinker does not see one.
+    """
+    defanged = text.replace("://", "\\://")
+    # The backslash goes before the dot, and the spelling of the prefix is
+    # kept: the renderer shows the text as written.
+    defanged = _WWW_RE.sub(lambda m: m.group(0)[:-1] + "\\.", defanged)
+    return _EMAIL_RE.sub("&#64;", defanged)
+
+
 def _cell(text):
     """Make text safe inside a Markdown table cell or section body.
+
+    Agent-supplied finding text reaches the report verbatim, so HTML is
+    escaped and link destinations are defused here as well: a prompt-injected
+    result could otherwise render a live ``<img>`` or a ``[click](js:...)``
+    link in a report the reviewer trusts. Format characters are dropped
+    because they are invisible but still reorder the text around them. The
+    ``[file:line]`` anchor keeps its brackets, which are only escaped in
+    headings (see ``_title``).
+
+    A bare URL is defused too: GitHub autolinks ``https://...`` and
+    ``www....`` in plain text even after ``<`` is escaped. ``_defang_urls``
+    does that last, after the backslashes and entities above exist, so its
+    own escape is never doubled.
 
     Uses ``splitlines`` so every separator it honours (including ``\\x0b``,
     ``\\x0c`` and ``\\x85``) collapses, not just CR/LF.
     """
-    cleaned = str(text).replace("|", "/")
-    return " ".join(cleaned.splitlines()).strip()
+    return _defang_urls(_escape_cell(text))
+
+
+def _escape_cell(text):
+    """Escape one cell's HTML, pipes and line breaks, without defanging URLs."""
+    cleaned = _strip_format(str(text)).replace("|", "/")
+    collapsed = " ".join(cleaned.splitlines()).strip()
+    return (
+        collapsed
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("](", "] (")
+    )
 
 
 def _executive_summary(model):
@@ -236,15 +308,14 @@ def _overlap_candidates(model):
 def _title(text):
     """Escape the heading text so a path cannot inject HTML or a link.
 
-    Backslashes are escaped first: a target carrying ``\\[`` would otherwise
-    turn the bracket escape into ``\\\\[`` and leave the ``[`` active.
+    HTML escaping is already done by ``_escape_cell``; only the bracket escape
+    is added here. Backslashes are escaped first: a target carrying ``\\[`` would
+    otherwise turn the bracket escape into ``\\\\[`` and leave the ``[`` active.
+    URLs are defanged last so the escape that adds is not doubled.
     """
-    return (
-        _cell(text)
+    return _defang_urls(
+        _escape_cell(text)
         .replace("\\", "\\\\")
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
         .replace("[", "\\[")
         .replace("]", "\\]")
     )
@@ -311,39 +382,68 @@ def _section_text(md, header):
 HEALTH_VALUES = ("GREEN", "YELLOW", "RED")
 
 
-def validate_markdown(md):
-    """Return a list of contract violations in a rendered report.
-
-    Enforces the section contract, numeric domain scores, the health enum, and
-    the tech-debt reconciliation the orchestrator rules require.
-    """
-    errors = []
+def _check_sections(md, errors):
+    """Record every required section the report does not contain."""
     for section in REQUIRED_SECTIONS:
         if section not in md:
             errors.append("missing section: " + section)
 
-    health = None
+
+def _overall_health(md):
+    """Return the health cell from the executive summary, or None."""
     for line in _section_text(md, "## Executive Summary").splitlines():
         cells = line.split("|")
         # A well-formed row is "| **Overall Health** | VALUE |" -> 4 parts.
         if len(cells) == 4 and cells[1].strip() == "**Overall Health**":
-            health = cells[2].strip()
-            break
-    if health is None:
-        errors.append("missing overall health")
-    elif health not in HEALTH_VALUES:
-        errors.append("invalid overall health: " + health)
+            return cells[2].strip()
+    return None
 
-    scores_text = _section_text(md, "## Per-Domain Scores")
-    for line in scores_text.splitlines():
-        if line.startswith("|") and (" N/A " in line or " n/a " in line):
+
+def _check_scores(md, errors):
+    """Reject domain scores that are not a number on the 0-10 scale.
+
+    The score is the second cell. The header ("Score (/10)") and the
+    ``|---|`` separator are skipped by validating only the rows after the
+    separator; every later row, including the **Overall** one, must parse as
+    a number in range. ``float`` also reads "nan" and "inf", and every
+    comparison against NaN is False, so the range check rejects those as
+    well as a score outside the scale the section declares.
+
+    The separator is what starts the body, so a table without it has no row
+    to check: its absence is an error, not a table that passes unchecked.
+    """
+    in_body = False
+    rows = 0
+    for line in _section_text(md, "## Per-Domain Scores").splitlines():
+        if not line.startswith("|"):
+            continue
+        if not in_body:
+            chars = set(line.replace("|", "").replace(" ", ""))
+            if chars and chars <= set("-:"):
+                in_body = True
+            continue
+        rows += 1
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2:
             errors.append("non-numeric domain score: " + line.strip())
+            continue
+        score = _num(cells[1])
+        if score is None:
+            errors.append("non-numeric domain score: " + line.strip())
+        elif not 0.0 <= score <= 10.0:
+            errors.append("domain score out of range: " + line.strip())
+    if not in_body:
+        errors.append("score table separator missing")
+    elif not rows:
+        errors.append("score table has no rows")
 
+
+def _tech_debt_totals(md, errors):
+    """Return (total, domain_sum, found_domain) from the debt summary."""
     total = None
     domain_sum = 0.0
     found_domain = False
-    debt_text = _section_text(md, "## Tech Debt Summary")
-    for line in debt_text.splitlines():
+    for line in _section_text(md, "## Tech Debt Summary").splitlines():
         if line.startswith("**Total estimated**") and ":" in line:
             total = _num(line.split(":", 1)[1].strip().split(" ")[0])
         if "**By domain**" in line and ":" in line:
@@ -356,6 +456,24 @@ def validate_markdown(md):
                 else:
                     domain_sum += value
                     found_domain = True
+    return total, domain_sum, found_domain
+
+
+def validate_markdown(md):
+    """Return a list of contract violations in a rendered report.
+
+    Enforces the section contract, numeric domain scores, the health enum, and
+    the tech-debt reconciliation the orchestrator rules require.
+    """
+    errors = []
+    _check_sections(md, errors)
+    health = _overall_health(md)
+    if health is None:
+        errors.append("missing overall health")
+    elif health not in HEALTH_VALUES:
+        errors.append("invalid overall health: " + health)
+    _check_scores(md, errors)
+    total, domain_sum, found_domain = _tech_debt_totals(md, errors)
     if total is None:
         # Require a total: even a zero-finding report renders
         # "**Total estimated**: 0 hours", so there is no legitimate gap.

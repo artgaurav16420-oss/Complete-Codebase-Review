@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import findings as findings_mod
+from . import manifest as manifest_mod
 from . import report as report_mod
 from .fileio import write_text
 from .providers import RecordedProvider
@@ -137,6 +138,10 @@ def synthesize(manifest, results, planned, completed=None, target="",
     Returns:
         dict: Report model.
     """
+    # Agent identity and calibration are process-wide in the findings engine,
+    # and another load would have overwritten them. Re-apply this manifest so
+    # the report depends on it, not on the one loaded last.
+    manifest_mod.apply_settings(manifest)
     completed = list(completed if completed is not None else results.keys())
     raw = _collect_raw(manifest, results, planned)
     kept, rejected = findings_mod.review_findings(
@@ -274,7 +279,11 @@ def _validate_expected(expected):
 def run_eval(manifest, fixtures_dir, expected_path):
     """Replay recorded fixtures through synthesis and score the result."""
     provider = RecordedProvider(fixtures_dir)
-    agent_ids = provider.agent_ids()
+    # Only manifest agents are replayed. A file that merely looks like a
+    # result (a findings-only object written beside the fixtures) must not
+    # become an agent id synthesize then rejects as unknown.
+    planned = {agent["id"] for agent in manifest["agents"]}
+    agent_ids = provider.agent_ids(planned)
     if not agent_ids:
         raise ValueError("no fixture results in " + str(fixtures_dir))
     results = {agent_id: provider.get(agent_id) for agent_id in agent_ids}

@@ -293,6 +293,10 @@ Customize execution with environment variables:
 
 <!-- END GENERATED: readme-env-vars -->
 
+The `ccr` CLI itself reads only `CODE_REVIEW_AGENTS` and
+`CODE_REVIEW_TIMEOUT_SEC`; the remaining variables configure the prompt
+pipeline that the host agent executes.
+
 See [help.md](help.md) for detailed documentation.
 
 ### Quick Mode

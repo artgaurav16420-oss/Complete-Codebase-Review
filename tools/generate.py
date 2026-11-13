@@ -84,6 +84,24 @@ def specialist_section(manifest):
     return "\n".join(lines)
 
 
+def tech_debt_section(manifest):
+    """Render the tech-debt calibration table from the manifest floors.
+
+    Labels come from ``tech_debt_labels`` so the wording stays in one place;
+    a manifest without them falls back to the key, which keeps older
+    manifests renderable.
+    """
+    labels = manifest.get("tech_debt_labels") or {}
+    lines = [
+        "| Finding Type | Base Estimate |",
+        "|-------------|---------------|",
+    ]
+    for key, hours in manifest["tech_debt_floors"].items():
+        label = labels.get(key) or key.replace("_", " ").capitalize()
+        lines.append("| {} | {:g}h |".format(label, hours))
+    return "\n".join(lines)
+
+
 def env_bullets(manifest):
     """Render help.md-style bullet list for env vars."""
     rows = []
@@ -110,6 +128,9 @@ def render_text(path, manifest):
         )
         text = replace_block(
             text, "skill-specialist-agents", specialist_section(manifest)
+        )
+        text = replace_block(
+            text, "skill-tech-debt", tech_debt_section(manifest)
         )
         text = _sub_once(
             r"(?m)^version:\s*\S+$",

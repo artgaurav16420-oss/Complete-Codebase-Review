@@ -81,7 +81,8 @@ Cache dir defaults to `.code-review-cache/`; `ccr-state.json` and
   scanned for unknown `CODE_REVIEW_*` names.
 - Severity / DA verdict / health values are closed enums validated by
   `tests/test_pipeline.py`.
-- **3.9 syntax floor.** CI covers 3.9-3.15 on Linux, Windows, macOS. No
+- **3.9 syntax floor.** CI covers 3.9-3.15 on Linux and Windows; macOS runs
+  only the floor and ceiling (3.9 and 3.15) to stay under the runner cap. No
   `match`, no `X | Y` unions, no `dict | dict` — newer local Pythons accept
   them, then CI fails.
 - **LF only.** `.gitattributes` is `* text=auto eol=lf`; write new files LF.
@@ -168,4 +169,4 @@ Cache dir defaults to `.code-review-cache/`; `ccr-state.json` and
 - CI (pinned actions, drift check, eval, coverage floor): `.github/workflows/ci.yml`
 - Release (sdist/wheel, checksums, provenance): `.github/workflows/release.yml`
 - Design rationale: `ADRs/` (agent split, DA workflow, plain-Python tests,
-  5-phase pipeline, executable core, fileio containment)
+  5-phase pipeline, executable core, fileio containment, calibration policy)

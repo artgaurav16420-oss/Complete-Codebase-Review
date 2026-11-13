@@ -25,6 +25,198 @@
   Seven queued macOS jobs overflowed the concurrent macOS runner cap, and GitHub cancelled
   the overflow before it started, failing otherwise-green runs on `main` and on PRs. Linux
   and Windows still cover every interpreter.
+- **Review fixes (2026-11-06)**:
+  - Agent identity and calibration come from `ccr/pipeline.json` (`security_agent_id`,
+    `calibration`, `tech_debt_labels`); `ccr.manifest.load()` pushes them into the engine,
+    and ADR-007 records the calibration policy.
+  - One result-file convention in `ccr.providers` (`discover_results`, `find_result`):
+    `eval --fixtures` no longer aborts on a directory holding a `ccr-baseline.json`, and
+    state resume and synthesize agree on what counts as an agent result. A canonical
+    `phase_<id>.json` that will not parse is reported as malformed with its path, not
+    mistaken for a missing result.
+  - Completion ratio divides by the planned roster, so a stale `total_agents` cannot
+    report 0% for a finished run.
+  - Report cells neutralise HTML and Markdown links from agent text; sanitization drops
+    Unicode `Cf` characters (bidi overrides, isolates, zero-width space) and keeps the
+    two joiners, which carry meaning.
+  - The installer stages the copy, moves the previous tree aside instead of deleting it
+    and puts it back when the swap fails; leftovers from a crashed run are swept by age,
+    so a concurrent run's staging tree is left alone. The credential filter covers
+    `.envrc` and `.direnv`.
+  - The SKILL.md tech-debt table is generated from `pipeline.json` instead of duplicated,
+    and the report validators are split into section checks.
+  - CI: workflow-level permissions reduced to `contents: read` with per-job escalation,
+    exact pins for `coverage` and `build`, a wheel smoke test before publishing, and a
+    pull-request check that rejects empty commits.
+  - CodeAnt round 1: `record` archives only files, so a directory named like a result is
+    left alone; discovery compares the `.json` suffix case-insensitively, matching
+    `find_result` on a case-sensitive filesystem; duplicate completed ids cannot push the
+    completion ratio above the roster; and the re-review counter is updated under an
+    advisory lock, so two syntheses cannot lose an increment.
+  - Installer: a parked previous install is re-stamped so a concurrent age-based sweep
+    cannot delete the backup a rollback needs; a link-like install is parked rather than
+    unlinked, so a failed swap still restores it; and uninstall fails when its own
+    leftovers cannot be removed instead of reporting a clean removal.
+  - CodeAnt round 2: the release matrix splits its coverage pin by interpreter (coverage
+    7.14 requires Python 3.10, so the 3.9 leg takes 7.10.7) instead of failing to install on
+    the floor and blocking every tag; the re-review counter is skipped, not updated, when
+    another run holds the lock; the installer refuses to sweep a target that has become a
+    link; and a failed leftover removal fails the uninstall instead of reading as nothing
+    to uninstall.
+  - CodeAnt round 3: the state lock is an OS lock (`fcntl`/`msvcrt`) released by the kernel,
+    so a crashed holder needs no staleness rule and two contenders cannot take over the same
+    lock; `record` takes that lock too, so it cannot overwrite a re-review credited while it
+    ran; the installer names its staging and backup trees for one run (pid plus random) so a
+    reused pid cannot delete a crashed run's only backup; and a bare-layout result must carry
+    only the agent-result keys, so a synthesized report sitting beside the fixtures is not
+    read as an agent.
+  - CodeAnt round 4: the completion denominator deduplicates the planned roster exactly as
+    `pipeline.check_completion` does, so a repeated id cannot block the gate after every
+    distinct agent finished; the parked backup is stamped before the rename, closing the
+    window in which a concurrent age-based sweep could delete it; `_remove_tree` removes a
+    directory symlink or junction through its reparse point instead of failing the unlink and
+    leaving it under `.old-*`; report cells defuse bare `https://` and `www.` autolinks that
+    GitHub would otherwise render as live links; and replay ignores a findings-only json
+    beside the fixtures instead of aborting on an agent the manifest never planned.
+  - CodeAnt round 5: `State.load` rejects a non-string `target_dir` (null still reads as an
+    old state), so a hand-edited number exits with an error instead of a `TypeError`
+    traceback in `synthesize`; and replay treats a file named for a planned agent as that
+    agent's result whatever it contains, so a corrupt fixture is reported by path instead of
+    being skipped as a stray file.
+  - CodeAnt round 6: `synthesize` re-applies the identity and calibration of the manifest it
+    was handed, so a second `manifest.load` cannot change an earlier report; a build without
+    `fcntl`/`msvcrt` reports the state lock unheld instead of claiming one; a failed mtime
+    stamp aborts the update before the live install is parked, since the backup would
+    otherwise carry its old age; the score validator rejects any non-numeric cell rather
+    than only `N/A`; and a test comment no longer cites stale line numbers.
+  - CodeAnt round 7: result discovery returns regular files only, so a directory named
+    `security.json` is not planned as an agent result when the manifest's id set is known;
+    a cache that cannot be listed fails `record` with an error instead of reading as empty
+    and leaving the previous run's results for `synthesize` to ingest; and a manifest agent
+    id may not start with the reserved `phase_` prefix, which would make a bare fixture
+    indistinguishable from another agent's canonical result.
+  - CodeAnt round 8: discovery skips a link, so a `phase_<id>.json` symlink cannot pull a
+    file from outside the cache into a report; a legacy state with `target_dir: null` falls
+    back to the cache directory instead of naming the baseline target `null`; state roster
+    entries must be strings, so a hand-edited `[{}]` is rejected at load rather than raising
+    `TypeError` in `completion_ratio`; and `test.sh` plus `Test-Windows.ps1` match the
+    section headings instead of a substring that also occurs in body prose.
+  - CodeAnt round 9: a legacy state that records no target no longer lends its `facts` to
+    the target a later run names; `record` leaves a linked result in place, because
+    discovery skips links and archiving one would move an entry this run never wrote;
+    an install re-checks the destination for link-likeness immediately before the copy,
+    so a target swapped for a link during the leftover sweep cannot receive the staging
+    tree; and the section checks compare the whole heading title, so a heading that merely
+    contains the name (`## No Environment Variables`) no longer passes.
+  - CodeAnt round 10: the engine's security-agent identity and calibration belong to the
+    calling thread, so two syntheses running at once cannot overwrite each other's
+    settings and report the wrong identity; a manifest agent id may not be empty, because
+    it would name the result file `phase_.json` and discovery would strip the prefix back
+    to nothing; the age-based leftover sweep no longer deletes a link-like entry, whose
+    own timestamp cannot be refreshed on every platform, so a rollback copy parked by a
+    running install can no longer be swept away from under it; and the `merge_resume`
+    entry in `docs/api/ccr.md` now states what an empty planned roster means.
+  - CodeAnt round 11: an explicit `"security_agent_id": null` is rejected at load instead
+    of being read as an omitted field, because it would point the HIGH-finding check at an
+    id the manifest may no longer declare and silently demote those findings; a bare email
+    address in agent text is defanged like a URL, since GitHub autolinks it as a `mailto:`
+    destination; and the install test that swaps the destination for a link now skips
+    itself on a host that cannot create one, instead of failing the suite.
+  - CodeAnt round 12: the cache scan that infers the planned roster uses the manifest's
+    id set, so a result file named for a planned agent is that agent's result whatever it
+    holds; a corrupt one is now named by the loader instead of leaving the agent out of
+    the roster and the report incomplete. A file that parses as another document the
+    pipeline wrote (the synthesis report, a baseline) is still not read as an agent's
+    result. The score validator now rejects a score that is not a number on the 0-10
+    scale, which also rejects `nan` and `inf`: `float` reads them and every comparison
+    against `nan` is false.
+  - CodeAnt round 13: the `www` prefix in agent text is defanged whatever its case, since
+    GitHub's autolinker matches it case-insensitively; a result file that carries more
+    than the three documented keys is found again, because the loader accepts it, while a
+    file that is one of the pipeline's own documents is still not read as an agent's
+    result; fixture replay no longer loads a file the finder rejected, so the report
+    cannot be replayed as an agent and put its own findings into the next report; and
+    `record` carries the last synthesis signature forward with the re-review count, so a
+    concurrent `record` for the same target cannot make the same review count twice and
+    fire the every-3rd full rescan early.
+  - CodeAnt round 14: discovery no longer hides a bare result that carries more than the
+    three documented keys, because the loader accepts it and the old whitelist made the
+    agent vanish while its file sat right there; the rule is now the pipeline's own
+    documents, the only files with a findings list that are not an agent's result.
+    Discovery excludes those documents whether or not the manifest's id set is known, so
+    the roster never lists an agent the loader refuses; and `record` leaves a document
+    named after a planned agent in the cache instead of moving it into
+    `previous-results`, because the archive step is for results the next run would
+    otherwise re-ingest.
+  - CodeAnt round 15: the canonical name is no longer an exception to the document rule,
+    so a report saved as `phase_<id>.json` is that report and not the agent's result:
+    loading it would put the report's own findings into the report. `synthesize` reads
+    the roster and loads the results under the same lock `record` takes while it
+    archives the previous run's results, so a concurrent `record` can no longer move a
+    result between the scan and the load and leave the report without that domain. A
+    state that predates target recording keeps its re-review count and keeps advancing
+    it: the count is the cache's own history, not a fact about the codebase, and left at
+    zero it never reached the every-3rd full rescan. The score validator now rejects a
+    score table with no separator and one with no rows, which checked no score at all.
+  - CodeAnt round 16: `synthesize` no longer warns and continues when another run holds
+    the cache lock: the roster and the results are being changed underneath it, so a
+    report built there could go out without a domain, and the run now exits with status 2
+    instead. `StateLock` now tells "no run can hold a lock here" apart from "another run
+    holds it", so a caller can decide whether it may continue. The state file is read
+    inside the lock, so the roster it names is the one the lock protects. An agent id
+    with a path separator is rejected: the result is
+    `<cache>/phase_<id>.json` and the cache scan lists the cache root only, so such an id
+    named a file the scan never sees. The `sanitize_unicode` docstring now says that
+    newline, carriage return and tab survive.
+  - CodeAnt round 17: an agent id is now checked against the characters a file name
+    cannot carry, so an id Windows rejects (`?`, `:`, `*`, `|`, `"`) is refused at load
+    instead of failing when `record` writes the prompt. A lock file that cannot be
+    opened is no longer reported as "no lock is available": another run may be holding
+    one, so `synthesize` refuses instead of reading a cache that is being changed
+    underneath it, and only a build with no locking primitive at all — where no run can
+    hold a lock — lets a reader continue. `record` no longer archives a pipeline
+    document saved under the canonical name: the rule that decides what is a result now
+    applies to every name, as it already did for discovery and the loader.
+  - CodeAnt round 18: report cells and the sanitization helper keep the two Unicode
+    joiners (ZWJ, ZWNJ), which carry meaning — they hold an emoji sequence together and
+    keep a word apart in the scripts that use them — while the bidi controls and the
+    zero-width space are still dropped. The installer test that covers a crashed run's
+    backup carrying this run's pid now creates the install that has to be parked, so it
+    exercises the backup-name collision instead of passing because nothing was parked.
+  - CodeAnt round 19: the installer keeps its staging tree alive while it copies. The
+    sweep that clears a crashed run's leftovers judges a tree by age, so a copy that
+    took over an hour left the staging tree looking stale and a concurrent install's
+    sweep deleted it mid-copy; the tree's mtime is now refreshed as the copy goes, and
+    again after the copy, which ends by copying the source directory's own timestamps
+    onto it. The installer also restores its backup only when its own swap did not
+    land: a missing live install can mean a concurrent install parked the tree this
+    run put in place, and restoring the older backup over that gap left the stale
+    version installed. The backup stays a leftover for the next run's sweep instead.
+  - CodeAnt round 20: the installer copies each file in chunks and refreshes the staging
+    tree's mtime between them. Refreshing it only before and after a file was not enough:
+    one large file can take longer than the age the sweep uses, so the tree looked stale
+    while it was still being written and a concurrent install's sweep deleted it.
+  - CodeAnt round 21: the installer's credential filter now works on the word a file is
+    named after rather than on whole names, so the local-override and extension variants
+    are covered too: `.envrc.local`, `.direnv.local`, `credentials.yaml` and
+    `secrets.json` are credential stores and are no longer copied into the installed
+    skill tree. Words that merely start like one (`environment.py`, `secretary.md`) are
+    still kept.
+  - CodeAnt round 22: the installer's credential filter also covers the environment-file
+    extension wherever it sits in the name: a deployment secrets file is named after the
+    environment it configures (`prod.env`, `staging.env`, `prod.env.local`), and those
+    were copied into every installed skill. The installer also leaves the destination out
+    of the copy when it sits inside the source tree: the staging tree is created inside
+    the destination, so the copy walked into the destination, found the staging tree it
+    was building, and copied that too until the copy failed. Installing the skill into
+    its own source directory is refused instead.
+  - CodeAnt round 23: the installer's credential filter matches the *words* a file is
+    named after rather than the first part of its name, so a qualifier in front of the
+    word no longer hides it: `aws-credentials.json`, `db-secrets.yaml` and
+    `my_credentials.json` are credential stores and are no longer copied into the
+    installed skill tree. The name is split on dots, dashes and underscores and each
+    word is matched whole, so `environment.py` and `secretary.md` are still kept while
+    `env-config.yaml` is now left out with the other environment files.
 
 ## v2.4.0 (2026-10-20)
 

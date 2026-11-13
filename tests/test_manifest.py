@@ -55,6 +55,16 @@ class TestManifestLoad(unittest.TestCase):
         )
         self.assertEqual(manifest_mod.floor_for(self.manifest, "other"), 1.0)
 
+    def test_load_pushes_calibration_into_findings(self):
+        from ccr import findings as findings_mod
+        calibration = self.manifest["calibration"]
+        self.assertEqual(findings_mod.OVERLAP_THRESHOLD,
+                         calibration["overlap_threshold"])
+        self.assertEqual(findings_mod.LARGE_FIX_HOURS,
+                         calibration["large_fix_hours"])
+        self.assertEqual(findings_mod.QUICK_WIN_CAP_HOURS,
+                         calibration["quick_win_cap_hours"])
+
     def test_version_matches_pyproject(self):
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         version = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text).group(1)
@@ -96,6 +106,83 @@ class TestManifestValidation(unittest.TestCase):
             manifest_mod.validate(data)
         self.assertIn("must be a string", str(ctx.exception))
 
+    def test_agent_id_may_not_use_the_result_file_prefix(self):
+        # A result is phase_<id>.json. An agent called phase_security would
+        # name its fixture exactly as the canonical result of agent security.
+        data = self._broken()
+        data["agents"][0]["id"] = "phase_security"
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("reserved prefix", str(ctx.exception))
+
+    def test_agent_id_may_not_be_empty(self):
+        # A result is phase_<id>.json, so an empty id names phase_.json and
+        # discovery strips the prefix back to nothing: the planned result
+        # could never be found.
+        data = self._broken()
+        data["agents"][0]["id"] = ""
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("must not be empty", str(ctx.exception))
+
+    def test_agent_id_may_not_contain_a_path_separator(self):
+        # A result is phase_<id>.json in the cache root, and the cache scan
+        # lists the root only. An id with a separator names a file in a
+        # subdirectory the scan never sees, so the agent's result could
+        # never be found, and a ".." could name a file outside the cache.
+        for agent_id in ("team/security", "team\\security", "../escape"):
+            data = self._broken()
+            old = data["agents"][0]["id"]
+            data["agents"][0]["id"] = agent_id
+            # Every other reference follows the renamed agent, so the id
+            # rule is the only thing left to fail.
+            data["base_agents"] = [
+                agent_id if item == old else item
+                for item in data["base_agents"]
+            ]
+            data["thresholds"]["quick_agents"] = [
+                agent_id if item == old else item
+                for item in data["thresholds"]["quick_agents"]
+            ]
+            with self.assertRaises(ValueError) as ctx:
+                manifest_mod.validate(data)
+            self.assertIn("valid file name", str(ctx.exception))
+
+    def test_agent_id_may_not_contain_a_character_windows_rejects(self):
+        # The prompt and the result are file names, and Windows rejects
+        # these characters in one. An id carrying one passes validation on
+        # Linux and fails when record writes the prompt on Windows.
+        for agent_id in ("why?", "a:b", "star*", "pipe|", "quote\""):
+            data = self._broken()
+            old = data["agents"][0]["id"]
+            data["agents"][0]["id"] = agent_id
+            data["base_agents"] = [
+                agent_id if item == old else item
+                for item in data["base_agents"]
+            ]
+            data["thresholds"]["quick_agents"] = [
+                agent_id if item == old else item
+                for item in data["thresholds"]["quick_agents"]
+            ]
+            with self.assertRaises(ValueError) as ctx:
+                manifest_mod.validate(data)
+            self.assertIn("valid file name", str(ctx.exception))
+
+    def test_explicit_null_security_agent_is_rejected(self):
+        # A null id says "no agent", not "the default": it would point the
+        # HIGH-finding check at an id the manifest may no longer declare.
+        data = self._broken()
+        data["security_agent_id"] = None
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("not null", str(ctx.exception))
+
+    def test_absent_security_agent_is_accepted(self):
+        # Older manifests have no field at all; that keeps the default.
+        data = self._broken()
+        del data["security_agent_id"]
+        manifest_mod.validate(data)
+
     def test_duplicate_env_var(self):
         data = self._broken()
         data["env_vars"].append(dict(data["env_vars"][0]))
@@ -107,6 +194,62 @@ class TestManifestValidation(unittest.TestCase):
         data["thresholds"]["full_completion"] = 1.5
         with self.assertRaises(ValueError):
             manifest_mod.validate(data)
+
+    def test_calibration_out_of_range(self):
+        data = self._broken()
+        data["calibration"]["overlap_threshold"] = 1.5
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(data)
+
+    def test_calibration_unknown_key(self):
+        data = self._broken()
+        data["calibration"]["ghost"] = 1.0
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("unknown key", str(ctx.exception))
+
+    def test_calibration_bool_rejected(self):
+        data = self._broken()
+        data["calibration"]["large_fix_hours"] = True
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(data)
+
+    def test_calibration_overflowing_int_rejected(self):
+        data = self._broken()
+        data["calibration"]["large_fix_hours"] = 10 ** 400
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("out of range", str(ctx.exception))
+
+    def test_calibration_is_optional(self):
+        data = self._broken()
+        del data["calibration"]
+        manifest_mod.validate(data)
+
+    def test_tech_debt_label_missing(self):
+        data = self._broken()
+        del data["tech_debt_labels"]["circular_dependency"]
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("missing", str(ctx.exception))
+
+    def test_tech_debt_label_for_unknown_floor(self):
+        data = self._broken()
+        data["tech_debt_labels"]["ghost"] = "Ghost"
+        with self.assertRaises(ValueError) as ctx:
+            manifest_mod.validate(data)
+        self.assertIn("unknown floor", str(ctx.exception))
+
+    def test_tech_debt_labels_must_be_object(self):
+        data = self._broken()
+        data["tech_debt_labels"] = []
+        with self.assertRaises(ValueError):
+            manifest_mod.validate(data)
+
+    def test_tech_debt_labels_are_optional(self):
+        data = self._broken()
+        del data["tech_debt_labels"]
+        manifest_mod.validate(data)
 
     def test_quick_agent_unknown(self):
         data = self._broken()
