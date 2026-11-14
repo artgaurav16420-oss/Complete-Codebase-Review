@@ -405,13 +405,13 @@ Each agent report MUST include a compact findings summary (severity + count + to
 The DA MUST automatically REJECT any finding that fails ANY of these tests:
 1. **"So What?" Test:** Is it technically imperfect, or does it actually guarantee a negative outcome (outage, breach, friction)? Mere imperfection → REJECTED.
 2. **"Echo Chamber" Test:** Is it just repeating a linter rule without explaining the architectural context? Linter echo → REJECTED.
-3. **"No Path" Test:** Does it use weasel words ("might," "likely," "could potentially") instead of pointing to an exact execution path? Weasel words → REJECTED.
+3. **"No Path" Test:** Does it use weasel words ("might," "likely," "could potentially") instead of pointing to an exact execution path? The mechanical gate demotes the finding to QUESTIONABLE; the DA then decides whether to reject it under this strike.
 
 **For CONFIRMED/PLAUSIBLE findings, rewrite the summary to include:**
 - **The Trigger:** The exact condition that causes the flaw
 - **The Fix Paradigm:** The architectural pattern required (not just "fix the code")
 
-**Weasel Word Ban:** Auto-REJECT findings containing: "might", "likely", "could potentially", "it is recommended", "consider refactoring", "best practice suggests", "generally speaking", "in most cases".
+**Weasel Word Ban:** The mechanical gate demotes findings containing: "might", "likely", "could potentially", "it is recommended", "consider refactoring", "best practice suggests", "generally speaking", "in most cases" to QUESTIONABLE, records `weasel word: <phrase>`, and keeps them visible for DA review.
 
 Input: synthesized report + discovery manifest
 Actions:

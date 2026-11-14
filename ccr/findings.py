@@ -156,7 +156,9 @@ def review_findings(raw_findings, floors=None):
 
     Returns:
         tuple: (kept, rejected). Rejected findings carry `reject_reason`
-        and a REJECTED DA verdict.
+        and a REJECTED DA verdict. A hedged finding stays in ``kept`` with
+        a QUESTIONABLE verdict and a ``weasel_word`` marker; only empty or
+        anchorless findings are rejected mechanically.
 
     Assumes:
         ``raw_findings`` are normalised dicts from agent reports. Mutates
@@ -191,7 +193,13 @@ def review_findings(raw_findings, floors=None):
         else:
             hits = weasel_hits(text)
             if hits:
-                reason = "weasel word: " + hits[0]
+                # Hedged language routes a finding to the DA instead of
+                # rejecting it: the failure-mode clause may legitimately
+                # describe what might happen, and a mechanical REJECTED
+                # verdict would deny the DA its adjudication.
+                item["weasel_word"] = "weasel word: " + hits[0]
+                if item["da_verdict"] != "REJECTED":
+                    item["da_verdict"] = "QUESTIONABLE"
         if reason:
             item["da_verdict"] = "REJECTED"
             item["reject_reason"] = reason
@@ -201,36 +209,110 @@ def review_findings(raw_findings, floors=None):
     return kept, rejected
 
 
+def _dedup_winner(members):
+    """Return the member dedup keeps: worst severity, then largest estimate."""
+    winner = members[0]
+    for item in members[1:]:
+        old_rank = SEVERITY_WEIGHT[normalize_severity(winner.get("severity"))]
+        new_rank = SEVERITY_WEIGHT[normalize_severity(item.get("severity"))]
+        if new_rank < old_rank:
+            winner = item
+        elif new_rank == old_rank:
+            if _as_hours(item.get("est_hours")) > _as_hours(
+                winner.get("est_hours")
+            ):
+                winner = item
+    return winner
+
+
+def _word_root(word):
+    """Return a crude root for comparing a verb with its negated form.
+
+    The tokenizer does not stem; the common disagreement is a third-person
+    verb ("validates") against the bare form after a negation ("not
+    validate"). Stripping one trailing "s" is enough for that case and
+    leaves unrelated words alone.
+    """
+    if len(word) > 3 and word.endswith("s"):
+        return word[:-1]
+    return word
+
+
+def _negation_conflict(tokens, negations, other_tokens, other_negations):
+    """True when one side asserts a word the other side negates.
+
+    A finding does not assert a word it negates itself: the tokenizer keeps
+    the word after "not" in the token set, so each side's own negations are
+    removed before the comparison.
+    """
+    asserted = {
+        _word_root(token) for token in tokens if token not in negations
+    }
+    negated = {_word_root(word) for word in other_negations}
+    if asserted & negated:
+        return True
+    asserted_other = {
+        _word_root(token) for token in other_tokens
+        if token not in other_negations
+    }
+    negated_here = {_word_root(word) for word in negations}
+    return bool(asserted_other & negated_here)
+
+
 def dedup(findings):
-    """Collapse findings sharing domain and file:line, keeping the worst.
+    """Collapse findings sharing domain, file:line and flaw, keeping the worst.
+
+    Findings at one file:line are grouped by the flaw they describe: two
+    findings join the same group only when their flaw-token sets intersect
+    and neither negates a word the other asserts, using the same tokenizer
+    as ``find_overlaps``. A "does not validate input" finding therefore stays
+    apart from a "validates input" finding that shares the word "input".
+    Distinct defects on one line (a SQL injection and a missing index, say)
+    survive; true duplicates still collapse. A finding with no usable tokens
+    joins no group, so it cannot swallow an unrelated finding on the same
+    line.
 
     Args:
         findings: Findings that already carry a parseable anchor.
 
     Returns:
-        list: Deduplicated findings in stable order.
+        list: Deduplicated findings in first-seen group order.
     """
-    chosen = {}
-    order = []
-    for item in findings:
+    groups = []
+    for index, item in enumerate(findings):
         parts = anchor_parts(item.get("finding", ""))
         if parts is None:
             continue
         path = parts[0].replace("\\", "/")
         key = (item.get("domain", ""), path, parts[1])
-        existing = chosen.get(key)
-        if existing is None:
-            chosen[key] = item
-            order.append(key)
+        tokens, negations = _flaw_tokens(item)
+        matches = [
+            position for position, group in enumerate(groups)
+            if group["key"] == key
+            and tokens
+            and group["tokens"]
+            and (tokens & group["tokens"])
+            and not _negation_conflict(
+                tokens, negations, group["tokens"], group["negations"]
+            )
+        ]
+        if not matches:
+            groups.append({
+                "key": key, "members": [item], "tokens": tokens,
+                "negations": negations, "position": index,
+            })
             continue
-        old_rank = SEVERITY_WEIGHT[normalize_severity(existing.get("severity"))]
-        new_rank = SEVERITY_WEIGHT[normalize_severity(item.get("severity"))]
-        if new_rank < old_rank:
-            chosen[key] = item
-        elif new_rank == old_rank:
-            if item.get("est_hours", 0) > existing.get("est_hours", 0):
-                chosen[key] = item
-    return [chosen[key] for key in order]
+        target = groups[matches[0]]
+        target["members"].append(item)
+        target["tokens"] = target["tokens"] | tokens
+        target["negations"] = target["negations"] | negations
+        for position in reversed(matches[1:]):
+            extra = groups.pop(position)
+            target["members"].extend(extra["members"])
+            target["tokens"] = target["tokens"] | extra["tokens"]
+            target["negations"] = target["negations"] | extra["negations"]
+    groups.sort(key=lambda group: group["position"])
+    return [_dedup_winner(group["members"]) for group in groups]
 
 
 def assign_ids(findings):
@@ -263,10 +345,8 @@ OVERLAP_STOPWORDS = frozenset({
 NEGATIONS = frozenset({"not", "no", "never", "without"})
 
 
-def _failure_tokens(finding):
-    """Return (tokens, negations) for the failure-mode text."""
-    parts = anchor_parts(finding.get("finding", ""))
-    text = parts[3] if parts else str(finding.get("finding", ""))
+def _tokens_for_text(text):
+    """Tokenize text with the same rules find_overlaps uses."""
     words = re.findall(r"[a-z0-9_]+", text.lower())
     negations = frozenset(
         words[index + 1]
@@ -279,6 +359,20 @@ def _failure_tokens(finding):
         and len(token) > 2
     )
     return tokens, negations
+
+
+def _failure_tokens(finding):
+    """Return (tokens, negations) for the failure-mode text."""
+    parts = anchor_parts(finding.get("finding", ""))
+    text = parts[3] if parts else str(finding.get("finding", ""))
+    return _tokens_for_text(text)
+
+
+def _flaw_tokens(finding):
+    """Return (tokens, negations) for the flaw text."""
+    parts = anchor_parts(finding.get("finding", ""))
+    text = parts[2] if parts else str(finding.get("finding", ""))
+    return _tokens_for_text(text)
 
 
 def find_overlaps(findings):

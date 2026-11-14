@@ -296,12 +296,16 @@ def run_eval(manifest, fixtures_dir, expected_path):
     score = evaluate(model, expected)
     if false_positives:
         hits = []
+        matched_findings = 0
+        for item in model["findings"]:
+            if any(needle in item["finding"] for needle in false_positives):
+                matched_findings += 1
         for needle in false_positives:
             if any(needle in item["finding"] for item in model["findings"]):
                 hits.append(needle)
         total = score["findings_total"]
         score["known_false_positives"] = hits
         score["verified_precision"] = (
-            round((total - len(hits)) / total, 4) if total else 0.0
+            round((total - matched_findings) / total, 4) if total else 0.0
         )
     return model, score

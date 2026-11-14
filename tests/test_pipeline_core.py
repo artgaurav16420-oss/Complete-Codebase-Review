@@ -241,14 +241,19 @@ class TestMalformedResultGuard(unittest.TestCase):
         )
         self.assertEqual(model["findings"], [])
 
-    def test_weasel_rejections_do_not_trigger_guard(self):
+    def test_weasel_findings_are_demoted_not_malformed(self):
         results = {"security": {"findings": [
             {"finding": "[a.py:1] \u2014 flaw \u2192 failure might occur",
              "severity": "LOW", "est_hours": 1}
             for _ in range(5)
         ]}}
         model = pipeline.synthesize(_manifest(), results, ["security"])
-        self.assertEqual(model["findings"], [])
+        self.assertEqual(len(model["findings"]), 1)
+        self.assertEqual(model["findings"][0]["da_verdict"], "QUESTIONABLE")
+        self.assertEqual(
+            model["findings"][0]["weasel_word"], "weasel word: might"
+        )
+        self.assertEqual(model["rejected"], [])
 
 
 class TestBaselineDomainIds(unittest.TestCase):

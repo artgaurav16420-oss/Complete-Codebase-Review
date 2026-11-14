@@ -20,6 +20,7 @@ python tools/generate.py --check   # CI mode
 | Module | Responsibility |
 |--------|----------------|
 | `ccr` (`__init__.py`) | Package version from `pipeline.json`; `load_pipeline()` returns the manifest or `{}` |
+| `ccr._version` | Generated `__version__` from `pipeline.json`; lets `ccr --version` run without loading the manifest |
 | `ccr.__main__` | `python -m ccr` entry point into `ccr.cli.main` |
 | `ccr.manifest` | Load and validate `pipeline.json` |
 | `ccr.discovery` | Deterministic file/tooling scan; agent selection (override > Quick Mode > dimensions) |
@@ -65,7 +66,7 @@ takes the floor, and an explicit estimate is raised to at least half the floor
 | Command | Purpose |
 |---------|---------|
 | `python -m ccr plan <dir>` | Discovery facts and selected agents (`--json` for machine output) |
-| `python -m ccr record <dir> --out <cache>` | Prompts plus initial `ccr-state.json` |
+| `python -m ccr record <dir> --out <cache>` | Prompts plus initial `ccr-state.json`; archives stale prompts and results |
 | `python -m ccr synthesize --in <cache> --out <report>` | Report model to Markdown/JSON; refuses below the completion gate |
 | `python -m ccr validate-results --in <cache>` | Malformed-result check over cached `phase_<id>.json` files |
 | `python -m ccr eval` | Fixture coverage and precision (list or benchmark spec) |
@@ -80,10 +81,11 @@ invalid state, unreadable or missing results, malformed agent JSON, a
 write error, or a cache lock the run cannot take.
 
 `record` and `synthesize` coordinate through `ccr-state.json.lock` in the
-cache: `record` holds it while it archives the previous run's results, and
-`synthesize` holds it while it reads the roster and loads the results, so a
-concurrent `record` cannot move a result out from under a report in flight.
-The wait is bounded, and a run that cannot take the lock says why:
+cache: `record` holds it while it archives the previous run's results and
+prompts, and `synthesize` holds it while it reads the roster and loads the
+results, so a concurrent `record` cannot move a result out from under a
+report in flight. The wait is bounded, and a run that cannot take the lock
+says why:
 
 | The lock | `record` | `synthesize` |
 |----------|----------|--------------|
@@ -122,6 +124,7 @@ All return values are plain dicts/lists unless stated otherwise.
 | Function | Signature | Returns |
 |----------|-----------|---------|
 | `load_pipeline` | `load_pipeline()` | Packaged manifest dict; `{}` when the manifest is missing or invalid |
+| `_version.__version__` | generated constant | Version string from `pipeline.json`; imported by `cli` before dispatch |
 
 ### `ccr.manifest`
 
@@ -160,7 +163,7 @@ run writes the prompt, so `validate` rejects both.
 |----------|-----------|---------|
 | `new_state` | `new_state(target_dir, skill_dir='', effort='max')` | Fresh state dict |
 | `merge_resume` | `merge_resume(state, cache_dir)` | Canonical `phase_<id>.json` ids present on disk but not recorded as completed, limited to `agents_planned` when that roster is set; an empty roster is treated as unknown, so every canonical id on disk is returned |
-| `State.load` | `State.load(path)` | `State` or `None` when absent |
+| `State.load` | `State.load(path)` | `State` or `None` when absent; rejects a boolean `current_phase` |
 | `State.create` | `State.create(path, target_dir, skill_dir, effort)` | New `State`, persisted |
 | `State.save` | `state.save()` | `None`; atomic write via temp file + `os.replace` |
 | `State.set_step` | `state.set_step(step)` | `None`; records the current sub-step |
@@ -182,8 +185,8 @@ run writes the prompt, so `validate` rejects both.
 | `anchor_parts` | `anchor_parts(finding_text)` | `(file, line, flaw, failure_mode)` or `None` |
 | `weasel_hits` | `weasel_hits(text)` | Matched weasel phrases |
 | `malformed_rejections` | `malformed_rejections(rejected)` | Filtered rejection records for the eval path |
-| `review_findings` | `review_findings(raw_findings, floors=None)` | `(kept, rejected)` after mechanical DA checks |
-| `dedup` | `dedup(findings)` | Deduplicated list |
+| `review_findings` | `review_findings(raw_findings, floors=None)` | `(kept, rejected)` after mechanical DA checks; weasel hits stay in `kept` as `QUESTIONABLE` with a `weasel_word` marker |
+| `dedup` | `dedup(findings)` | Deduplicated list; same-line findings merge only when their flaw-token sets intersect |
 | `assign_ids` | `assign_ids(findings)` | Same list with `F-001` style ids |
 | `roadmap_eligible` | `roadmap_eligible(finding)` | `bool`; `REJECTED`, `QUESTIONABLE` and `INFO` are never eligible |
 | `place_roadmap` | `place_roadmap(findings, security_domains=None)` | `{1, 2, 3}` phases; quick wins capped at the manifest's `quick_win_cap_hours` (40h default), HIGH never quick-win |
@@ -233,13 +236,13 @@ run writes the prompt, so `validate` rejects both.
 | `write_outputs` | `write_outputs(model, out_path, fmt='markdown')` | Written paths |
 | `load_spec` | `load_spec(path)` | 2-tuple `(expected_issues, known_false_positives)`; a bare list yields `([...], [])` |
 | `evaluate` | `evaluate(model, expected_issues)` | Dict: `expected`, `matched`, `missing`, `coverage`, `precision`, `findings_total`, `findings_matched`, `rejected` |
-| `run_eval` | `run_eval(manifest, fixtures_dir, expected_path)` | Tuple `(model, score)` |
+| `run_eval` | `run_eval(manifest, fixtures_dir, expected_path)` | Tuple `(model, score)`; with `known_false_positives`, `score["verified_precision"]` counts distinct kept findings matching at least one needle, and the hit needles stay in spec order |
 
 ### `ccr.cli` and `ccr.fileio`
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|
-| `main` | `main(argv=None)` | CLI entry; returns exit code |
+| `main` | `main(argv=None)` | CLI entry; parses with the generated version before dispatch, returns exit code |
 | `cmd_plan` | `cmd_plan(args)` | Implements `plan` |
 | `cmd_record` | `cmd_record(args)` | Implements `record` |
 | `cmd_synthesize` | `cmd_synthesize(args)` | Implements `synthesize` |

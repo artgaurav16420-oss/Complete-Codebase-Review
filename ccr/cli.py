@@ -11,8 +11,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, manifest as manifest_mod
+from . import manifest as manifest_mod
 from . import discovery, findings as findings_mod, pipeline, providers, state
+from ._version import __version__
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHIVE_MAX_ATTEMPTS = 100
@@ -165,6 +166,45 @@ def _stale_results(root, agent_ids):
     return stale
 
 
+def _same_file(path, other):
+    """True when path and other name the same file; False when either is gone."""
+    try:
+        return os.path.samefile(str(path), str(other))
+    except OSError:
+        return False
+
+
+def _stale_prompts(root, fresh=()):
+    """Return the prompt files a new record run would otherwise leave behind.
+
+    A prompt is the pipeline's own ``phase_<id>.prompt.md`` file. The prefix
+    and the suffix are matched case-insensitively, for the same reason the
+    result scan is: the host may write a differently-cased name. Only regular
+    files count, and a path in ``fresh`` is the prompt this run just wrote, so
+    it is not stale.
+    """
+    try:
+        entries = sorted(Path(root).iterdir())
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        raise OSError(
+            "could not list " + str(root) + " for stale prompts: " + str(exc)
+        ) from exc
+    stale = []
+    for path in entries:
+        if not path.name.lower().endswith(providers.PROMPT_SUFFIX):
+            continue
+        if _is_link_like(path) or not path.is_file():
+            continue
+        if not providers.is_canonical_name(path):
+            continue
+        if any(_same_file(path, written) for written in fresh):
+            continue
+        stale.append(path)
+    return stale
+
+
 def _create_archive_dir(base, stamp):
     """Create a uniquely named archive directory under base.
 
@@ -225,14 +265,22 @@ def _move_into_archive(stale, dest):
         raise
 
 
-def _archive_results(cache, agent_ids=()):
-    """Move previous agent results aside so they cannot be counted again.
+def _archive_results(cache, agent_ids=(), fresh=()):
+    """Move previous agent results and prompts aside so they cannot be reused.
 
-    Covers both supported result layouts: ``phase_<id>.json`` and bare
-    ``<id>.json`` for ids declared by the manifest.
+    Covers both supported result layouts (``phase_<id>.json`` and bare
+    ``<id>.json``) and the canonical ``phase_<id>.prompt.md`` layout.
+    ``fresh`` is the prompt paths this run just wrote; they are not stale.
     """
     root = Path(cache)
-    stale = _stale_results(root, agent_ids)
+    stale = []
+    seen = set()
+    for path in _stale_prompts(root, fresh) + _stale_results(root, agent_ids):
+        marker = str(path)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        stale.append(path)
     if not stale:
         return 0
     base = root / "previous-results"
@@ -314,7 +362,7 @@ def _record_locked(args, data, plan, cache, state_path):
     archived = 0
     try:
         archived = _archive_results(
-            args.out, [agent["id"] for agent in data["agents"]]
+            args.out, [agent["id"] for agent in data["agents"]], paths
         )
     except OSError as exc:
         print(f"[ERROR] could not archive stale results: {exc}")
@@ -355,7 +403,7 @@ def _record_locked(args, data, plan, cache, state_path):
     current.plan_agents(plan["agents"])
     current.set_step("phase2:awaiting_agent_results")
     if archived:
-        print(f"[RECORD] archived {archived} stale result file(s)")
+        print(f"[RECORD] archived {archived} stale file(s)")
     print(f"[RECORD] wrote {len(paths)} prompts to {cache}")
     print(f"[RECORD] run them, then: python -m ccr synthesize --in {cache}")
     return 0
@@ -962,8 +1010,7 @@ def main(argv=None):
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, OSError):
         pass
-    data = _manifest()
-    parser = build_parser(data["version"])
+    parser = build_parser(__version__)
     args = parser.parse_args(argv)
     return args.func(args)
 

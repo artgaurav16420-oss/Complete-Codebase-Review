@@ -13,8 +13,9 @@ Minimal module-level reference for `install.py`.
 | `_verify_checksum(file_path, expected_hash)` | True on match, False otherwise; raises `FileNotFoundError` when missing. |
 | `_use_color()` | True if stdout TTY and `NO_COLOR` unset. |
 | `_print(msg, label, color)` | Core printer: `[label] msg` with ANSI color. |
-| `_validate_xdg_path(xdg_path)` | Reject unsafe XDG overrides. |
-| `_xdg_or_home_dir(home, app_dir)` | Resolve skill dir: XDG on Linux, `~/.app_dir/skills` otherwise. |
+| `_validate_xdg_path(xdg_path)` | Reject unsafe env config dirs (relative or `..`). |
+| `_env_config_dir(names)` | First validated config dir named by an env var, or `None`. |
+| `_tool_skills_dir(home, app_dir, env_names=(), xdg=False)` | Resolve one tool's skills dir from its own environment rules. |
 | `_validate_no_escaped_symlinks(skill_dest)` | Reject copied symlinks that resolve outside the skill dir. |
 | `_validate_target_path(path)` | Sanitize path - reject `..`, resolve symlinks. Raises `ValueError`. |
 | `_run_target_install(src_dir, target, dry_run)` | Install into one target dir. |
@@ -35,6 +36,45 @@ Minimal module-level reference for `install.py`.
 | `copy_skill(src_dir, dest_dir)` | Copy skill files, returns dest Path. |
 | `main()` | CLI entry - argparse, --target/--dry-run/--version/--self-verify/--checksum/--uninstall. |
 | `remove_skill(dest_dir, dry_run)` | Remove `complete-codebase-review` under a target dir, refusing paths outside it. |
+
+## Target resolution
+
+`get_target_dirs()` resolves each tool's skill directory from that tool's own
+environment rules, not one shared rule:
+
+| Tool | Environment override | Fallback |
+|------|----------------------|----------|
+| Claude Code | `CLAUDE_CONFIG_DIR` | `~/.claude/skills` |
+| OpenCode | `OPENCODE_HOME`, then `XDG_CONFIG_HOME` on Linux | `~/.opencode/skills` |
+| Cursor | `CURSOR_CONFIG_HOME` | `~/.cursor/skills` |
+| Continue | `CONTINUE_CONFIG_PATH` | `~/.continue/skills` |
+
+An override that is empty, relative, or contains `..` is ignored, and the
+fallback is used. Claude Code does not read `XDG_CONFIG_HOME`; applying it
+there would report success while the skill is never loaded.
+
+## Credential exclusions
+
+The copy filter skips names that look like credential stores:
+
+- suffixes: `.pem`, `.key`, `.p12`, `.pfx`, `.keystore`, `.jks`
+- private-key prefixes: `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`
+- words such as `env`, `envrc`, `direnv`, `netrc`, `npmrc`, `pypirc`,
+  `htpasswd`, `credential`, `credentials`, `secret`, `secrets`, after
+  splitting the name on `.`, `_`, and `-`
+
+Examples: `.env.local`, `credentials.json`, `aws-credentials.json`,
+`helpers/secret-handling.md`, `secrets_manager.py`.
+
+After a successful copy and swap, each exclusion is reported on stdout by
+source-relative path:
+
+```text
+[INFO] excluded (credential-like): helpers/secret-handling.md
+```
+
+The report is informational; the file is not installed. `--dry-run` performs
+no copy, so it reports nothing and leaves the destination untouched.
 
 ## Integrity
 

@@ -375,6 +375,132 @@ class TestCliRecordLifecycle(unittest.TestCase):
             "*/security.json"))
         self.assertEqual(len(archived), 1)
 
+    def test_result_with_an_extra_document_key_is_archived(self):
+        # An agent result may carry an extra top-level key. It is still a
+        # result, so record archives it instead of leaving it for the next
+        # synthesize to ingest.
+        result = self.cache / "phase_security.json"
+        result.write_text(json.dumps({
+            "agent": "security", "score": 4, "overall_health": "YELLOW",
+            "findings": [],
+        }), encoding="utf-8")
+        stale = cli._stale_results(self.cache, {"security"})
+        self.assertEqual([path.name for path in stale],
+                         ["phase_security.json"])
+
+    def test_stale_prompt_is_archived(self):
+        prompt = self.cache / "phase_code_quality.prompt.md"
+        prompt.write_text("stale prompt", encoding="utf-8")
+        code, output, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        self.assertFalse(prompt.exists())
+        archived = list(
+            (self.cache / "previous-results").rglob(
+                "phase_code_quality.prompt.md"
+            )
+        )
+        self.assertEqual(len(archived), 1)
+        self.assertIn("archived 1", output)
+
+    def test_fresh_prompt_is_not_archived(self):
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        prompt = self.cache / "phase_security.prompt.md"
+        self.assertTrue(prompt.exists())
+        code, output, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        self.assertTrue(prompt.exists())
+        self.assertNotIn("archived", output)
+
+    def test_prompt_only_archive_keeps_the_fresh_prompt(self):
+        fresh = self.cache / "phase_security.prompt.md"
+        stale = self.cache / "phase_code_quality.prompt.md"
+        fresh.write_text("stale", encoding="utf-8")
+        stale.write_text("stale", encoding="utf-8")
+        code, output, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        self.assertTrue(fresh.exists())
+        self.assertFalse(stale.exists())
+        archived = list(
+            (self.cache / "previous-results").rglob(
+                "phase_code_quality.prompt.md"
+            )
+        )
+        self.assertEqual(len(archived), 1)
+        self.assertIn("archived 1", output)
+
+    def test_prompt_move_failure_rolls_back(self):
+        first = self.cache / "phase_security.prompt.md"
+        second = self.cache / "phase_code_quality.prompt.md"
+        first.write_text("one", encoding="utf-8")
+        second.write_text("two", encoding="utf-8")
+        real_move = shutil.move
+        calls = []
+
+        def flaky_move(source, target):
+            calls.append(source)
+            if len(calls) == 2:
+                raise OSError("simulated move failure")
+            return real_move(source, target)
+
+        with mock.patch.object(cli.shutil, "move", flaky_move):
+            with self.assertRaises(OSError):
+                cli._archive_results(self.cache, {"security"})
+        self.assertTrue(first.exists())
+        self.assertTrue(second.exists())
+        self.assertEqual(
+            list((self.cache / "previous-results").iterdir()), []
+        )
+
+    def test_non_prompt_markdown_is_not_archived(self):
+        names = (
+            "notes.md", "security.prompt.md",
+            "phase_security.prompt.md.bak",
+        )
+        for name in names:
+            (self.cache / name).write_text("keep", encoding="utf-8")
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        for name in names:
+            self.assertTrue((self.cache / name).exists())
+
+    def test_case_insensitive_prompt_name_is_archived(self):
+        prompt = self.cache / "PHASE_code_quality.PROMPT.MD"
+        prompt.write_text("stale", encoding="utf-8")
+        code, output, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        self.assertFalse(prompt.exists())
+        self.assertIn("archived 1", output)
+
+    def test_a_directory_named_like_a_prompt_is_not_archived(self):
+        decoy = self.cache / "phase_code_quality.prompt.md"
+        decoy.mkdir()
+        (decoy / "keep.txt").write_text("keep", encoding="utf-8")
+        code, _, _ = run([
+            "record", str(TARGET), "--out", str(self.cache),
+            "--agents", "security",
+        ])
+        self.assertEqual(code, 0)
+        self.assertTrue((decoy / "keep.txt").exists())
+
     def test_a_document_named_after_an_agent_is_not_archived(self):
         # The report written under an agent's name is the pipeline's own
         # document, not that agent's result: find_result refuses it and
@@ -1159,7 +1285,7 @@ class TestPersistReviewCounter(unittest.TestCase):
 class TestCliVersionGuard(unittest.TestCase):
     """A broken manifest must not raise JSONDecodeError at import."""
 
-    def test_truncated_manifest_exits_two(self):
+    def test_truncated_manifest_prints_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             shutil.copytree(ROOT / "ccr", root / "ccr")
@@ -1167,6 +1293,20 @@ class TestCliVersionGuard(unittest.TestCase):
                 '{"version": ', encoding="utf-8")
             proc = subprocess.run(
                 [sys.executable, "-m", "ccr", "--version"],
+                cwd=str(root), capture_output=True, text=True,
+            )
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("ccr ", proc.stdout)
+        self.assertNotIn("JSONDecodeError", proc.stderr)
+
+    def test_truncated_manifest_still_fails_a_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(ROOT / "ccr", root / "ccr")
+            (root / "ccr" / "pipeline.json").write_text(
+                '{"version": ', encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, "-m", "ccr", "plan", "."],
                 cwd=str(root), capture_output=True, text=True,
             )
         self.assertEqual(proc.returncode, 2)
@@ -1179,7 +1319,7 @@ class TestCliVersionGuard(unittest.TestCase):
             with mock.patch.object(ccr, "_ROOT", Path(tmp)):
                 self.assertEqual(ccr.load_pipeline(), {})
 
-    def test_structurally_invalid_manifest_exits_two(self):
+    def test_structurally_invalid_manifest_prints_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             shutil.copytree(ROOT / "ccr", root / "ccr")
@@ -1191,6 +1331,24 @@ class TestCliVersionGuard(unittest.TestCase):
                 json.dumps(data), encoding="utf-8")
             proc = subprocess.run(
                 [sys.executable, "-m", "ccr", "--version"],
+                cwd=str(root), capture_output=True, text=True,
+            )
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("ccr ", proc.stdout)
+        self.assertNotIn("Traceback", proc.stderr)
+
+    def test_structurally_invalid_manifest_still_fails_a_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(ROOT / "ccr", root / "ccr")
+            data = json.loads(
+                (ROOT / "ccr" / "pipeline.json").read_text(encoding="utf-8")
+            )
+            data["thresholds"] = []
+            (root / "ccr" / "pipeline.json").write_text(
+                json.dumps(data), encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, "-m", "ccr", "plan", "."],
                 cwd=str(root), capture_output=True, text=True,
             )
         self.assertEqual(proc.returncode, 2)

@@ -210,7 +210,7 @@ def _is_credential_name(name):
     return any(word in _CREDENTIAL_WORDS for word in words)
 
 
-def _ignore_skill_files(path, names, dest=None):
+def _ignore_skill_files(path, names, dest=None, collector=None):
     """Filter files to exclude from skill copy based on _SKILL_EXCLUDED.
 
     Links are skipped outright: a copy either dangles (its target was filtered)
@@ -222,7 +222,19 @@ def _ignore_skill_files(path, names, dest=None):
     the source tree is copied into itself: the copy walks into the
     destination, finds the staging tree it is building, and copies that too,
     until the copy fails.
+
+    ``collector`` is an optional list. When given, the full path of every
+    credential-like entry is appended to it, so the caller can report after
+    the copy which files the credential rule kept out. An entry that is also
+    in ``_SKILL_EXCLUDED`` is still collected: the report is about the
+    credential rule, not about which filter won.
     """
+    if collector is not None:
+        collector.extend(
+            str(Path(path) / name)
+            for name in names
+            if _is_credential_name(name)
+        )
     skipped = [
         n for n in names
         if n in _SKILL_EXCLUDED
@@ -308,10 +320,11 @@ def print_error(msg):
 
 
 def _validate_xdg_path(xdg_path):
-    """Check XDG_CONFIG_HOME resolves to an absolute path; return resolved path or None.
+    """Check an environment config dir resolves; return resolved path or None.
 
-    Per XDG spec, XDG_CONFIG_HOME may be outside the user's home directory
-    (e.g. /mnt/storage/config). We verify it is absolute, has no traversal
+    Per the XDG spec, XDG_CONFIG_HOME may be outside the user's home
+    directory (e.g. /mnt/storage/config). The same rule applies to each
+    tool's native override: verify it is absolute, has no traversal
     components, and resolves successfully.
     """
     if ".." in xdg_path.parts:
@@ -325,9 +338,33 @@ def _validate_xdg_path(xdg_path):
     return resolved
 
 
-def _xdg_or_home_dir(home, app_dir):
-    """Return app skill dir under XDG_CONFIG_HOME on Linux, else ~/.<app_dir>/skills."""
-    if platform.system() == "Linux":
+def _env_config_dir(names):
+    """Return the first validated config dir named by an env var, or None.
+
+    Each tool follows its own environment rules, so the caller names the
+    variables to try in precedence order. A value that is empty, relative, or
+    traversal-bearing is ignored, the way an unsafe XDG override is.
+    """
+    for name in names:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            continue
+        validated = _validate_xdg_path(Path(raw))
+        if validated is not None:
+            return validated
+    return None
+
+
+def _tool_skills_dir(home, app_dir, env_names=(), xdg=False):
+    """Resolve one tool's skills dir from its own environment rules.
+
+    Precedence is the tool's native override, then XDG on Linux for the tools
+    that read it, then ``~/.<app_dir>/skills``.
+    """
+    override = _env_config_dir(env_names)
+    if override is not None:
+        return override / "skills"
+    if xdg and platform.system() == "Linux":
         xdg_env = os.environ.get("XDG_CONFIG_HOME", "").strip()
         if xdg_env:
             validated = _validate_xdg_path(Path(xdg_env))
@@ -339,16 +376,28 @@ def _xdg_or_home_dir(home, app_dir):
 def get_target_dirs():
     """Determine the target installation directories for supported AI agents.
 
+    Each tool follows its own environment rules: Claude Code reads
+    ``CLAUDE_CONFIG_DIR`` and not XDG, OpenCode reads XDG on Linux, Cursor and
+    Continue read their own overrides, and each falls back to ``~/.<tool>``.
+
     Returns:
         dict: A dictionary mapping agent names to their respective skill installation directories.
     """
     home = Path.home()
 
     dirs = {
-        "Claude Code": _xdg_or_home_dir(home, "claude"),
-        "OpenCode": _xdg_or_home_dir(home, "opencode"),
-        "Cursor": _xdg_or_home_dir(home, "cursor"),
-        "Continue": _xdg_or_home_dir(home, "continue"),
+        "Claude Code": _tool_skills_dir(
+            home, "claude", env_names=("CLAUDE_CONFIG_DIR",)
+        ),
+        "OpenCode": _tool_skills_dir(
+            home, "opencode", env_names=("OPENCODE_HOME",), xdg=True
+        ),
+        "Cursor": _tool_skills_dir(
+            home, "cursor", env_names=("CURSOR_CONFIG_HOME",)
+        ),
+        "Continue": _tool_skills_dir(
+            home, "continue", env_names=("CONTINUE_CONFIG_PATH",)
+        ),
     }
 
     return dirs
@@ -544,9 +593,15 @@ def copy_skill(src_dir, dest_dir):
                 "Refusing to install the skill into its own source directory: "
                 + str(dest_dir)
             )
-        ignore = None
+        excluded_credentials = []
+        ignore = partial(
+            _ignore_skill_files, collector=excluded_credentials
+        )
         if resolved_dest.is_relative_to(resolved_src):
-            ignore = partial(_ignore_skill_files, dest=resolved_dest)
+            ignore = partial(
+                _ignore_skill_files, dest=resolved_dest,
+                collector=excluded_credentials,
+            )
         if not dest_dir.exists():
             dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -582,7 +637,7 @@ def copy_skill(src_dir, dest_dir):
         swapped = False
         try:
             shutil.copytree(
-                src_dir, staging, ignore=ignore or _ignore_skill_files,
+                src_dir, staging, ignore=ignore,
                 symlinks=True,
                 copy_function=_copy_with_heartbeat(staging),
             )
@@ -681,6 +736,11 @@ def copy_skill(src_dir, dest_dir):
                 except OSError:
                     pass
 
+        for relative in sorted({
+            Path(os.path.relpath(path, src_dir)).as_posix()
+            for path in excluded_credentials
+        }):
+            print_info(f"excluded (credential-like): {relative}")
         copied = sum(len(files) for _, _, files in os.walk(skill_dest))
         print_info(f"Copied {copied} file(s) to {skill_dest}")
         return skill_dest

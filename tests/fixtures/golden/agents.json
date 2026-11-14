@@ -4,7 +4,8 @@
     "da_verdict_summary": {
       "CONFIRMED": 12,
       "PLAUSIBLE": 2,
-      "REJECTED": 2
+      "QUESTIONABLE": 1,
+      "REJECTED": 1
     },
     "total": 7
   },
@@ -45,7 +46,7 @@
       "architecture": 9.0,
       "code_quality": 7.2,
       "documentation": 9.8,
-      "security": 4.8,
+      "security": 4.2,
       "standards": 9.8,
       "tech_debt": 8.5,
       "test_health": 9.5
@@ -67,7 +68,7 @@
     "HIGH": 5,
     "INFO": 0,
     "LOW": 4,
-    "MEDIUM": 3
+    "MEDIUM": 4
   },
   "critical_issues": 2,
   "findings": [
@@ -204,13 +205,25 @@
       ]
     },
     {
+      "agent": "security",
+      "da_verdict": "QUESTIONABLE",
+      "domain": "Security",
+      "est_hours": 1.0,
+      "evidence": "plain equality comparison",
+      "finding": "[auth/login.py:13] — password comparison might leak timing → timing side channel on credential checks",
+      "id": "F-011",
+      "severity": "MEDIUM",
+      "tags": [],
+      "weasel_word": "weasel word: might"
+    },
+    {
       "agent": "standards",
       "da_verdict": "CONFIRMED",
       "domain": "Standards",
       "est_hours": 1.0,
       "evidence": "process_data(data, mode, flag, count, options)",
       "finding": "[core/processor.py:1] — five positional parameters with no defaults → call sites are unreadable and argument order errors are silent",
-      "id": "F-011",
+      "id": "F-012",
       "severity": "LOW",
       "tags": [
         "long-parameter-list"
@@ -223,7 +236,7 @@
       "est_hours": 1.0,
       "evidence": "open(path, \"r\") with no encoding argument",
       "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
-      "id": "F-012",
+      "id": "F-013",
       "severity": "MEDIUM",
       "tags": [
         "missing-error-handling"
@@ -236,7 +249,7 @@
       "est_hours": 2.0,
       "evidence": "user_id = hash(name)",
       "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
-      "id": "F-013",
+      "id": "F-014",
       "severity": "HIGH",
       "tags": [
         "unstable-hash"
@@ -249,7 +262,7 @@
       "est_hours": 4.0,
       "evidence": "6 tests cover login and ping only",
       "finding": "[tests/test_auth.py:1] — delete_user and create_user have no tests → path-handling regressions ship without detection",
-      "id": "F-014",
+      "id": "F-015",
       "severity": "MEDIUM",
       "tags": [
         "missing-test-coverage"
@@ -257,7 +270,7 @@
     }
   ],
   "overall_health": "RED",
-  "overall_score": 8.4,
+  "overall_score": 8.3,
   "overlap_candidates": [],
   "per_domain_scores": [
     {
@@ -289,8 +302,8 @@
       "domain": "Security",
       "high": 1,
       "low": 1,
-      "medium": 0,
-      "score": 4.8
+      "medium": 1,
+      "score": 4.2
     },
     {
       "critical": 0,
@@ -323,17 +336,6 @@
     "Tech Debt"
   ],
   "rejected": [
-    {
-      "agent": "security",
-      "da_verdict": "REJECTED",
-      "domain": "Security",
-      "est_hours": 1.0,
-      "evidence": "plain equality comparison",
-      "finding": "[auth/login.py:13] — password comparison might leak timing → timing side channel on credential checks",
-      "reject_reason": "weasel word: might",
-      "severity": "MEDIUM",
-      "tags": []
-    },
     {
       "agent": "security",
       "da_verdict": "REJECTED",
@@ -409,7 +411,7 @@
         "est_hours": 1.0,
         "evidence": "open(path, \"r\") with no encoding argument",
         "finding": "[utils/helper.py:8] — opens files with no try/except and no encoding → UnicodeDecodeError crashes the caller on non-UTF8 input",
-        "id": "F-012",
+        "id": "F-013",
         "severity": "MEDIUM",
         "tags": [
           "missing-error-handling"
@@ -461,7 +463,7 @@
         "est_hours": 1.0,
         "evidence": "process_data(data, mode, flag, count, options)",
         "finding": "[core/processor.py:1] — five positional parameters with no defaults → call sites are unreadable and argument order errors are silent",
-        "id": "F-011",
+        "id": "F-012",
         "severity": "LOW",
         "tags": [
           "long-parameter-list"
@@ -515,7 +517,7 @@
         "est_hours": 2.0,
         "evidence": "user_id = hash(name)",
         "finding": "[auth/user.py:4] — uses built-in hash() for user ids → ids change on every process start because hash randomization is enabled",
-        "id": "F-013",
+        "id": "F-014",
         "severity": "HIGH",
         "tags": [
           "unstable-hash"
@@ -528,7 +530,7 @@
         "est_hours": 4.0,
         "evidence": "6 tests cover login and ping only",
         "finding": "[tests/test_auth.py:1] — delete_user and create_user have no tests → path-handling regressions ship without detection",
-        "id": "F-014",
+        "id": "F-015",
         "severity": "MEDIUM",
         "tags": [
           "missing-test-coverage"

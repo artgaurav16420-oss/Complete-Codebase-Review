@@ -94,7 +94,13 @@ class TestReadVersion(_BaseInstallTest):
 
 
 class TestGetTargetDirs(_BaseInstallTest):
-    """Tests for get_target_dirs()."""
+    """Per-tool environment rules for get_target_dirs()."""
+
+    def _dirs(self, system, env, home):
+        with patch.object(self.install.platform, "system", return_value=system), \
+             patch.dict(os.environ, env, clear=True), \
+             patch.object(Path, "home", return_value=home):
+            return self.install.get_target_dirs()
 
     def test_returns_dict_with_expected_keys(self):
         dirs = self.install.get_target_dirs()
@@ -119,44 +125,73 @@ class TestGetTargetDirs(_BaseInstallTest):
         }
         self.assertEqual(dirs, expected)
 
-    def test_claude_code_uses_xdg_on_linux(self):
-        fake_home = Path('/home/user').resolve()
-        fake_xdg = fake_home / '.config'
-        with patch.object(self.install.platform, "system",
-                                  return_value="Linux"), \
-     patch.dict(os.environ, {"XDG_CONFIG_HOME": str(fake_xdg)}), \
-     patch.object(Path, "home", return_value=fake_home):
-            dirs = self.install.get_target_dirs()
-        self.assertEqual(dirs["Claude Code"], fake_xdg / "claude" / "skills")
+    def test_claude_ignores_xdg_on_linux(self):
+        home = Path('/home/user').resolve()
+        dirs = self._dirs("Linux", {"XDG_CONFIG_HOME": str(home / ".config")},
+                           home)
+        self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
 
-    def test_claude_code_uses_dot_claude_when_xdg_unset_on_linux(self):
-        """Without XDG_CONFIG_HOME, Linux should use ~/.claude like other platforms."""
-        env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
-        with patch.object(self.install.platform, "system",
-                          return_value="Linux"), \
-             patch.dict(os.environ, env, clear=True):
-            dirs = self.install.get_target_dirs()
-        self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
+    def test_claude_config_dir_wins(self):
+        home = Path('/home/user').resolve()
+        claude = home / "claude-config"
+        dirs = self._dirs("Linux", {
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "CLAUDE_CONFIG_DIR": str(claude),
+        }, home)
+        self.assertEqual(dirs["Claude Code"], claude / "skills")
 
-    def test_claude_code_uses_dot_claude_when_xdg_empty_on_linux(self):
-        """Empty XDG_CONFIG_HOME is treated as unset — use ~/.claude."""
-        env = {k: v for k, v in os.environ.items() if k != "XDG_CONFIG_HOME"}
-        env["XDG_CONFIG_HOME"] = ""
-        with patch.object(self.install.platform, "system",
-                          return_value="Linux"), \
-             patch.dict(os.environ, env, clear=True):
-            dirs = self.install.get_target_dirs()
-        self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
+    def test_claude_config_dir_falls_back_when_relative(self):
+        home = Path('/home/user').resolve()
+        dirs = self._dirs("Linux", {"CLAUDE_CONFIG_DIR": "relative/path"}, home)
+        self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
 
-    def test_claude_code_uses_dot_claude_on_non_linux(self):
-        with patch.object(self.install.platform, "system", return_value="Darwin"):
-            dirs = self.install.get_target_dirs()
-        self.assertEqual(dirs["Claude Code"], Path.home() / ".claude" / "skills")
+    def test_cursor_ignores_xdg_on_linux(self):
+        home = Path('/home/user').resolve()
+        dirs = self._dirs("Linux", {"XDG_CONFIG_HOME": str(home / ".config")},
+                           home)
+        self.assertEqual(dirs["Cursor"], home / ".cursor" / "skills")
+
+    def test_cursor_config_home_wins(self):
+        home = Path('/home/user').resolve()
+        cursor = home / "cursor-config"
+        dirs = self._dirs("Linux", {"CURSOR_CONFIG_HOME": str(cursor)}, home)
+        self.assertEqual(dirs["Cursor"], cursor / "skills")
+
+    def test_opencode_uses_xdg_on_linux(self):
+        home = Path('/home/user').resolve()
+        xdg = home / ".config"
+        dirs = self._dirs("Linux", {"XDG_CONFIG_HOME": str(xdg)}, home)
+        self.assertEqual(dirs["OpenCode"], xdg / "opencode" / "skills")
+
+    def test_opencode_uses_dot_opencode_when_xdg_unset_on_linux(self):
+        home = Path('/home/user').resolve()
+        dirs = self._dirs("Linux", {}, home)
+        self.assertEqual(dirs["OpenCode"], home / ".opencode" / "skills")
+
+    def test_opencode_home_wins(self):
+        home = Path('/home/user').resolve()
+        opencode = home / "opencode-config"
+        dirs = self._dirs("Linux", {
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "OPENCODE_HOME": str(opencode),
+        }, home)
+        self.assertEqual(dirs["OpenCode"], opencode / "skills")
+
+    def test_continue_uses_home_by_default(self):
+        home = Path('/home/user').resolve()
+        dirs = self._dirs("Linux", {}, home)
+        self.assertEqual(dirs["Continue"], home / ".continue" / "skills")
+
+    def test_continue_config_path_wins(self):
+        home = Path('/home/user').resolve()
+        continue_dir = home / "continue-config"
+        dirs = self._dirs("Linux", {"CONTINUE_CONFIG_PATH": str(continue_dir)},
+                           home)
+        self.assertEqual(dirs["Continue"], continue_dir / "skills")
 
     def test_windows_uses_dot_app_style_paths(self):
-        with patch.object(self.install.platform, "system", return_value="Windows"):
-            dirs = self.install.get_target_dirs()
         home = Path.home()
+        dirs = self._dirs("Windows", {}, home)
         self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
         self.assertEqual(dirs["OpenCode"], home / ".opencode" / "skills")
         self.assertEqual(dirs["Cursor"], home / ".cursor" / "skills")
@@ -189,6 +224,42 @@ class TestCopySkill(_BaseInstallTest):
             self.assertEqual(result, dest / "complete-codebase-review")
             self.assertTrue(result.exists())
             self.assertTrue((result / "SKILL.md").exists())
+
+    def test_copies_generated_version_module(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {
+                "ccr/_version.py": '__version__ = "1.2.3"\n',
+            })
+            dest = Path(tmpdir) / "dest"
+            installed = self.install.copy_skill(src, dest)
+            self.assertEqual(
+                (installed / "ccr" / "_version.py").read_text(
+                    encoding="utf-8"
+                ),
+                '__version__ = "1.2.3"\n',
+            )
+
+    def test_reports_credential_exclusions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {
+                "helpers/secret-handling.md": "secret",
+                "install.py": "print('x')",
+            })
+            dest = Path(tmpdir) / "dest"
+            buffer = io.StringIO()
+            with patch("sys.stdout", buffer):
+                installed = self.install.copy_skill(src, dest)
+            self.assertTrue((installed / "SKILL.md").exists())
+            self.assertFalse(
+                (installed / "helpers" / "secret-handling.md").exists()
+            )
+            output = buffer.getvalue()
+        self.assertIn(
+            "[INFO] excluded (credential-like): "
+            "helpers/secret-handling.md",
+            output,
+        )
+        self.assertNotIn("excluded (credential-like): install.py", output)
 
     def test_refuses_a_target_swapped_for_a_link_after_the_sweep(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1778,20 +1849,39 @@ class TestInternalFunctions(_BaseInstallTest):
             result = self.install._use_color()
         self.assertTrue(result)
 
-    def test_xdg_or_home_dir_uses_xdg_on_linux(self):
+    def test_tool_skills_dir_uses_xdg_on_linux(self):
         fake_home = Path('/home/user').resolve()
         fake_xdg = fake_home / '.config'
         with patch("install.platform.system",
                    return_value="Linux"), \
              patch.dict(os.environ, {"XDG_CONFIG_HOME": str(fake_xdg)}, clear=True), \
              patch.object(Path, "home", return_value=fake_home):
-            result = self.install._xdg_or_home_dir(fake_home, "claude")
-        self.assertEqual(result, fake_xdg / "claude" / "skills")
+            result = self.install._tool_skills_dir(fake_home, "opencode", xdg=True)
+        self.assertEqual(result, fake_xdg / "opencode" / "skills")
 
-    def test_xdg_or_home_dir_uses_home_on_non_linux(self):
+    def test_tool_skills_dir_uses_home_on_non_linux(self):
         with patch("install.platform.system", return_value="Windows"):
-            result = self.install._xdg_or_home_dir(Path("/home/user"), "claude")
-        self.assertEqual(result, Path("/home/user/.claude/skills"))
+            result = self.install._tool_skills_dir(
+                Path("/home/user"), "opencode", xdg=True
+            )
+        self.assertEqual(result, Path("/home/user/.opencode/skills"))
+
+    def test_env_config_dir_wins(self):
+        fake_home = Path('/home/user').resolve()
+        claude = fake_home / "claude-config"
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(claude)}, clear=True):
+            result = self.install._tool_skills_dir(
+                fake_home, "claude", env_names=("CLAUDE_CONFIG_DIR",)
+            )
+        self.assertEqual(result, claude / "skills")
+
+    def test_env_config_dir_ignores_relative(self):
+        fake_home = Path('/home/user').resolve()
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": "relative"}, clear=True):
+            result = self.install._tool_skills_dir(
+                fake_home, "claude", env_names=("CLAUDE_CONFIG_DIR",)
+            )
+        self.assertEqual(result, fake_home / ".claude" / "skills")
 
     def test_validate_xdg_path_resolves_any_absolute(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2034,6 +2124,28 @@ class TestIgnoreSkillFiles(unittest.TestCase):
                 self.skipTest("symlink creation needs privilege here")
             kept = install_mod._ignore_skill_files(str(root), ["deploy-notes.txt"])
             self.assertIn("deploy-notes.txt", kept)
+
+    def test_collects_credential_exclusions(self):
+        install_mod = _import_install()
+        names = [
+            "secret-scanning.md", "env-setup.md", "secrets_manager.py",
+            "SKILL.md",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in names:
+                (root / name).write_text("x", encoding="utf-8")
+            collected = []
+            kept = install_mod._ignore_skill_files(
+                str(root), names, collector=collected
+            )
+        self.assertEqual(
+            [Path(path).name for path in collected],
+            ["secret-scanning.md", "env-setup.md", "secrets_manager.py"],
+        )
+        for path in collected:
+            self.assertIn(Path(path).name, kept)
+        self.assertNotIn("SKILL.md", kept)
 
 
 class TestCcrHint(unittest.TestCase):

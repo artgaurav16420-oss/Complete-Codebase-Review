@@ -365,6 +365,59 @@ class TestResultDiscovery(unittest.TestCase):
         self.assertEqual(providers.discover_results(self.dir, {"security"}), [])
         self.assertIsNone(providers.find_result(self.dir, "security"))
 
+    def test_result_with_an_extra_document_key_is_discovered(self):
+        # A result may carry more than the prompt's keys. An extra top-level
+        # key that happens to be one of the pipeline's document keys does not
+        # make it a document when the result-identity keys are present.
+        self._write("phase_security.json", {
+            "agent": "security", "score": 4, "overall_health": "YELLOW",
+            "findings": [],
+        })
+        found = providers.discover_results(self.dir)
+        self.assertEqual([agent_id for agent_id, _ in found], ["security"])
+        self.assertEqual(
+            [agent_id for agent_id, _ in
+             providers.discover_results(self.dir, {"security"})],
+            ["security"],
+        )
+        path = providers.find_result(self.dir, "security")
+        self.assertIsNotNone(path)
+        self.assertEqual(providers.load_result(path, "security")["score"], 4)
+
+    def test_bare_result_with_an_extra_document_key_is_discovered(self):
+        self._write("security.json", {
+            "agent": "security", "score": 4, "agent_status": {},
+            "findings": [],
+        })
+        found = providers.discover_results(self.dir)
+        self.assertEqual([agent_id for agent_id, _ in found], ["security"])
+        path = providers.find_result(self.dir, "security")
+        self.assertIsNotNone(path)
+        self.assertEqual(providers.load_result(path, "security")["score"], 4)
+
+    def test_document_with_result_identity_keys_is_a_result(self):
+        # The identity rule is key presence plus absence of agent/score: a
+        # file carrying both is a result, not a document.
+        self._write("phase_security.json", {
+            "report": {"overall_health": "FAIR"},
+            "agent": "security", "score": 2, "findings": [],
+        })
+        self.assertEqual(
+            [agent_id for agent_id, _ in providers.discover_results(self.dir)],
+            ["security"],
+        )
+
+    def test_renderer_output_is_not_discovered_as_a_result(self):
+        # The real report JSON carries findings and document keys but no
+        # result identity, so discovery must keep refusing it.
+        from ccr import findings as findings_mod
+        from ccr import report as report_mod
+        model = findings_mod.aggregate([], [], [], [], target="demo")
+        self._write("phase_security.json", report_mod.render_json(model))
+        self.assertEqual(providers.discover_results(self.dir), [])
+        self.assertEqual(providers.discover_results(self.dir, {"security"}), [])
+        self.assertIsNone(providers.find_result(self.dir, "security"))
+
     def test_a_report_named_after_an_agent_is_not_replayed(self):
         # The report carries its own findings. Read as an agent result it
         # would put the report's findings into the next report.

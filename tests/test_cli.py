@@ -444,6 +444,30 @@ class TestParser(unittest.TestCase):
                 cli.main(["--version"])
         self.assertEqual(ctx.exception.code, 0)
 
+    def test_version_output_is_exact(self):
+        from ccr import _version
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer), \
+             contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                cli.main(["--version"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertEqual(
+            buffer.getvalue().strip(), "ccr " + _version.__version__
+        )
+
+    def test_version_does_not_need_a_manifest(self):
+        buffer = io.StringIO()
+        with mock.patch.object(
+                cli.manifest_mod, "load",
+                side_effect=ValueError("corrupt manifest")):
+            with contextlib.redirect_stdout(buffer), \
+                 contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["--version"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertIn("ccr ", buffer.getvalue())
+
     def test_no_command_exits(self):
         with contextlib.redirect_stdout(io.StringIO()), \
              contextlib.redirect_stderr(io.StringIO()):
