@@ -185,6 +185,24 @@ class TestDedup(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["severity"], "CRITICAL")
 
+    def test_opposite_negations_stay_separate(self):
+        # Shared token "input" is not enough when one finding says the input
+        # is validated and the other says it is not.
+        positive = make("[x.py:10] \u2014 validates input \u2192 missing guard")
+        negative = make(
+            "[x.py:10] \u2014 does not validate input \u2192 injection"
+        )
+        self.assertEqual(len(f.dedup([positive, negative])), 2)
+
+    def test_same_negation_still_merges(self):
+        a = make(
+            "[x.py:10] \u2014 does not validate input \u2192 injection"
+        )
+        b = make(
+            "[x.py:10] \u2014 does not validate input \u2192 injection"
+        )
+        self.assertEqual(len(f.dedup([a, b])), 1)
+
     def test_intersecting_flaws_merge_transitively(self):
         # a-b share alpha, b-c share gamma; a and c share nothing. The groups
         # are connected through b, so all three collapse.

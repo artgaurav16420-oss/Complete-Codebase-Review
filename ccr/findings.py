@@ -225,15 +225,52 @@ def _dedup_winner(members):
     return winner
 
 
+def _word_root(word):
+    """Return a crude root for comparing a verb with its negated form.
+
+    The tokenizer does not stem; the common disagreement is a third-person
+    verb ("validates") against the bare form after a negation ("not
+    validate"). Stripping one trailing "s" is enough for that case and
+    leaves unrelated words alone.
+    """
+    if len(word) > 3 and word.endswith("s"):
+        return word[:-1]
+    return word
+
+
+def _negation_conflict(tokens, negations, other_tokens, other_negations):
+    """True when one side asserts a word the other side negates.
+
+    A finding does not assert a word it negates itself: the tokenizer keeps
+    the word after "not" in the token set, so each side's own negations are
+    removed before the comparison.
+    """
+    asserted = {
+        _word_root(token) for token in tokens if token not in negations
+    }
+    negated = {_word_root(word) for word in other_negations}
+    if asserted & negated:
+        return True
+    asserted_other = {
+        _word_root(token) for token in other_tokens
+        if token not in other_negations
+    }
+    negated_here = {_word_root(word) for word in negations}
+    return bool(asserted_other & negated_here)
+
+
 def dedup(findings):
     """Collapse findings sharing domain, file:line and flaw, keeping the worst.
 
     Findings at one file:line are grouped by the flaw they describe: two
-    findings join the same group only when their flaw-token sets intersect,
-    using the same tokenizer as ``find_overlaps``. Distinct defects on one
-    line (a SQL injection and a missing index, say) survive; true duplicates
-    still collapse. A finding with no usable tokens joins no group, so it
-    cannot swallow an unrelated finding on the same line.
+    findings join the same group only when their flaw-token sets intersect
+    and neither negates a word the other asserts, using the same tokenizer
+    as ``find_overlaps``. A "does not validate input" finding therefore stays
+    apart from a "validates input" finding that shares the word "input".
+    Distinct defects on one line (a SQL injection and a missing index, say)
+    survive; true duplicates still collapse. A finding with no usable tokens
+    joins no group, so it cannot swallow an unrelated finding on the same
+    line.
 
     Args:
         findings: Findings that already carry a parseable anchor.
@@ -248,27 +285,32 @@ def dedup(findings):
             continue
         path = parts[0].replace("\\", "/")
         key = (item.get("domain", ""), path, parts[1])
-        tokens, _negations = _flaw_tokens(item)
+        tokens, negations = _flaw_tokens(item)
         matches = [
             position for position, group in enumerate(groups)
             if group["key"] == key
             and tokens
             and group["tokens"]
             and (tokens & group["tokens"])
+            and not _negation_conflict(
+                tokens, negations, group["tokens"], group["negations"]
+            )
         ]
         if not matches:
             groups.append({
                 "key": key, "members": [item], "tokens": tokens,
-                "position": index,
+                "negations": negations, "position": index,
             })
             continue
         target = groups[matches[0]]
         target["members"].append(item)
         target["tokens"] = target["tokens"] | tokens
+        target["negations"] = target["negations"] | negations
         for position in reversed(matches[1:]):
             extra = groups.pop(position)
             target["members"].extend(extra["members"])
             target["tokens"] = target["tokens"] | extra["tokens"]
+            target["negations"] = target["negations"] | extra["negations"]
     groups.sort(key=lambda group: group["position"])
     return [_dedup_winner(group["members"]) for group in groups]
 

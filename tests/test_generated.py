@@ -1,5 +1,6 @@
 """Tests for tools/generate.py and the generated artifacts."""
 
+import ast
 import contextlib
 import hashlib
 import io
@@ -137,6 +138,22 @@ class TestGeneratedArtifacts(unittest.TestCase):
     def test_version_module_matches_manifest(self):
         from ccr import _version
         self.assertEqual(_version.__version__, self.manifest["version"])
+
+    def test_version_module_quotes_the_version_safely(self):
+        # A hand-edited manifest must not be able to turn the generated module
+        # into executable code. The version is a string literal, so parsing
+        # it yields one assignment and no extra statements.
+        malicious = '1.0"; import os; os.system("x")'
+        text = generate.render_version_module({"version": malicious})
+        tree = ast.parse(text)
+        self.assertEqual(len(tree.body), 1)
+        self.assertIsInstance(tree.body[0], ast.Assign)
+        self.assertEqual(tree.body[0].targets[0].id, "__version__")
+        self.assertEqual(ast.literal_eval(tree.body[0].value), malicious)
+
+    def test_version_module_keeps_the_normal_output(self):
+        text = generate.render_version_module({"version": "2.4.0"})
+        self.assertEqual(text, '__version__ = "2.4.0"\n')
 
 
 class TestWritePath(unittest.TestCase):

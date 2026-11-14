@@ -187,9 +187,11 @@ def render_version_module(manifest):
 
     The module is generated, not imported here: reading the manifest is the
     bootstrap path, and importing the generated module would make the
-    generator depend on its own output.
+    generator depend on its own output. The version is written as a Python
+    string literal, not spliced into quotes: a hand-edited manifest must not
+    be able to turn the generated module into executable code.
     """
-    return '__version__ = "' + manifest["version"] + '"\n'
+    return "__version__ = " + json.dumps(manifest["version"]) + "\n"
 
 
 def targets(manifest):
