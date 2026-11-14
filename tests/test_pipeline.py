@@ -301,7 +301,12 @@ WEASEL_PATTERNS = [
 
 
 def validate_findings_have_evidence(md):
-    """Check findings contain file:line anchors and no weasel words."""
+    """Check anchors; weasel words are allowed only on QUESTIONABLE rows.
+
+    A hedged finding is demoted to QUESTIONABLE so the DA can adjudicate it,
+    not rejected. The report keeps it, so the validator must not fail the
+    report for the very words that routed it there.
+    """
     errors = []
     findings_text = _section_text(md, "## Detailed Findings")
     for line in _table_rows(findings_text):
@@ -314,6 +319,9 @@ def validate_findings_have_evidence(md):
                 f"Finding missing [file:line] — flaw → failure_mode: "
                 f"{finding[:60]}"
             )
+        verdict = cells[4].strip() if len(cells) > 4 else ""
+        if verdict == "QUESTIONABLE":
+            continue
         finding_desc = re.sub(r'^\[[^\]]+\]\s*—\s*', '', finding)
         for pattern in WEASEL_PATTERNS:
             if re.search(pattern, finding_desc, re.IGNORECASE):
@@ -796,6 +804,27 @@ class TestMarkdownValidation(unittest.TestCase):
         )
         errors = validate_markdown_output(md)
         self.assertTrue(any("Trend" in e for e in errors))
+
+    def test_questionable_weasel_is_allowed(self):
+        md = (
+            "## Detailed Findings\n\n"
+            "| Finding | Severity | Domain | Est. Hours | DA Verdict |\n"
+            "|---------|----------|--------|------------|------------|\n"
+            "| [a.py:1] — this might fail → outage | MEDIUM | X | 1h | "
+            "QUESTIONABLE |\n"
+        )
+        self.assertEqual(validate_findings_have_evidence(md), [])
+
+    def test_confirmed_weasel_is_still_flagged(self):
+        md = (
+            "## Detailed Findings\n\n"
+            "| Finding | Severity | Domain | Est. Hours | DA Verdict |\n"
+            "|---------|----------|--------|------------|------------|\n"
+            "| [a.py:1] — this might fail → outage | MEDIUM | X | 1h | "
+            "CONFIRMED |\n"
+        )
+        errors = validate_findings_have_evidence(md)
+        self.assertTrue(any("weasel" in error for error in errors))
 
 
 class TestSampleOutputValidation(unittest.TestCase):

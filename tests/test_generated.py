@@ -134,6 +134,10 @@ class TestGeneratedArtifacts(unittest.TestCase):
             "Synced with SKILL.md v" + self.manifest["version"], text
         )
 
+    def test_version_module_matches_manifest(self):
+        from ccr import _version
+        self.assertEqual(_version.__version__, self.manifest["version"])
+
 
 class TestWritePath(unittest.TestCase):
     """Generation writes files and is idempotent in a temp tree."""
@@ -170,6 +174,7 @@ class TestWritePath(unittest.TestCase):
         (root / "pyproject.toml").write_text(
             'version = "0.0.0"\n', encoding="utf-8"
         )
+        (root / "ccr").mkdir()
         (root / "install.py").write_text("print('x')\n", encoding="utf-8")
         (root / "install.py.sha256").write_text("", encoding="utf-8")
 
@@ -185,8 +190,43 @@ class TestWritePath(unittest.TestCase):
                     "`CODE_REVIEW_FORMAT`",
                     (root / "SKILL.md").read_text(encoding="utf-8"),
                 )
+                self.assertTrue((root / "ccr" / "_version.py").exists())
                 code, _ = _quiet(generate.run, True)
                 self.assertEqual(code, 0)
+
+    def test_missing_version_module_is_generated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._tree(root)
+            version_path = root / "ccr" / "_version.py"
+            self.assertFalse(version_path.exists())
+            with patch.object(generate, "REPO_ROOT", root), \
+                 patch.object(generate, "MANIFEST",
+                              ROOT / "ccr" / "pipeline.json"):
+                code, _ = _quiet(generate.run, False)
+            self.assertEqual(code, 0)
+            expected = (
+                '__version__ = "'
+                + generate.load_manifest()["version"] + '"\n'
+            )
+            self.assertEqual(
+                version_path.read_text(encoding="utf-8"), expected
+            )
+
+    def test_version_module_drift_is_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._tree(root)
+            with patch.object(generate, "REPO_ROOT", root), \
+                 patch.object(generate, "MANIFEST",
+                              ROOT / "ccr" / "pipeline.json"):
+                _quiet(generate.run, False)
+                (root / "ccr" / "_version.py").write_text(
+                    '__version__ = "0.0.0"\n', encoding="utf-8"
+                )
+                code, output = _quiet(generate.run, True)
+            self.assertEqual(code, 1)
+            self.assertIn(str(Path("ccr") / "_version.py"), output)
 
     def test_stale_check_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

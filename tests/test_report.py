@@ -558,7 +558,7 @@ class TestJson(unittest.TestCase):
         model = pipeline.synthesize(
             _manifest(),
             {"security": result("security", [
-                {"finding": "[a.py:1] \u2014 flaw \u2192 failure might occur",
+                {"finding": "flaw without an anchor",
                  "severity": "LOW", "est_hours": 1},
             ])},
             ["security"], target="rejected",
@@ -567,6 +567,20 @@ class TestJson(unittest.TestCase):
         self.assertEqual(len(data["rejected"]), 1)
         self.assertEqual(data["rejected"][0]["da_verdict"], "REJECTED")
         self.assertIn("reject_reason", data["rejected"][0])
+
+    def test_weasel_findings_are_kept_questionable(self):
+        model = pipeline.synthesize(
+            _manifest(),
+            {"security": result("security", [
+                {"finding": "[a.py:1] \u2014 flaw \u2192 failure might occur",
+                 "severity": "LOW", "est_hours": 1},
+            ])},
+            ["security"], target="weasel",
+        )
+        data = report_mod.render_json(model)
+        self.assertEqual(len(data["findings"]), 1)
+        self.assertEqual(data["findings"][0]["da_verdict"], "QUESTIONABLE")
+        self.assertEqual(data["rejected"], [])
 
 
 class TestFormatting(unittest.TestCase):

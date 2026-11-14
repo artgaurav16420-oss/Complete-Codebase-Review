@@ -160,6 +160,10 @@ class State:
                     raise ValueError(
                         "state " + key + " entries must be strings"
                     )
+        if isinstance(data["current_phase"], bool):
+            raise ValueError(
+                "state current_phase must be an integer, not a boolean"
+            )
         if data["current_phase"] not in PHASES:
             raise ValueError("invalid phase: " + str(data["current_phase"]))
         for gate in data["phase_gates"]:

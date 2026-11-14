@@ -182,6 +182,16 @@ def render_checksum():
     return digest + "  install.py\n"
 
 
+def render_version_module(manifest):
+    """Return ccr/_version.py content with the manifest version.
+
+    The module is generated, not imported here: reading the manifest is the
+    bootstrap path, and importing the generated module would make the
+    generator depend on its own output.
+    """
+    return '__version__ = "' + manifest["version"] + '"\n'
+
+
 def targets(manifest):
     """Return list of (path, expected_text) pairs to compare or write."""
     pairs = []
@@ -190,6 +200,9 @@ def targets(manifest):
         pairs.append((path, render_text(path, manifest)))
     pairs.append((REPO_ROOT / "pyproject.toml", render_pyproject(manifest)))
     pairs.append((REPO_ROOT / "install.py.sha256", render_checksum()))
+    pairs.append(
+        (REPO_ROOT / "ccr" / "_version.py", render_version_module(manifest))
+    )
     return pairs
 
 
@@ -198,12 +211,15 @@ def run(check_only):
     manifest = load_manifest()
     stale = []
     for path, expected in targets(manifest):
-        current = path.read_text(encoding="utf-8")
+        try:
+            current = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            current = None
         if current == expected:
             continue
         stale.append(path)
         if not check_only:
-            crlf = b"\r\n" in path.read_bytes()
+            crlf = path.exists() and b"\r\n" in path.read_bytes()
             newline = "\r\n" if crlf else "\n"
             _write_text(path, expected, newline=newline)
     if check_only:

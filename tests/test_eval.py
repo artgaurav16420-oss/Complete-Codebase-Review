@@ -48,6 +48,29 @@ class TestEvalHarness(unittest.TestCase):
     def test_precision_above_floor(self):
         self.assertGreaterEqual(self.score["precision"], 0.7)
 
+    def test_overlapping_needles_count_one_finding(self):
+        spec = {
+            "expected_issues": self.expected,
+            "known_false_positives": [
+                "password comparison",
+                "timing side channel",
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "expected.json"
+            path.write_text(json.dumps(spec), encoding="utf-8")
+            _model, score = pipeline.run_eval(
+                manifest_mod.load(), FIXTURES, path
+            )
+        self.assertEqual(
+            score["known_false_positives"],
+            ["password comparison", "timing side channel"],
+        )
+        total = score["findings_total"]
+        self.assertEqual(
+            score["verified_precision"], round((total - 1) / total, 4)
+        )
+
     def test_markdown_contract(self):
         from ccr import report
         md = report.render_markdown(self.model)
@@ -57,9 +80,16 @@ class TestEvalHarness(unittest.TestCase):
         from ccr import report
         self.assertEqual(validate_json_output(report.render_json(self.model)), [])
 
-    def test_weasel_findings_rejected(self):
+    def test_weasel_findings_demoted(self):
+        hedged = [
+            item for item in self.model["findings"]
+            if item.get("weasel_word")
+        ]
+        self.assertEqual(len(hedged), 1)
+        self.assertEqual(hedged[0]["da_verdict"], "QUESTIONABLE")
+        self.assertEqual(hedged[0]["weasel_word"], "weasel word: might")
+        # The anchor rejection is still a rejection.
         reasons = [item["reject_reason"] for item in self.model["rejected"]]
-        self.assertTrue(any("weasel" in reason for reason in reasons))
         self.assertTrue(any("anchor" in reason for reason in reasons))
 
     def test_rejected_absent_from_roadmap(self):

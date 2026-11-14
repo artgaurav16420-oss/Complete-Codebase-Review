@@ -67,6 +67,32 @@ class TestStateLifecycle(unittest.TestCase):
             state.State.load(self.path)
         self.assertIn("invalid phase", str(caught.exception))
 
+    def test_boolean_phase_rejected(self):
+        # True == 1, so the membership check alone lets a boolean through as
+        # phase 1. A bool is not a phase, whatever it compares equal to.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": True,
+            "phase_gates": {},
+            "agents_planned": [],
+        }), encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.State.load(self.path)
+        self.assertIn("boolean", str(caught.exception))
+
+    def test_float_phase_still_matches_an_integer_phase(self):
+        # Float handling is deliberately unchanged: 1.0 == 1.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text(json.dumps({
+            "target_dir": self.tmp.name,
+            "current_phase": 1.0,
+            "phase_gates": {},
+            "agents_planned": [],
+        }), encoding="utf-8")
+        loaded = state.State.load(self.path)
+        self.assertEqual(loaded.data["current_phase"], 1.0)
+
     def test_numeric_target_dir_rejected(self):
         # A hand-edited state with a number here loads as valid and then
         # raises TypeError in the first caller that builds a Path from it.

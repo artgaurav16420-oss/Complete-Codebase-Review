@@ -66,12 +66,28 @@ class TestReviewFindings(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         self.assertEqual(rejected, [])
 
-    def test_rejects_weasel(self):
-        bad = "[app.py:2] \u2014 this might fail \u2192 outage"
-        kept, rejected = f.review_findings([make(bad)])
+    def test_demotes_weasel_to_questionable(self):
+        hedged = "[app.py:2] \u2014 this might fail \u2192 outage"
+        kept, rejected = f.review_findings([make(hedged)])
+        self.assertEqual(rejected, [])
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["da_verdict"], "QUESTIONABLE")
+        self.assertEqual(kept[0]["weasel_word"], "weasel word: might")
+        self.assertNotIn("reject_reason", kept[0])
+
+    def test_weasel_keeps_an_existing_rejected_verdict(self):
+        hedged = "[app.py:2] \u2014 this might fail \u2192 outage"
+        kept, rejected = f.review_findings([
+            make(hedged, verdict="REJECTED"),
+        ])
+        self.assertEqual(rejected, [])
+        self.assertEqual(kept[0]["da_verdict"], "REJECTED")
+        self.assertEqual(kept[0]["weasel_word"], "weasel word: might")
+
+    def test_weasel_does_not_hide_an_anchor_rejection(self):
+        kept, rejected = f.review_findings([make("might fail")])
         self.assertEqual(kept, [])
-        self.assertEqual(rejected[0]["da_verdict"], "REJECTED")
-        self.assertIn("weasel", rejected[0]["reject_reason"])
+        self.assertIn("anchor", rejected[0]["reject_reason"])
 
     def test_rejects_missing_anchor(self):
         kept, rejected = f.review_findings([make("hardcoded key")])
@@ -139,6 +155,69 @@ class TestDedup(unittest.TestCase):
         a = make(GOOD, domain="Security")
         b = make(GOOD, domain="Quality")
         self.assertEqual(len(f.dedup([a, b])), 2)
+
+    def test_distinct_flaws_on_one_line_survive(self):
+        injection = make(
+            "[x.py:10] \u2014 SQL injection in query \u2192 data exfiltration",
+            severity="CRITICAL", hours=4,
+        )
+        missing_index = make(
+            "[x.py:10] \u2014 missing index on join key \u2192 full table scan",
+            severity="MEDIUM", hours=2,
+        )
+        result = f.dedup([injection, missing_index])
+        self.assertEqual(len(result), 2)
+        self.assertEqual(
+            {item["finding"] for item in result},
+            {injection["finding"], missing_index["finding"]},
+        )
+
+    def test_identical_flaws_still_collapse(self):
+        first = make(
+            "[x.py:10] \u2014 SQL injection in query \u2192 data exfiltration",
+            severity="CRITICAL", hours=4,
+        )
+        duplicate = make(
+            "[x.py:10] \u2014 SQL injection in query \u2192 data exfiltration",
+            severity="MEDIUM", hours=2,
+        )
+        result = f.dedup([first, duplicate])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["severity"], "CRITICAL")
+
+    def test_intersecting_flaws_merge_transitively(self):
+        # a-b share alpha, b-c share gamma; a and c share nothing. The groups
+        # are connected through b, so all three collapse.
+        a = make("[x.py:10] \u2014 alpha \u2192 failure one")
+        b = make("[x.py:10] \u2014 gamma \u2192 failure two")
+        c = make("[x.py:10] \u2014 alpha gamma \u2192 failure three")
+        self.assertEqual(len(f.dedup([a, b, c])), 1)
+
+    def test_empty_token_findings_stay_separate(self):
+        # The find_overlaps tokenizer drops one-character tokens; two findings
+        # with no usable tokens cannot be shown to describe the same flaw.
+        a = make("[x.py:10] \u2014 x \u2192 failure one")
+        b = make("[x.py:10] \u2014 y \u2192 failure two")
+        self.assertEqual(len(f.dedup([a, b])), 2)
+
+    def test_first_seen_group_order_is_preserved(self):
+        a = make("[x.py:10] \u2014 alpha \u2192 failure one")
+        b = make("[y.py:20] \u2014 beta \u2192 failure two")
+        c = make("[x.py:10] \u2014 gamma \u2192 failure three")
+        result = f.dedup([a, b, c])
+        self.assertEqual(
+            [item["finding"] for item in result],
+            [a["finding"], b["finding"], c["finding"]],
+        )
+
+    def test_group_winner_keeps_worst_severity(self):
+        low = make("[x.py:10] \u2014 flaw \u2192 alpha",
+                   severity="LOW", hours=10)
+        critical = make("[x.py:10] \u2014 same flaw \u2192 alpha",
+                        severity="CRITICAL", hours=1)
+        result = f.dedup([low, critical])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["severity"], "CRITICAL")
 
     def test_assign_ids(self):
         result = f.assign_ids([make(GOOD), make(GOOD, domain="Other")])

@@ -98,10 +98,9 @@ PHASE_PREFIX = "phase_"
 PROMPT_SUFFIX = ".prompt.md"
 RESULT_SUFFIX = ".json"
 
-# Top-level keys the pipeline's own documents carry and an agent result
-# never has. The report JSON opens with "report"; the model a baseline is
-# read from carries the rest. A file named for an agent that has one of them
-# is that document, not the agent's result.
+# Top-level keys the pipeline's own documents carry and a bare agent result
+# does not. A file with one of them is a document unless it also carries a
+# result-identity key (agent/score); see is_pipeline_document.
 DOCUMENT_KEYS = frozenset({
     "report", "per_domain_scores", "overall_health", "agent_status",
 })
@@ -162,7 +161,9 @@ def _is_result_candidate(path):
     A result may carry more than the three keys the prompt asks for and the
     loader accepts it, so the rule is not a whitelist of the result keys: it
     is the pipeline's own documents, the only files that carry a findings
-    list and are not an agent result.
+    list and are not an agent result. The document test is shared with
+    ``is_pipeline_document`` so discovery and loading agree in both
+    directions.
     """
     if not path.is_file():
         return False
@@ -177,7 +178,14 @@ def _is_result_candidate(path):
         return True
     if not isinstance(data.get("findings"), list):
         return False
-    return not (set(data) & DOCUMENT_KEYS)
+    return not is_pipeline_document(path)
+
+
+# Keys that identify an agent result even when it carries a document key.
+# A result may hold more than the prompt's three keys, and an LLM adding
+# `overall_health` beside its findings must not turn the result into the
+# report. A document is a document only when no result identity is present.
+RESULT_IDENTITY_KEYS = frozenset({"agent", "score"})
 
 
 def is_pipeline_document(path):
@@ -188,6 +196,11 @@ def is_pipeline_document(path):
     that document, not the agent's result: reading the report as an agent
     would put the report's own findings into the report, and archiving it as
     a result would move the report out of the cache.
+
+    Key presence alone is not enough: a result may carry an extra top-level
+    key that happens to be one of ``DOCUMENT_KEYS``. The result-identity keys
+    (``agent``/``score``) decide: a file carrying both is a result, because
+    the loader accepts the extra keys and discovery and loading must agree.
     """
     try:
         with open(path, encoding="utf-8-sig") as f:
@@ -196,7 +209,9 @@ def is_pipeline_document(path):
         return False
     if not isinstance(data, dict):
         return False
-    return bool(set(data) & DOCUMENT_KEYS)
+    if not (set(data) & DOCUMENT_KEYS):
+        return False
+    return not (set(data) & RESULT_IDENTITY_KEYS)
 
 
 def _result_paths(root):
@@ -250,7 +265,10 @@ def discover_results(out_dir, known=None):
     result, so a corrupt one reaches load_result and is reported by path
     instead of disappearing with the stray json. A file that is one of the
     pipeline's own documents is excluded either way: it is not an agent's
-    result, and find_result refuses it.
+    result, and find_result refuses it. The one identity-aware predicate is
+    ``is_pipeline_document``: a document key without a result-identity key
+    (``agent``/``score``) makes the file a document, so an agent result that
+    carries an extra document key is still discovered and loaded.
     """
     found = []
     seen = set()
