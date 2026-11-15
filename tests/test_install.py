@@ -201,6 +201,23 @@ class TestGetTargetDirs(_BaseInstallTest):
             dirs["OpenCode"], home / ".config" / "opencode" / "skills"
         )
 
+    def test_opencode_home_is_ignored_without_xdg(self):
+        home = Path('/home/user').resolve()
+        opencode = home / "opencode-config"
+        dirs = self._dirs("Linux", {"OPENCODE_HOME": str(opencode)}, home)
+        self.assertEqual(
+            dirs["OpenCode"], home / ".config" / "opencode" / "skills"
+        )
+
+    def test_opencode_ignores_xdg_on_non_linux(self):
+        home = Path('/home/user').resolve()
+        dirs = self._dirs(
+            "Darwin", {"XDG_CONFIG_HOME": str(home / "xdg")}, home
+        )
+        self.assertEqual(
+            dirs["OpenCode"], home / ".config" / "opencode" / "skills"
+        )
+
     def test_continue_uses_home_by_default(self):
         home = Path('/home/user').resolve()
         dirs = self._dirs("Linux", {}, home)
@@ -213,11 +230,21 @@ class TestGetTargetDirs(_BaseInstallTest):
             "Linux", {"CONTINUE_GLOBAL_DIR": str(continue_dir)}, home
         )
         self.assertEqual(dirs["Continue"], continue_dir / "skills")
-
-    def test_continue_config_path_is_ignored(self):
+        # A directory override that names a file falls back like any other.
         with tempfile.TemporaryDirectory() as tmpdir:
             config_file = Path(tmpdir) / "config.json"
             config_file.write_text("{}\n", encoding="utf-8")
+            dirs = self._dirs(
+                "Linux", {"CONTINUE_GLOBAL_DIR": str(config_file)}, home
+            )
+        self.assertEqual(dirs["Continue"], home / ".continue" / "skills")
+
+    def test_continue_config_path_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Keep the path missing: an existing file would be rejected by
+            # the generic file guard, masking a regression that starts
+            # reading CONTINUE_CONFIG_PATH as a directory again.
+            config_file = Path(tmpdir) / "config.json"
             home = Path('/home/user').resolve()
             dirs = self._dirs(
                 "Linux", {"CONTINUE_CONFIG_PATH": str(config_file)}, home

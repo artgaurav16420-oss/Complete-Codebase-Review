@@ -50,11 +50,13 @@ environment rules, not one shared rule:
 | Continue | `CONTINUE_GLOBAL_DIR` | `~/.continue/skills` |
 
 An override that is empty, relative, contains `..`, names an existing file,
-or lives below one is ignored, and the fallback is used. A path that does not
-exist yet is accepted when its nearest existing ancestor is a directory,
-because the install creates the rest. Claude Code does not read
-`XDG_CONFIG_HOME`; applying it there would report success while the skill is
-never loaded.
+or lives below one is ignored, and the fallback is used. Validation accepts a
+path that does not exist yet when its nearest existing ancestor is a
+directory; the copy creates the rest once a target is selected. Auto-detection
+still requires the tool config directory itself to exist, so a missing
+override directory is skipped unless it is created first or passed with
+`--target`. Claude Code does not read `XDG_CONFIG_HOME`; applying it there
+would report success while the skill is never loaded.
 
 There is no Cursor or OpenCode home override. `CURSOR_CONFIG_HOME` is not
 documented by Cursor, whose user-level skills live in `~/.cursor/skills`.
