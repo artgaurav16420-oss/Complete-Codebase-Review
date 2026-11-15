@@ -155,6 +155,18 @@ class TestGetTargetDirs(_BaseInstallTest):
             )
         self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
 
+    def test_claude_config_dir_falls_back_below_a_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "claude-config"
+            config_file.write_text("not a directory\n", encoding="utf-8")
+            home = Path('/home/user').resolve()
+            dirs = self._dirs(
+                "Linux",
+                {"CLAUDE_CONFIG_DIR": str(config_file / "child")},
+                home,
+            )
+        self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
+
     def test_cursor_ignores_xdg_on_linux(self):
         home = Path('/home/user').resolve()
         dirs = self._dirs("Linux", {"XDG_CONFIG_HOME": str(home / ".config")},
@@ -1433,6 +1445,40 @@ class TestUninstallLinkLikeSkills(_BaseInstallTest):
             self.assertTrue((installed / "SKILL.md").exists())
 
 
+class TestUninstallLegacyOpenCode(_BaseInstallTest):
+    """Auto-uninstall clears the pre-#86 OpenCode skill copy too."""
+
+    def test_auto_uninstall_removes_the_legacy_opencode_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            home.mkdir()
+            legacy = home / ".opencode" / "skills" / (
+                "complete-codebase-review"
+            )
+            legacy.mkdir(parents=True)
+            (legacy / "SKILL.md").write_text("old install", encoding="utf-8")
+            work = root / "work"
+            work.mkdir()
+            current = {
+                "OpenCode": home / ".config" / "opencode" / "skills",
+            }
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install, "get_target_dirs",
+                                  return_value=current), \
+                     patch.object(Path, "home", return_value=home), \
+                     patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    code = self.install._run_uninstall(None, False)
+            finally:
+                os.chdir(old)
+            self.assertEqual(code, 0)
+            self.assertFalse(legacy.exists())
+            self.assertIn("legacy", out.getvalue())
+
+
 class TestUninstallSwappedTargetDirectory(_BaseInstallTest):
     """A target swapped for a link after validation must not be followed.
 
@@ -1927,6 +1973,16 @@ class TestInternalFunctions(_BaseInstallTest):
             file_path = Path(tmpdir) / "config.json"
             file_path.write_text("{}\n", encoding="utf-8")
             self.assertIsNone(self.install._validate_xdg_path(file_path))
+
+    def test_validate_xdg_path_rejects_a_file_ancestor(self):
+        # The override itself does not exist, but its parent is a file, so
+        # the install can never create the directory below it.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "config.json"
+            file_path.write_text("{}\n", encoding="utf-8")
+            self.assertIsNone(
+                self.install._validate_xdg_path(file_path / "child")
+            )
 
     def test_remove_tree_removes_a_directory_link(self):
         # Windows refuses os.unlink on a junction or a directory symlink, so

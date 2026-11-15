@@ -325,11 +325,12 @@ def _validate_xdg_path(xdg_path):
     Per the XDG spec, XDG_CONFIG_HOME may be outside the user's home
     directory (e.g. /mnt/storage/config). The same rule applies to each
     tool's native override: verify it is absolute, has no traversal
-    components, resolves successfully, and is not an existing file. A file
-    cannot hold a ``skills`` child, so an override that names one (such as a
-    tool's config.json) falls back to the default instead of producing
-    ``<file>/skills``. A path that does not exist yet stays valid: the
-    install creates it.
+    components, resolves successfully, and can be created. A file cannot
+    hold a ``skills`` child, so an override that names a file (such as a
+    tool's config.json) or lives below one falls back to the default
+    instead of producing ``<file>/skills``. A path that does not exist yet
+    stays valid when its nearest existing ancestor is a directory: the
+    install creates the rest.
     """
     if ".." in xdg_path.parts:
         return None
@@ -339,7 +340,10 @@ def _validate_xdg_path(xdg_path):
         resolved = xdg_path.resolve()
     except (OSError, ValueError, RuntimeError):
         return None
-    if resolved.exists() and not resolved.is_dir():
+    probe = resolved
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    if probe.exists() and not probe.is_dir():
         return None
     return resolved
 
@@ -1034,7 +1038,14 @@ def _run_uninstall(target, dry_run):
             print_error("Uninstall failed: " + str(e))
             sys.exit(1)
     else:
-        for tool_name, target_dir in get_target_dirs().items():
+        targets = get_target_dirs()
+        # Earlier releases installed OpenCode to ~/.opencode/skills. Current
+        # OpenCode reads ~/.config/opencode/skills, so auto-uninstall clears
+        # both instead of leaving the old copy behind after an upgrade.
+        legacy = Path.home() / ".opencode" / "skills"
+        if legacy not in targets.values():
+            targets["OpenCode (legacy)"] = legacy
+        for tool_name, target_dir in targets.items():
             if not target_dir.parent.exists():
                 continue
             try:

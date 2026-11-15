@@ -13,7 +13,7 @@ Minimal module-level reference for `install.py`.
 | `_verify_checksum(file_path, expected_hash)` | True on match, False otherwise; raises `FileNotFoundError` when missing. |
 | `_use_color()` | True if stdout TTY and `NO_COLOR` unset. |
 | `_print(msg, label, color)` | Core printer: `[label] msg` with ANSI color. |
-| `_validate_xdg_path(xdg_path)` | Reject unsafe env config dirs (relative, `..`, or an existing non-directory). |
+| `_validate_xdg_path(xdg_path)` | Reject unsafe env config dirs (relative, `..`, or under a non-directory). |
 | `_env_config_dir(names)` | First validated config dir named by an env var, or `None`. |
 | `_tool_skills_dir(home, app_dir, env_names=(), xdg=False, fallback=None)` | Resolve one tool's skills dir from its own environment rules. |
 | `_validate_no_escaped_symlinks(skill_dest)` | Reject copied symlinks that resolve outside the skill dir. |
@@ -49,9 +49,10 @@ environment rules, not one shared rule:
 | Cursor | none | `~/.cursor/skills` |
 | Continue | `CONTINUE_GLOBAL_DIR` | `~/.continue/skills` |
 
-An override that is empty, relative, contains `..`, or names an existing
-file is ignored, and the fallback is used. A path that does not exist yet is
-accepted because the install creates it. Claude Code does not read
+An override that is empty, relative, contains `..`, names an existing file,
+or lives below one is ignored, and the fallback is used. A path that does not
+exist yet is accepted when its nearest existing ancestor is a directory,
+because the install creates the rest. Claude Code does not read
 `XDG_CONFIG_HOME`; applying it there would report success while the skill is
 never loaded.
 
@@ -61,7 +62,8 @@ OpenCode does not implement `OPENCODE_HOME` (the upstream request is still
 open); its documented config root is `~/.config/opencode`, and
 `XDG_CONFIG_HOME` is honored on Linux. `CONTINUE_CONFIG_PATH` names
 Continue's config *file*, not its directory, so it is not a skill root;
-`CONTINUE_GLOBAL_DIR` is the directory override.
+`CONTINUE_GLOBAL_DIR` is the directory override. Auto-uninstall also removes
+the legacy `~/.opencode/skills` copy left by earlier installer versions.
 
 ## Credential exclusions
 
