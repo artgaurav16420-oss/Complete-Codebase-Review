@@ -329,8 +329,8 @@ def _validate_xdg_path(xdg_path):
     hold a ``skills`` child, so an override that names a file (such as a
     tool's config.json) or lives below one falls back to the default
     instead of producing ``<file>/skills``. A path that does not exist yet
-    stays valid when its nearest existing ancestor is a directory: the
-    install creates the rest.
+    stays valid when its nearest existing ancestor is a directory: a
+    selected target can be created from there.
     """
     if ".." in xdg_path.parts:
         return None
