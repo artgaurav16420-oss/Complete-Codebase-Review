@@ -13,9 +13,9 @@ Minimal module-level reference for `install.py`.
 | `_verify_checksum(file_path, expected_hash)` | True on match, False otherwise; raises `FileNotFoundError` when missing. |
 | `_use_color()` | True if stdout TTY and `NO_COLOR` unset. |
 | `_print(msg, label, color)` | Core printer: `[label] msg` with ANSI color. |
-| `_validate_xdg_path(xdg_path)` | Reject unsafe env config dirs (relative or `..`). |
+| `_validate_xdg_path(xdg_path)` | Reject unsafe env config dirs (relative, `..`, or under a non-directory). |
 | `_env_config_dir(names)` | First validated config dir named by an env var, or `None`. |
-| `_tool_skills_dir(home, app_dir, env_names=(), xdg=False)` | Resolve one tool's skills dir from its own environment rules. |
+| `_tool_skills_dir(home, app_dir, env_names=(), xdg=False, fallback=None)` | Resolve one tool's skills dir from its own environment rules. |
 | `_validate_no_escaped_symlinks(skill_dest)` | Reject copied symlinks that resolve outside the skill dir. |
 | `_validate_target_path(path)` | Sanitize path - reject `..`, resolve symlinks. Raises `ValueError`. |
 | `_run_target_install(src_dir, target, dry_run)` | Install into one target dir. |
@@ -45,13 +45,25 @@ environment rules, not one shared rule:
 | Tool | Environment override | Fallback |
 |------|----------------------|----------|
 | Claude Code | `CLAUDE_CONFIG_DIR` | `~/.claude/skills` |
-| OpenCode | `OPENCODE_HOME`, then `XDG_CONFIG_HOME` on Linux | `~/.opencode/skills` |
-| Cursor | `CURSOR_CONFIG_HOME` | `~/.cursor/skills` |
-| Continue | `CONTINUE_CONFIG_PATH` | `~/.continue/skills` |
+| OpenCode | `XDG_CONFIG_HOME` on Linux | `~/.config/opencode/skills` |
+| Cursor | none | `~/.cursor/skills` |
+| Continue | `CONTINUE_GLOBAL_DIR` | `~/.continue/skills` |
 
-An override that is empty, relative, or contains `..` is ignored, and the
-fallback is used. Claude Code does not read `XDG_CONFIG_HOME`; applying it
-there would report success while the skill is never loaded.
+An override that is empty, relative, contains `..`, names an existing file,
+or lives below one is ignored, and the fallback is used. A path that does not
+exist yet is accepted when its nearest existing ancestor is a directory,
+because the install creates the rest. Claude Code does not read
+`XDG_CONFIG_HOME`; applying it there would report success while the skill is
+never loaded.
+
+There is no Cursor or OpenCode home override. `CURSOR_CONFIG_HOME` is not
+documented by Cursor, whose user-level skills live in `~/.cursor/skills`.
+OpenCode does not implement `OPENCODE_HOME` (the upstream request is still
+open); its documented config root is `~/.config/opencode`, and
+`XDG_CONFIG_HOME` is honored on Linux. `CONTINUE_CONFIG_PATH` names
+Continue's config *file*, not its directory, so it is not a skill root;
+`CONTINUE_GLOBAL_DIR` is the directory override. Auto-uninstall also removes
+the legacy `~/.opencode/skills` copy left by earlier installer versions.
 
 ## Credential exclusions
 

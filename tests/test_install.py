@@ -119,7 +119,7 @@ class TestGetTargetDirs(_BaseInstallTest):
             dirs = self.install.get_target_dirs()
         expected = {
             "Claude Code": home / ".claude" / "skills",
-            "OpenCode": home / ".opencode" / "skills",
+            "OpenCode": home / ".config" / "opencode" / "skills",
             "Cursor": home / ".cursor" / "skills",
             "Continue": home / ".continue" / "skills",
         }
@@ -145,17 +145,39 @@ class TestGetTargetDirs(_BaseInstallTest):
         dirs = self._dirs("Linux", {"CLAUDE_CONFIG_DIR": "relative/path"}, home)
         self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
 
+    def test_claude_config_dir_falls_back_when_it_is_a_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "claude-config"
+            config_file.write_text("not a directory\n", encoding="utf-8")
+            home = Path('/home/user').resolve()
+            dirs = self._dirs(
+                "Linux", {"CLAUDE_CONFIG_DIR": str(config_file)}, home
+            )
+        self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
+
+    def test_claude_config_dir_falls_back_below_a_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "claude-config"
+            config_file.write_text("not a directory\n", encoding="utf-8")
+            home = Path('/home/user').resolve()
+            dirs = self._dirs(
+                "Linux",
+                {"CLAUDE_CONFIG_DIR": str(config_file / "child")},
+                home,
+            )
+        self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
+
     def test_cursor_ignores_xdg_on_linux(self):
         home = Path('/home/user').resolve()
         dirs = self._dirs("Linux", {"XDG_CONFIG_HOME": str(home / ".config")},
                            home)
         self.assertEqual(dirs["Cursor"], home / ".cursor" / "skills")
 
-    def test_cursor_config_home_wins(self):
+    def test_cursor_config_home_is_ignored(self):
         home = Path('/home/user').resolve()
         cursor = home / "cursor-config"
         dirs = self._dirs("Linux", {"CURSOR_CONFIG_HOME": str(cursor)}, home)
-        self.assertEqual(dirs["Cursor"], cursor / "skills")
+        self.assertEqual(dirs["Cursor"], home / ".cursor" / "skills")
 
     def test_opencode_uses_xdg_on_linux(self):
         home = Path('/home/user').resolve()
@@ -163,37 +185,54 @@ class TestGetTargetDirs(_BaseInstallTest):
         dirs = self._dirs("Linux", {"XDG_CONFIG_HOME": str(xdg)}, home)
         self.assertEqual(dirs["OpenCode"], xdg / "opencode" / "skills")
 
-    def test_opencode_uses_dot_opencode_when_xdg_unset_on_linux(self):
+    def test_opencode_uses_config_dir_when_xdg_unset_on_linux(self):
         home = Path('/home/user').resolve()
         dirs = self._dirs("Linux", {}, home)
-        self.assertEqual(dirs["OpenCode"], home / ".opencode" / "skills")
+        self.assertEqual(dirs["OpenCode"], home / ".config" / "opencode" / "skills")
 
-    def test_opencode_home_wins(self):
+    def test_opencode_home_is_ignored(self):
         home = Path('/home/user').resolve()
         opencode = home / "opencode-config"
         dirs = self._dirs("Linux", {
             "XDG_CONFIG_HOME": str(home / ".config"),
             "OPENCODE_HOME": str(opencode),
         }, home)
-        self.assertEqual(dirs["OpenCode"], opencode / "skills")
+        self.assertEqual(
+            dirs["OpenCode"], home / ".config" / "opencode" / "skills"
+        )
 
     def test_continue_uses_home_by_default(self):
         home = Path('/home/user').resolve()
         dirs = self._dirs("Linux", {}, home)
         self.assertEqual(dirs["Continue"], home / ".continue" / "skills")
 
-    def test_continue_config_path_wins(self):
+    def test_continue_global_dir_wins(self):
         home = Path('/home/user').resolve()
         continue_dir = home / "continue-config"
-        dirs = self._dirs("Linux", {"CONTINUE_CONFIG_PATH": str(continue_dir)},
-                           home)
+        dirs = self._dirs(
+            "Linux", {"CONTINUE_GLOBAL_DIR": str(continue_dir)}, home
+        )
         self.assertEqual(dirs["Continue"], continue_dir / "skills")
 
-    def test_windows_uses_dot_app_style_paths(self):
+    def test_continue_config_path_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "config.json"
+            config_file.write_text("{}\n", encoding="utf-8")
+            home = Path('/home/user').resolve()
+            dirs = self._dirs(
+                "Linux", {"CONTINUE_CONFIG_PATH": str(config_file)}, home
+            )
+        self.assertEqual(dirs["Continue"], home / ".continue" / "skills")
+        for path in dirs.values():
+            self.assertNotIn("config.json", path.as_posix())
+
+    def test_windows_uses_expected_default_paths(self):
         home = Path.home()
         dirs = self._dirs("Windows", {}, home)
         self.assertEqual(dirs["Claude Code"], home / ".claude" / "skills")
-        self.assertEqual(dirs["OpenCode"], home / ".opencode" / "skills")
+        self.assertEqual(
+            dirs["OpenCode"], home / ".config" / "opencode" / "skills"
+        )
         self.assertEqual(dirs["Cursor"], home / ".cursor" / "skills")
         self.assertEqual(dirs["Continue"], home / ".continue" / "skills")
 
@@ -1406,6 +1445,40 @@ class TestUninstallLinkLikeSkills(_BaseInstallTest):
             self.assertTrue((installed / "SKILL.md").exists())
 
 
+class TestUninstallLegacyOpenCode(_BaseInstallTest):
+    """Auto-uninstall clears the pre-#86 OpenCode skill copy too."""
+
+    def test_auto_uninstall_removes_the_legacy_opencode_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            home.mkdir()
+            legacy = home / ".opencode" / "skills" / (
+                "complete-codebase-review"
+            )
+            legacy.mkdir(parents=True)
+            (legacy / "SKILL.md").write_text("old install", encoding="utf-8")
+            work = root / "work"
+            work.mkdir()
+            current = {
+                "OpenCode": home / ".config" / "opencode" / "skills",
+            }
+            old = os.getcwd()
+            try:
+                os.chdir(str(work))
+                with patch.object(self.install, "get_target_dirs",
+                                  return_value=current), \
+                     patch.object(Path, "home", return_value=home), \
+                     patch.object(self.install.sys, "stdout",
+                                  new_callable=io.StringIO) as out:
+                    code = self.install._run_uninstall(None, False)
+            finally:
+                os.chdir(old)
+            self.assertEqual(code, 0)
+            self.assertFalse(legacy.exists())
+            self.assertIn("legacy", out.getvalue())
+
+
 class TestUninstallSwappedTargetDirectory(_BaseInstallTest):
     """A target swapped for a link after validation must not be followed.
 
@@ -1886,6 +1959,7 @@ class TestInternalFunctions(_BaseInstallTest):
     def test_validate_xdg_path_resolves_any_absolute(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             xdg = Path(tmpdir) / "xdg"
+            xdg.mkdir()
             result = self.install._validate_xdg_path(xdg)
             self.assertIsNotNone(result)
             self.assertEqual(result, xdg.resolve())
@@ -1893,6 +1967,22 @@ class TestInternalFunctions(_BaseInstallTest):
     def test_validate_xdg_path_rejects_relative(self):
         result = self.install._validate_xdg_path(Path("relative/path"))
         self.assertIsNone(result)
+
+    def test_validate_xdg_path_rejects_an_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "config.json"
+            file_path.write_text("{}\n", encoding="utf-8")
+            self.assertIsNone(self.install._validate_xdg_path(file_path))
+
+    def test_validate_xdg_path_rejects_a_file_ancestor(self):
+        # The override itself does not exist, but its parent is a file, so
+        # the install can never create the directory below it.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "config.json"
+            file_path.write_text("{}\n", encoding="utf-8")
+            self.assertIsNone(
+                self.install._validate_xdg_path(file_path / "child")
+            )
 
     def test_remove_tree_removes_a_directory_link(self):
         # Windows refuses os.unlink on a junction or a directory symlink, so

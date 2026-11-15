@@ -3,7 +3,7 @@
 
 Installs the skill to supported AI agent skill directories:
 - Claude Code (~/.claude/skills/)
-- OpenCode (~/.opencode/skills/)
+- OpenCode (~/.config/opencode/skills/)
 - Cursor (~/.cursor/skills/)
 - Continue (~/.continue/skills/)
 
@@ -325,7 +325,12 @@ def _validate_xdg_path(xdg_path):
     Per the XDG spec, XDG_CONFIG_HOME may be outside the user's home
     directory (e.g. /mnt/storage/config). The same rule applies to each
     tool's native override: verify it is absolute, has no traversal
-    components, and resolves successfully.
+    components, resolves successfully, and can be created. A file cannot
+    hold a ``skills`` child, so an override that names a file (such as a
+    tool's config.json) or lives below one falls back to the default
+    instead of producing ``<file>/skills``. A path that does not exist yet
+    stays valid when its nearest existing ancestor is a directory: the
+    install creates the rest.
     """
     if ".." in xdg_path.parts:
         return None
@@ -334,6 +339,11 @@ def _validate_xdg_path(xdg_path):
     try:
         resolved = xdg_path.resolve()
     except (OSError, ValueError, RuntimeError):
+        return None
+    probe = resolved
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    if probe.exists() and not probe.is_dir():
         return None
     return resolved
 
@@ -355,11 +365,13 @@ def _env_config_dir(names):
     return None
 
 
-def _tool_skills_dir(home, app_dir, env_names=(), xdg=False):
+def _tool_skills_dir(home, app_dir, env_names=(), xdg=False, fallback=None):
     """Resolve one tool's skills dir from its own environment rules.
 
     Precedence is the tool's native override, then XDG on Linux for the tools
-    that read it, then ``~/.<app_dir>/skills``.
+    that read it, then ``fallback``. The default fallback is
+    ``~/.<app_dir>/skills``; OpenCode passes its XDG-style ``~/.config`` root
+    instead.
     """
     override = _env_config_dir(env_names)
     if override is not None:
@@ -370,15 +382,19 @@ def _tool_skills_dir(home, app_dir, env_names=(), xdg=False):
             validated = _validate_xdg_path(Path(xdg_env))
             if validated is not None:
                 return validated / app_dir / "skills"
-    return home / f".{app_dir}" / "skills"
+    if fallback is None:
+        fallback = home / f".{app_dir}"
+    return fallback / "skills"
 
 
 def get_target_dirs():
     """Determine the target installation directories for supported AI agents.
 
     Each tool follows its own environment rules: Claude Code reads
-    ``CLAUDE_CONFIG_DIR`` and not XDG, OpenCode reads XDG on Linux, Cursor and
-    Continue read their own overrides, and each falls back to ``~/.<tool>``.
+    ``CLAUDE_CONFIG_DIR`` and not XDG, OpenCode reads XDG on Linux,
+    Continue reads ``CONTINUE_GLOBAL_DIR``, and Cursor has no tool-specific
+    override. OpenCode falls back to its ``~/.config/opencode`` root; the
+    other tools fall back to ``~/.<tool>``.
 
     Returns:
         dict: A dictionary mapping agent names to their respective skill installation directories.
@@ -390,13 +406,11 @@ def get_target_dirs():
             home, "claude", env_names=("CLAUDE_CONFIG_DIR",)
         ),
         "OpenCode": _tool_skills_dir(
-            home, "opencode", env_names=("OPENCODE_HOME",), xdg=True
+            home, "opencode", xdg=True, fallback=home / ".config" / "opencode"
         ),
-        "Cursor": _tool_skills_dir(
-            home, "cursor", env_names=("CURSOR_CONFIG_HOME",)
-        ),
+        "Cursor": _tool_skills_dir(home, "cursor"),
         "Continue": _tool_skills_dir(
-            home, "continue", env_names=("CONTINUE_CONFIG_PATH",)
+            home, "continue", env_names=("CONTINUE_GLOBAL_DIR",)
         ),
     }
 
@@ -1024,7 +1038,14 @@ def _run_uninstall(target, dry_run):
             print_error("Uninstall failed: " + str(e))
             sys.exit(1)
     else:
-        for tool_name, target_dir in get_target_dirs().items():
+        targets = get_target_dirs()
+        # Earlier releases installed OpenCode to ~/.opencode/skills. Current
+        # OpenCode reads ~/.config/opencode/skills, so auto-uninstall clears
+        # both instead of leaving the old copy behind after an upgrade.
+        legacy = Path.home() / ".opencode" / "skills"
+        if legacy not in targets.values():
+            targets["OpenCode (legacy)"] = legacy
+        for tool_name, target_dir in targets.items():
             if not target_dir.parent.exists():
                 continue
             try:
