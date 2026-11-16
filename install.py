@@ -749,9 +749,16 @@ def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC, protect=()):
         )
         return False
     removed_all = True
-    live = _live_runs(dest_dir)
     for path in _leftovers(dest_dir, max_age):
-        if path in protect or _run_token(path) in live:
+        if path in protect:
+            continue
+        token = _run_token(path)
+        if token and _lock_is_held(_run_lock_path(dest_dir, token)):
+            # The run that owns this tree still holds its lock, so the tree
+            # is still being worked on. The check is made here, per tree,
+            # rather than from a set gathered earlier: a run that starts
+            # after the listing would otherwise be missed and its staging
+            # tree taken for a leftover.
             continue
         try:
             if _is_link_like(path):
@@ -785,9 +792,13 @@ def _live_runs(dest_dir):
     same token as the staging tree, so it belongs to that run even after
     the staging tree is gone, which is the case between the park and the
     swap.
+
+    Every leftover is listed, whatever its age: a run refreshes its
+    tree's mtime while it copies, so a working run's tree is usually the
+    freshest one there is. Only the lock says whether a run is alive.
     """
     live = set()
-    for path in _leftovers(dest_dir):
+    for path in _leftovers(dest_dir, 0):
         token = _run_token(path)
         if not token:
             continue
@@ -1219,7 +1230,9 @@ def remove_skill(dest_dir, dry_run):
     # (the swap never ran). Those leftovers are still this tool's files, and
     # the live-skill early return would otherwise make them permanent.
     target = Path(dest_dir)
-    leftovers = _leftovers(target) if target.is_dir() else []
+    # Every leftover, whatever its age: an explicit uninstall clears them
+    # all, and a run that is still working is the only exception.
+    leftovers = _leftovers(target, 0) if target.is_dir() else []
     # An install that is still working owns a staging tree it is writing and,
     # between the park and the swap, the backup it would put back if the swap
     # failed. Removing them breaks that install and takes its rollback copy
@@ -1276,9 +1289,16 @@ def remove_skill(dest_dir, dry_run):
         )
     if not installed:
         if protect:
-            print_info("Nothing else to remove in " + str(target))
-        else:
-            print_success("Removed leftover files from " + str(target))
+            # Nothing was removed. The run that owns these trees can still
+            # finish and put the skill back, so this is not a successful
+            # uninstall and the caller has to say so.
+            print_info(
+                "Nothing removed in " + str(target)
+                + ": an install is still running; uninstall again once it "
+                "finishes"
+            )
+            return False
+        print_success("Removed leftover files from " + str(target))
         return True
     if _is_link_like(skill_dest):
         _remove_link_like(skill_dest)

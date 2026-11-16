@@ -989,6 +989,61 @@ class TestCopySkill(_BaseInstallTest):
             # The crashed run's tree is gone.
             self.assertFalse(crashed.exists())
 
+    def test_a_fresh_tree_of_an_install_that_is_working_is_left_alone(self):
+        # A run refreshes its tree's mtime while it copies, so a working
+        # run's tree is the freshest one in the destination. The lock, not
+        # the age, says the run is alive: an uninstall that went by age
+        # would take the staging tree out from under a copy in progress.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "2468-cafed00d"
+            staging = dest / (self.install.STAGING_PREFIX + token)
+            staging.mkdir()
+            (staging / "SKILL.md").write_text("in flight", encoding="utf-8")
+            lock = self.install._RunLock(
+                self.install._run_lock_path(dest, token)
+            )
+            lock.acquire()
+            try:
+                removed = self.install.remove_skill(dest, dry_run=False)
+            finally:
+                lock.release()
+
+            self.assertTrue(staging.exists())
+            # Nothing was removed, and the install can still put the skill
+            # back, so the caller must not be told the uninstall succeeded.
+            self.assertFalse(removed)
+
+    def test_the_sweep_checks_the_lock_of_every_tree_it_would_remove(self):
+        # The liveness answer is taken per tree, at the moment the tree is
+        # about to go, not from a set gathered before the trees are listed.
+        # A run that starts inside that window still holds its lock, and its
+        # staging tree has to survive the sweep.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "1357-beefcafe"
+            staging = dest / (self.install.STAGING_PREFIX + token)
+            staging.mkdir()
+            (staging / "SKILL.md").write_text("in flight", encoding="utf-8")
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(str(staging), (old, old))
+            lock = self.install._RunLock(
+                self.install._run_lock_path(dest, token)
+            )
+            lock.acquire()
+            try:
+                # Force a stale snapshot: the sweep must not trust one.
+                with patch.object(
+                        self.install, "_live_runs", lambda path: set()):
+                    swept = self.install._sweep_leftovers(dest)
+            finally:
+                lock.release()
+
+            self.assertTrue(staging.exists())
+            self.assertTrue(swept)
+
     def test_a_free_lock_file_does_not_protect_a_crashed_run(self):
         # The kernel drops a run's lock when the process dies, so a lock
         # file that nobody holds belongs to a run that is gone. Its trees
