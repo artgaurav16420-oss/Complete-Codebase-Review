@@ -886,6 +886,259 @@ class TestCopySkill(_BaseInstallTest):
             ]
             self.assertEqual(len(old_backups), 1)
 
+    def test_a_concurrent_sweep_during_a_directory_walk_keeps_the_staging_tree(self):
+        # The sweep that clears a crashed run's leftovers judges a tree by
+        # age, so a copy that is still working has to keep saying so. The
+        # heartbeat used to run only when a file was copied: a tree of
+        # directories copies no file at all, and a slow traversal can spend
+        # a long time between two files, so the staging tree looked stale
+        # and a concurrent install's sweep deleted it mid-copy.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir, {"a/b/c": None})
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            install = self.install
+            real_filter = install._ignore_skill_files
+            target = dest
+            state = {"tree": None, "swept": False, "sweeping": False}
+            removals = []
+
+            def filtering(path, names, dest=None, collector=None):
+                walked = str(path).replace("\\", "/")
+                if walked.endswith("/a/b"):
+                    # The walk has been going for a long time, so the
+                    # staging tree looks stale by now.
+                    trees = list(target.glob(install.STAGING_PREFIX + "*"))
+                    if not trees:
+                        raise AssertionError("no staging tree to age")
+                    state["tree"] = trees[0]
+                    old = time.time() - install.LEFTOVER_MAX_AGE_SEC - 60
+                    os.utime(str(trees[0]), (old, old))
+                elif walked.endswith("/a/b/c"):
+                    # A concurrent install sweeps the leftovers while this
+                    # copy is still walking the tree.
+                    state["sweeping"] = True
+                    install._sweep_leftovers(target)
+                    state["sweeping"] = False
+                    state["swept"] = True
+                return real_filter(path, names, dest=dest, collector=collector)
+
+            def spy(path):
+                # Only the sweep's decision is recorded: the install's own
+                # cleanup of the staging tree is not the sweep's decision.
+                if state["sweeping"]:
+                    removals.append(Path(path))
+
+            with patch.object(install, "_ignore_skill_files", filtering), \
+                 patch.object(install, "_remove_tree", spy):
+                install.copy_skill(src, dest)
+
+            # The sweep ran while the copy was walking the tree.
+            self.assertTrue(state["swept"], "the sweep never ran")
+            self.assertIsNotNone(state["tree"])
+            # The sweep did not take the staging tree for a leftover: the
+            # tree was fresh, so the run that owns it is still alive.
+            self.assertNotIn(state["tree"], removals)
+            # The install went in.
+            self.assertTrue(
+                (dest / "complete-codebase-review" / "SKILL.md").exists()
+            )
+
+    def test_uninstall_leaves_the_trees_of_an_install_that_is_working(self):
+        # An install that is working owns a staging tree it is writing and,
+        # between the park and the swap, the backup it would put back if the
+        # swap failed. An uninstall that removes them breaks that install and
+        # takes its rollback copy with it. The leftovers of runs that are not
+        # working are still removed.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "1234-abcdef"
+            staging = dest / (self.install.STAGING_PREFIX + token)
+            staging.mkdir()
+            (staging / "SKILL.md").write_text("in flight", encoding="utf-8")
+            backup = dest / (self.install.PREVIOUS_PREFIX + token)
+            backup.mkdir()
+            (backup / "SKILL.md").write_text("rollback", encoding="utf-8")
+            # A parked link keeps the age of the link the user configured,
+            # and on Windows that timestamp cannot be refreshed, so the
+            # backup's own age says nothing about who owns it. The staging
+            # tree is aged as well: a tree's timestamp is not proof that
+            # its run is alive, only the lock the run holds is.
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(str(backup), (old, old))
+            os.utime(str(staging), (old, old))
+            crashed = dest / (self.install.PREVIOUS_PREFIX + "9999-deadbeef")
+            crashed.mkdir()
+            (crashed / "SKILL.md").write_text("crashed", encoding="utf-8")
+            # The run that owns the trees holds an OS lock. That lock is
+            # what says the run is still working: the kernel drops it when
+            # the process dies, so a crashed run's lock is free.
+            lock = self.install._RunLock(
+                self.install._run_lock_path(dest, token)
+            )
+            lock.acquire()
+            try:
+                self.install.remove_skill(dest, dry_run=False)
+            finally:
+                lock.release()
+
+            # The working install keeps its staging tree and its rollback.
+            self.assertTrue(staging.exists())
+            self.assertTrue(backup.exists())
+            # The crashed run's tree is gone.
+            self.assertFalse(crashed.exists())
+
+    def test_a_fresh_tree_of_an_install_that_is_working_is_left_alone(self):
+        # A run refreshes its tree's mtime while it copies, so a working
+        # run's tree is the freshest one in the destination. The lock, not
+        # the age, says the run is alive: an uninstall that went by age
+        # would take the staging tree out from under a copy in progress.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "2468-cafed00d"
+            staging = dest / (self.install.STAGING_PREFIX + token)
+            staging.mkdir()
+            (staging / "SKILL.md").write_text("in flight", encoding="utf-8")
+            lock = self.install._RunLock(
+                self.install._run_lock_path(dest, token)
+            )
+            lock.acquire()
+            try:
+                removed = self.install.remove_skill(dest, dry_run=False)
+            finally:
+                lock.release()
+
+            self.assertTrue(staging.exists())
+            # Nothing was removed, and the install can still put the skill
+            # back, so the caller must not be told the uninstall succeeded.
+            self.assertFalse(removed)
+
+    def test_the_sweep_checks_the_lock_of_every_tree_it_would_remove(self):
+        # The liveness answer is taken per tree, at the moment the tree is
+        # about to go, not from a set gathered before the trees are listed.
+        # A run that starts inside that window still holds its lock, and its
+        # staging tree has to survive the sweep.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "1357-beefcafe"
+            staging = dest / (self.install.STAGING_PREFIX + token)
+            staging.mkdir()
+            (staging / "SKILL.md").write_text("in flight", encoding="utf-8")
+            old = time.time() - self.install.LEFTOVER_MAX_AGE_SEC - 60
+            os.utime(str(staging), (old, old))
+            lock = self.install._RunLock(
+                self.install._run_lock_path(dest, token)
+            )
+            lock.acquire()
+            try:
+                # Force a stale snapshot: the sweep must not trust one.
+                with patch.object(
+                        self.install, "_live_runs", lambda path: set()):
+                    swept = self.install._sweep_leftovers(dest)
+            finally:
+                lock.release()
+
+            self.assertTrue(staging.exists())
+            self.assertTrue(swept)
+
+    def test_a_free_lock_file_does_not_protect_a_crashed_run(self):
+        # The kernel drops a run's lock when the process dies, so a lock
+        # file that nobody holds belongs to a run that is gone. Its trees
+        # are still removed, or a crash would leave the skill behind for
+        # ever. The file is aged past the create-then-lock grace: a lock
+        # file this old cannot belong to a run that is starting up.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "4321-deadbeef"
+            staging = dest / (self.install.STAGING_PREFIX + token)
+            staging.mkdir()
+            (staging / "SKILL.md").write_text("crashed", encoding="utf-8")
+            lock_path = self.install._run_lock_path(dest, token)
+            lock_path.write_bytes(b"\0")
+            old = time.time() - self.install.LOCK_FILE_GRACE_SEC - 60
+            os.utime(str(lock_path), (old, old))
+
+            self.install.remove_skill(dest, dry_run=False)
+
+            self.assertFalse(staging.exists())
+            # The lock file of a run that is gone is litter.
+            self.assertFalse(lock_path.exists())
+
+    def test_a_fresh_lock_file_is_left_for_the_run_that_is_creating_it(self):
+        # A run creates its lock file and locks it a moment later. A sweep
+        # that ran in that gap would remove the file, and the run would then
+        # hold a lock with no name: the next sweep would take its trees for a
+        # crashed run's. A fresh file is left alone, and a later sweep still
+        # removes it once no run can be starting up behind it.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "5678-cafebabe"
+            lock_path = self.install._run_lock_path(dest, token)
+            lock_path.write_bytes(b"\0")
+
+            self.install._sweep_run_locks(dest)
+
+            self.assertTrue(lock_path.exists())
+
+            old = time.time() - self.install.LOCK_FILE_GRACE_SEC - 60
+            os.utime(str(lock_path), (old, old))
+            self.install._sweep_run_locks(dest)
+
+            self.assertFalse(lock_path.exists())
+
+    def test_a_platform_without_a_locking_module_still_installs(self):
+        # A platform that has neither msvcrt nor fcntl cannot hold a lock, so
+        # the liveness signal is simply absent. The install has to keep
+        # working there instead of failing on a primitive the platform does
+        # not provide.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            with patch.object(self.install, "_msvcrt", None), \
+                 patch.object(self.install, "_fcntl", None):
+                self.install.copy_skill(src, dest)
+                self.assertTrue(
+                    (dest / "complete-codebase-review" / "SKILL.md").exists()
+                )
+                lock = self.install._RunLock(
+                    self.install._run_lock_path(dest, "1234-cafe")
+                )
+                self.assertIs(lock.acquire(), lock)
+                self.assertIsNone(lock._handle)
+                lock.release()
+                # An aged free lock file is still swept: with no lock to hold,
+                # nothing says a run owns it.
+                token = "9999-feedface"
+                staging = dest / (self.install.STAGING_PREFIX + token)
+                staging.mkdir()
+                (staging / "SKILL.md").write_text("crashed", encoding="utf-8")
+                lock_path = self.install._run_lock_path(dest, token)
+                lock_path.write_bytes(b"\0")
+                old = time.time() - self.install.LOCK_FILE_GRACE_SEC - 60
+                os.utime(str(staging), (old, old))
+                os.utime(str(lock_path), (old, old))
+                self.install.remove_skill(dest, dry_run=False)
+            self.assertFalse(staging.exists())
+            self.assertFalse(lock_path.exists())
+
+    def test_the_install_leaves_no_lock_file_behind(self):
+        # The lock file is removed when the run is done: the skill tree
+        # would collect one lock per install otherwise.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            self.install.copy_skill(src, dest)
+            self.assertEqual(
+                list(dest.glob(self.install.RUN_LOCK_PREFIX + "*")), []
+            )
+
     def test_calls_copytree_with_ignore_patterns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             src = self._make_src(tmpdir)

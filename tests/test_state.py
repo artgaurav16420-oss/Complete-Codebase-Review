@@ -300,12 +300,14 @@ class TestAgents(unittest.TestCase):
     def test_duplicate_completed_ids_do_not_inflate_the_ratio(self):
         # A hand-edited or merged state file can repeat an id; counting it
         # twice would report more than the roster and pass the gate early.
-        for agent_id in ("security", "security", "architecture",
-                         "architecture", "documentation", "documentation"):
+        # One planned agent is left out on purpose: a count that does not
+        # deduplicate would report a full roster here, and the test would
+        # not notice the difference.
+        for agent_id in ("security", "security", "architecture", "architecture"):
             self.state.data["agents_completed"].append(agent_id)
-        self.assertAlmostEqual(self.state.completion_ratio(), 1.0)
+        self.assertAlmostEqual(self.state.completion_ratio(), 2 / 3)
         self.state.data["agents_completed"].extend(["security", "architecture"])
-        self.assertEqual(self.state.completion_ratio(), 1.0)
+        self.assertEqual(self.state.completion_ratio(), 2 / 3)
 
     def test_duplicate_planned_ids_do_not_lower_the_ratio(self):
         # check_completion deduplicates the roster before dividing, so the
