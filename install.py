@@ -23,8 +23,17 @@ import stat
 import sys
 import time
 import platform
-from functools import partial
 from pathlib import Path
+
+try:
+    import fcntl as _fcntl
+except ImportError:  # Windows has no flock
+    _fcntl = None
+
+try:
+    import msvcrt as _msvcrt
+except ImportError:  # POSIX has no msvcrt
+    _msvcrt = None
 
 
 def _is_link_like(path):
@@ -419,6 +428,11 @@ def get_target_dirs():
 
 STAGING_PREFIX = ".complete-codebase-review.staging-"
 PREVIOUS_PREFIX = ".complete-codebase-review.old-"
+# A run holds an OS lock for as long as it works. The kernel drops the lock
+# when the process dies, so a crashed run's lock is free and its trees stay
+# removable, while a run that is still working keeps its lock and its trees
+# are left alone whatever their age.
+RUN_LOCK_PREFIX = ".complete-codebase-review.run-"
 # A pid cannot be probed for liveness on Windows (os.kill would terminate the
 # process), so leftovers are told from a live install by age instead. A tree
 # younger than this may belong to a run that is still working.
@@ -428,6 +442,115 @@ LEFTOVER_MAX_AGE_SEC = 3600
 # uses, so that a tree is never left looking stale while it is still
 # being written.
 COPY_CHUNK_BYTES = 64 * 1024
+
+
+def _run_lock_path(dest_dir, token):
+    """Return the path of the lock file a run holds."""
+    return Path(dest_dir) / (RUN_LOCK_PREFIX + token + ".lock")
+
+
+class _RunLock:
+    """An OS-held lock that says one install run is still working.
+
+    The kernel drops the lock when the holding process ends, so a crashed
+    run's lock is free and its trees are removable. A lock file that is
+    created and deleted instead needs a staleness rule of its own, and that
+    rule races with itself: two contenders judge the same file stale, one
+    replaces it, and the other then removes the replacement, so both enter
+    the protected section.
+    """
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self._handle = None
+
+    def acquire(self, create=True):
+        """Take the lock. Raises OSError when someone else holds it."""
+        mode = "a+b" if create else "r+b"
+        try:
+            self._handle = open(str(self.path), mode)
+            if _msvcrt is not None:
+                # msvcrt locks a byte range, so the file needs a byte to
+                # lock.
+                self._handle.seek(0, os.SEEK_END)
+                if self._handle.tell() == 0:
+                    self._handle.write(b"\0")
+                    self._handle.flush()
+                self._handle.seek(0)
+                _msvcrt.locking(self._handle.fileno(), _msvcrt.LK_NBLCK, 1)
+            else:
+                _fcntl.flock(
+                    self._handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB
+                )
+        except OSError:
+            self.close()
+            raise
+        return self
+
+    def release(self):
+        """Drop the lock and close the file."""
+        if self._handle is None:
+            return
+        try:
+            if _msvcrt is not None:
+                self._handle.seek(0)
+                _msvcrt.locking(self._handle.fileno(), _msvcrt.LK_UNLCK, 1)
+            else:
+                _fcntl.flock(self._handle.fileno(), _fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            self.close()
+
+    def close(self):
+        """Close the file without touching the lock."""
+        if self._handle is not None:
+            try:
+                self._handle.close()
+            except OSError:
+                pass
+            self._handle = None
+
+
+def _lock_is_held(path):
+    """Return True when the lock file is held by a run that is working.
+
+    The answer comes from the kernel: a lock that can be taken is free, so
+    the run that held it is gone and its trees are removable. A file that
+    cannot be opened is treated as held, because a tree is only removed
+    when the run that owns it is known to be gone.
+    """
+    path = Path(path)
+    if _msvcrt is None and _fcntl is None:
+        return False
+    lock = _RunLock(path)
+    try:
+        lock.acquire(create=False)
+    except FileNotFoundError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        # The lock is held: the run that owns it is still working.
+        return True
+    lock.release()
+    return False
+
+
+def _sweep_run_locks(dest_dir):
+    """Remove the lock files of runs that are no longer working.
+
+    The kernel drops the lock when a run's process dies, but the file it
+    locked stays. A free lock file is litter, so it goes here; a lock that
+    is held belongs to a run that is still working and stays.
+    """
+    for path in sorted(Path(dest_dir).glob(RUN_LOCK_PREFIX + "*.lock")):
+        if _lock_is_held(path):
+            continue
+        try:
+            os.unlink(str(path))
+        except OSError:
+            pass
 
 
 def _leftovers(dest_dir, max_age=0):
@@ -539,7 +662,30 @@ def _copy_with_heartbeat(root):
     return copy
 
 
-def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC):
+def _copy_filter(root, dest=None, collector=None):
+    """Return the filter the copy uses, with a heartbeat on the staging tree.
+
+    The sweep that clears a crashed run's leftovers judges a tree by age,
+    so a copy that is still working has to keep saying so. The filter is
+    called once for every directory the copy walks into, so refreshing the
+    tree's mtime there covers the gaps the file copy leaves: a tree of
+    directories copies no file at all, and a slow traversal can spend a
+    long time between two files.
+
+    ``collector`` collects the credential-like entries the copy leaves out,
+    so the caller can report them after the copy.
+    """
+    def filter_files(path, names):
+        # The copy creates the staging tree itself, so it does not exist
+        # yet when the filter is called for the source root.
+        if root.exists():
+            _refresh_mtime(root)
+        return _ignore_skill_files(path, names, dest=dest, collector=collector)
+
+    return filter_files
+
+
+def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC, protect=()):
     """Remove the staging and backup trees a crashed run left behind.
 
     A leftover that cannot be removed is reported and skipped: it is unrelated
@@ -552,6 +698,10 @@ def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC):
     at, which is the traversal the containment checks exist to stop. The
     window between this check and the glob is accepted: it takes a writer with
     control of the parent directory acting between two statements.
+
+    ``protect`` names the leftovers that are left alone: the trees of an
+    install that is still working. A run that still holds its lock is
+    working, so its trees are left alone as well.
     """
     if _is_link_like(dest_dir):
         print_info(
@@ -559,7 +709,10 @@ def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC):
         )
         return False
     removed_all = True
+    live = _live_runs(dest_dir)
     for path in _leftovers(dest_dir, max_age):
+        if path in protect or _run_token(path) in live:
+            continue
         try:
             if _is_link_like(path):
                 _remove_link_like(path)
@@ -569,6 +722,38 @@ def _sweep_leftovers(dest_dir, max_age=LEFTOVER_MAX_AGE_SEC):
             print_info(f"[WARN] Could not remove leftover {path}: {exc}")
             removed_all = False
     return removed_all
+
+
+def _run_token(path):
+    """Return the run token a leftover's name carries.
+
+    A run's staging tree and its parked backup are named after the same
+    token, so the token says which run a leftover belongs to.
+    """
+    name = Path(path).name
+    for prefix in (STAGING_PREFIX, PREVIOUS_PREFIX):
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return ""
+
+
+def _live_runs(dest_dir):
+    """Return the tokens of the installs that are still working.
+
+    A live run holds an OS lock for as long as it works, and the kernel
+    drops the lock when the process dies. The parked backup carries the
+    same token as the staging tree, so it belongs to that run even after
+    the staging tree is gone, which is the case between the park and the
+    swap.
+    """
+    live = set()
+    for path in _leftovers(dest_dir):
+        token = _run_token(path)
+        if not token:
+            continue
+        if _lock_is_held(_run_lock_path(dest_dir, token)):
+            live.add(token)
+    return live
 
 
 def copy_skill(src_dir, dest_dir):
@@ -608,14 +793,11 @@ def copy_skill(src_dir, dest_dir):
                 + str(dest_dir)
             )
         excluded_credentials = []
-        ignore = partial(
-            _ignore_skill_files, collector=excluded_credentials
-        )
+        # The destination is left out of the copy when it sits inside the
+        # source tree; otherwise the copy carries it along.
+        ignore_dest = None
         if resolved_dest.is_relative_to(resolved_src):
-            ignore = partial(
-                _ignore_skill_files, dest=resolved_dest,
-                collector=excluded_credentials,
-            )
+            ignore_dest = resolved_dest
         if not dest_dir.exists():
             dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -628,6 +810,7 @@ def copy_skill(src_dir, dest_dir):
         token = str(os.getpid()) + "-" + os.urandom(4).hex()
         staging = dest_dir / (STAGING_PREFIX + token)
         previous = dest_dir / (PREVIOUS_PREFIX + token)
+        lock = _RunLock(_run_lock_path(dest_dir, token))
 
         # Build the new tree beside the old one and swap it in at the end.
         # Deleting the working install first means a failure mid-copy leaves
@@ -635,6 +818,9 @@ def copy_skill(src_dir, dest_dir):
         # rather than deleted for the same reason: if the swap fails it is
         # moved back, so the previous install survives every failure path.
         _sweep_leftovers(dest_dir)
+        # Lock files left by crashed runs are removed: the kernel drops the
+        # lock when the process dies, so a free lock file is litter.
+        _sweep_run_locks(dest_dir)
         # The guard above runs before the sweep, and a sweep can take long
         # enough for the target to become a link. This is the last check
         # before the write: copying through a link would put the staging tree
@@ -645,13 +831,29 @@ def copy_skill(src_dir, dest_dir):
                 "Refusing to install through a link-like target: "
                 + str(dest_dir)
             )
+        # The run takes an OS lock before it writes anything. A concurrent
+        # install or uninstall sees the lock held and leaves this run's
+        # staging tree and parked backup alone, and the kernel drops the
+        # lock when this process ends, so a crashed run's trees stay
+        # removable.
+        try:
+            lock.acquire()
+        except OSError:
+            try:
+                os.unlink(str(lock.path))
+            except OSError:
+                pass
+            raise
         # Whether this run's own swap landed. A concurrent install can park
         # the tree this run installs, and the missing live install that
         # leaves behind is not evidence that this run's swap failed.
         swapped = False
         try:
             shutil.copytree(
-                src_dir, staging, ignore=ignore,
+                src_dir, staging,
+                ignore=_copy_filter(
+                    staging, ignore_dest, excluded_credentials
+                ),
                 symlinks=True,
                 copy_function=_copy_with_heartbeat(staging),
             )
@@ -749,6 +951,15 @@ def copy_skill(src_dir, dest_dir):
                     _remove_tree(previous)
                 except OSError:
                     pass
+            # The lock is dropped last: while it is held this run's trees
+            # are protected from a concurrent sweep, and the file it locked
+            # goes with it. A crashed run leaves the file behind, and the
+            # next run's sweep removes it.
+            lock.release()
+            try:
+                os.unlink(str(lock.path))
+            except OSError:
+                pass
 
         for relative in sorted({
             Path(os.path.relpath(path, src_dir)).as_posix()
@@ -969,6 +1180,19 @@ def remove_skill(dest_dir, dry_run):
     # the live-skill early return would otherwise make them permanent.
     target = Path(dest_dir)
     leftovers = _leftovers(target) if target.is_dir() else []
+    # An install that is still working owns a staging tree it is writing and,
+    # between the park and the swap, the backup it would put back if the swap
+    # failed. Removing them breaks that install and takes its rollback copy
+    # with it, so they are left alone. The backup is recognised by the token
+    # it shares with the staging tree, not by its own age: a parked link
+    # keeps the age of the link the user configured, and on Windows that
+    # timestamp cannot be refreshed at all. The run that owns them holds an
+    # OS lock, which the kernel drops when the process dies, so a crashed
+    # run's trees are still removed.
+    live = _live_runs(target) if target.is_dir() else set()
+    protect = {
+        path for path in leftovers if _run_token(path) in live
+    }
     if not installed and not leftovers:
         print_info("Not installed: " + str(skill_dest))
         return False
@@ -976,7 +1200,13 @@ def remove_skill(dest_dir, dry_run):
         if installed:
             print_info("[DRY-RUN] Would remove " + str(skill_dest))
         for path in leftovers:
-            print_info("[DRY-RUN] Would remove leftover " + str(path))
+            if path in protect:
+                print_info(
+                    "[DRY-RUN] Would leave leftover " + str(path)
+                    + ": an install may still be running"
+                )
+            else:
+                print_info("[DRY-RUN] Would remove leftover " + str(path))
         return True
     root = _containment_root(dest_dir)
     # Re-assert as late as possible. The caller validated dest_dir before this
@@ -987,15 +1217,28 @@ def remove_skill(dest_dir, dry_run):
             "Refusing to remove from a link-like target: " + str(dest_dir)
         )
     # An explicit uninstall clears every leftover, whatever its age: it is a
-    # destructive request to remove this tool from the tree.
-    if not _sweep_leftovers(target, max_age=0):
+    # destructive request to remove this tool from the tree. The trees of an
+    # install that is still working are the exception: they are left alone,
+    # because removing them breaks that install and takes its rollback copy
+    # with it.
+    if not _sweep_leftovers(target, max_age=0, protect=protect):
         # Nothing else is removed: a caller that treats "removed nothing" as
         # "nothing to do" would report success while these trees survive.
         raise OSError(
             "could not remove the leftover files in " + str(dest_dir)
         )
+    # The lock files of runs that are gone are litter; a lock that is still
+    # held belongs to an install that is still working.
+    _sweep_run_locks(target)
+    for path in protect:
+        print_info(
+            "Left " + str(path) + ": an install may still be running"
+        )
     if not installed:
-        print_success("Removed leftover files from " + str(dest_dir))
+        if protect:
+            print_info("Nothing else to remove in " + str(target))
+        else:
+            print_success("Removed leftover files from " + str(target))
         return True
     if _is_link_like(skill_dest):
         _remove_link_like(skill_dest)

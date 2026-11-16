@@ -217,6 +217,16 @@
     installed skill tree. The name is split on dots, dashes and underscores and each
     word is matched whole, so `environment.py` and `secretary.md` are still kept while
     `env-config.yaml` is now left out with the other environment files.
+  - CodeAnt round 24: the installer refreshes the staging tree's mtime as it walks the
+    source tree, not only when it copies a file, so a tree of directories or a slow
+    traversal no longer leaves the staging tree looking stale to a concurrent sweep. A
+    run now also holds an OS lock for as long as it works: the kernel drops the lock when
+    the process dies, so a crashed run's staging tree and parked backup are still removed,
+    while a run that is still working keeps them whatever their age. An explicit
+    uninstall no longer takes the trees of a working install with it, and the lock file
+    of a run that is gone is cleaned up instead of being left behind. The state test for
+    duplicate agent ids leaves one planned agent unfinished, so the duplicate path is
+    exercised instead of being hidden behind a full roster.
 
 ## v2.4.0 (2026-10-20)
 
