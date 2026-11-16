@@ -433,6 +433,11 @@ PREVIOUS_PREFIX = ".complete-codebase-review.old-"
 # removable, while a run that is still working keeps its lock and its trees
 # are left alone whatever their age.
 RUN_LOCK_PREFIX = ".complete-codebase-review.run-"
+# A run creates its lock file and locks it a moment later, so a file that
+# is still fresh may belong to a run that has not taken its lock yet. A
+# sweep only removes a lock file older than this, which is far longer than
+# the gap between the create and the lock and far shorter than a run takes.
+LOCK_FILE_GRACE_SEC = 60
 # A pid cannot be probed for liveness on Windows (os.kill would terminate the
 # process), so leftovers are told from a live install by age instead. A tree
 # younger than this may belong to a run that is still working.
@@ -442,6 +447,15 @@ LEFTOVER_MAX_AGE_SEC = 3600
 # uses, so that a tree is never left looking stale while it is still
 # being written.
 COPY_CHUNK_BYTES = 64 * 1024
+
+
+def _lock_supported():
+    """Return True when this platform has a file-locking primitive.
+
+    Without one, nobody can hold a lock: the liveness signal is simply
+    absent, and the install still works.
+    """
+    return _msvcrt is not None or _fcntl is not None
 
 
 def _run_lock_path(dest_dir, token):
@@ -466,6 +480,12 @@ class _RunLock:
 
     def acquire(self, create=True):
         """Take the lock. Raises OSError when someone else holds it."""
+        if not _lock_supported():
+            # This platform has no locking primitive, so nobody can hold a
+            # lock and there is nothing to take. The install continues
+            # without the signal rather than failing on a platform that
+            # cannot provide one.
+            return self
         mode = "a+b" if create else "r+b"
         try:
             self._handle = open(str(self.path), mode)
@@ -543,10 +563,30 @@ def _sweep_run_locks(dest_dir):
     The kernel drops the lock when a run's process dies, but the file it
     locked stays. A free lock file is litter, so it goes here; a lock that
     is held belongs to a run that is still working and stays.
+
+    A lock file is only removed when it is old enough that no run can be
+    between creating it and locking it, and when the lock can be taken.
+    The probe is released before the file is removed because Windows
+    refuses to delete an open file, and no other run can take the lock in
+    that gap: a run's token is unique to it, so no other run ever opens
+    this name.
     """
     for path in sorted(Path(dest_dir).glob(RUN_LOCK_PREFIX + "*.lock")):
-        if _lock_is_held(path):
+        try:
+            age = time.time() - path.lstat().st_mtime
+        except OSError:
             continue
+        if age < LOCK_FILE_GRACE_SEC:
+            # A run creates its lock file and locks it a moment later; a
+            # file this fresh may still be that run's.
+            continue
+        lock = _RunLock(path)
+        try:
+            lock.acquire(create=False)
+        except OSError:
+            # The lock is held: the run that owns it is still working.
+            continue
+        lock.release()
         try:
             os.unlink(str(path))
         except OSError:

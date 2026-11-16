@@ -993,7 +993,8 @@ class TestCopySkill(_BaseInstallTest):
         # The kernel drops a run's lock when the process dies, so a lock
         # file that nobody holds belongs to a run that is gone. Its trees
         # are still removed, or a crash would leave the skill behind for
-        # ever.
+        # ever. The file is aged past the create-then-lock grace: a lock
+        # file this old cannot belong to a run that is starting up.
         with tempfile.TemporaryDirectory() as tmpdir:
             dest = Path(tmpdir) / "dest"
             dest.mkdir()
@@ -1003,11 +1004,72 @@ class TestCopySkill(_BaseInstallTest):
             (staging / "SKILL.md").write_text("crashed", encoding="utf-8")
             lock_path = self.install._run_lock_path(dest, token)
             lock_path.write_bytes(b"\0")
+            old = time.time() - self.install.LOCK_FILE_GRACE_SEC - 60
+            os.utime(str(lock_path), (old, old))
 
             self.install.remove_skill(dest, dry_run=False)
 
             self.assertFalse(staging.exists())
             # The lock file of a run that is gone is litter.
+            self.assertFalse(lock_path.exists())
+
+    def test_a_fresh_lock_file_is_left_for_the_run_that_is_creating_it(self):
+        # A run creates its lock file and locks it a moment later. A sweep
+        # that ran in that gap would remove the file, and the run would then
+        # hold a lock with no name: the next sweep would take its trees for a
+        # crashed run's. A fresh file is left alone, and a later sweep still
+        # removes it once no run can be starting up behind it.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            token = "5678-cafebabe"
+            lock_path = self.install._run_lock_path(dest, token)
+            lock_path.write_bytes(b"\0")
+
+            self.install._sweep_run_locks(dest)
+
+            self.assertTrue(lock_path.exists())
+
+            old = time.time() - self.install.LOCK_FILE_GRACE_SEC - 60
+            os.utime(str(lock_path), (old, old))
+            self.install._sweep_run_locks(dest)
+
+            self.assertFalse(lock_path.exists())
+
+    def test_a_platform_without_a_locking_module_still_installs(self):
+        # A platform that has neither msvcrt nor fcntl cannot hold a lock, so
+        # the liveness signal is simply absent. The install has to keep
+        # working there instead of failing on a primitive the platform does
+        # not provide.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = self._make_src(tmpdir)
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            with patch.object(self.install, "_msvcrt", None), \
+                 patch.object(self.install, "_fcntl", None):
+                self.install.copy_skill(src, dest)
+                self.assertTrue(
+                    (dest / "complete-codebase-review" / "SKILL.md").exists()
+                )
+                lock = self.install._RunLock(
+                    self.install._run_lock_path(dest, "1234-cafe")
+                )
+                self.assertIs(lock.acquire(), lock)
+                self.assertIsNone(lock._handle)
+                lock.release()
+                # An aged free lock file is still swept: with no lock to hold,
+                # nothing says a run owns it.
+                token = "9999-feedface"
+                staging = dest / (self.install.STAGING_PREFIX + token)
+                staging.mkdir()
+                (staging / "SKILL.md").write_text("crashed", encoding="utf-8")
+                lock_path = self.install._run_lock_path(dest, token)
+                lock_path.write_bytes(b"\0")
+                old = time.time() - self.install.LOCK_FILE_GRACE_SEC - 60
+                os.utime(str(staging), (old, old))
+                os.utime(str(lock_path), (old, old))
+                self.install.remove_skill(dest, dry_run=False)
+            self.assertFalse(staging.exists())
             self.assertFalse(lock_path.exists())
 
     def test_the_install_leaves_no_lock_file_behind(self):
